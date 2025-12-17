@@ -990,7 +990,6 @@ const EmployeeEnquiry = () => {
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                       Department <span className="font-normal text-gray-400 lowercase">(विभाग)</span>
                     </label>
-<<<<<<< HEAD
                     <select
                       name="department"
                       value={formData.department}
@@ -1013,16 +1012,6 @@ const EmployeeEnquiry = () => {
                       <option value="Accounts">Accounts</option>
                       <option value="Sales">Sales</option>
                     </select>
-=======
-                    <input
-                      type="text"
-                      name="department"
-                      value={formData.department}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-gray-700 text-sm focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none"
-                      placeholder="Enter specific department"
-                    />
->>>>>>> d9fdf455c4f13cb527ea478ad81df70699d8cf6d
                   </div>
                 </div>
 
@@ -1032,11 +1021,7 @@ const EmployeeEnquiry = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-<<<<<<< HEAD
                       Full Name <span className="font-normal text-gray-400 lowercase">(पुरा नाम)</span> <span className="text-red-500">*</span>
-=======
-                      Full Name <span className="font-normal text-gray-400 lowercase">(पुरा नाम)</span> *
->>>>>>> d9fdf455c4f13cb527ea478ad81df70699d8cf6d
                     </label>
                     <input
                       type="text"
@@ -1062,11 +1047,7 @@ const EmployeeEnquiry = () => {
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-<<<<<<< HEAD
                       Phone Number <span className="font-normal text-gray-400 lowercase">(फ़ोन नंबर)</span> <span className="text-red-500">*</span>
-=======
-                      Phone Number <span className="font-normal text-gray-400 lowercase">(फ़ोन नंबर)</span> *
->>>>>>> d9fdf455c4f13cb527ea478ad81df70699d8cf6d
                     </label>
                     <input
                       type="tel"
@@ -1109,11 +1090,7 @@ const EmployeeEnquiry = () => {
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-<<<<<<< HEAD
                       Aadhar No. <span className="font-normal text-gray-400 lowercase">(आधार नं)</span> <span className="text-red-500">*</span>
-=======
-                      Aadhar No. <span className="font-normal text-gray-400 lowercase">(आधार नं)</span> *
->>>>>>> d9fdf455c4f13cb527ea478ad81df70699d8cf6d
                     </label>
                     <input
                       type="text"
@@ -1225,11 +1202,7 @@ const EmployeeEnquiry = () => {
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-<<<<<<< HEAD
                       Status <span className="font-normal text-gray-400 lowercase">(स्थिति)</span> <span className="text-red-500">*</span>
-=======
-                      Status <span className="font-normal text-gray-400 lowercase">(स्थिति)</span> *
->>>>>>> d9fdf455c4f13cb527ea478ad81df70699d8cf6d
                     </label>
                     <select
                       name="status"
