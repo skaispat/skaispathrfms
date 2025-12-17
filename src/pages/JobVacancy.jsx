@@ -466,6 +466,7 @@ const JobVacancy = () => {
                     className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium text-slate-800"
                   >
                     <option value="">Select Department</option>
+<<<<<<< HEAD
                     <option value="Hr">Hr</option>
                     <option value="Admin">Admin</option>
                     <option value="Sms">Sms</option>
@@ -480,6 +481,12 @@ const JobVacancy = () => {
                     <option value="Health & Safety">Health & Safety</option>
                     <option value="Accounts">Accounts</option>
                     <option value="Sales">Sales</option>
+=======
+                    <option value="Production">Production</option>
+                    <option value="Management">Management</option>
+                    <option value="Sales">Sales</option>
+                    <option value="HR">HR</option>
+>>>>>>> d9fdf455c4f13cb527ea478ad81df70699d8cf6d
                   </select>
                 </div>
 
