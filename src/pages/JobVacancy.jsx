@@ -466,10 +466,20 @@ const JobVacancy = () => {
                     className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium text-slate-800"
                   >
                     <option value="">Select Department</option>
-                    <option value="Production">Production</option>
-                    <option value="Management">Management</option>
+                    <option value="Hr">Hr</option>
+                    <option value="Admin">Admin</option>
+                    <option value="Sms">Sms</option>
+                    <option value="Rolling mill">Rolling mill</option>
+                    <option value="Sms Lab">Sms Lab</option>
+                    <option value="Dispatch">Dispatch</option>
+                    <option value="R/M Purchase">R/M Purchase</option>
+                    <option value="Store Purchase">Store Purchase</option>
+                    <option value="Store">Store</option>
+                    <option value="WB (Weightment Bridge)">WB (Weightment Bridge)</option>
+                    <option value="HouseKeeping">HouseKeeping</option>
+                    <option value="Health & Safety">Health & Safety</option>
+                    <option value="Accounts">Accounts</option>
                     <option value="Sales">Sales</option>
-                    <option value="HR">HR</option>
                   </select>
                 </div>
 

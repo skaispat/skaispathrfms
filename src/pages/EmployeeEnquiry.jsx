@@ -990,14 +990,28 @@ const EmployeeEnquiry = () => {
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                       Department <span className="font-normal text-gray-400 lowercase">(विभाग)</span>
                     </label>
-                    <input
-                      type="text"
+                    <select
                       name="department"
                       value={formData.department}
                       onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-gray-700 text-sm focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none"
-                      placeholder="Enter specific department"
-                    />
+                      className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-gray-700 text-sm focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none bg-white"
+                    >
+                      <option value="">Select Department</option>
+                      <option value="Hr">Hr</option>
+                      <option value="Admin">Admin</option>
+                      <option value="Sms">Sms</option>
+                      <option value="Rolling mill">Rolling mill</option>
+                      <option value="Sms Lab">Sms Lab</option>
+                      <option value="Dispatch">Dispatch</option>
+                      <option value="R/M Purchase">R/M Purchase</option>
+                      <option value="Store Purchase">Store Purchase</option>
+                      <option value="Store">Store</option>
+                      <option value="WB (Weightment Bridge)">WB (Weightment Bridge)</option>
+                      <option value="HouseKeeping">HouseKeeping</option>
+                      <option value="Health & Safety">Health & Safety</option>
+                      <option value="Accounts">Accounts</option>
+                      <option value="Sales">Sales</option>
+                    </select>
                   </div>
                 </div>
 
@@ -1007,7 +1021,7 @@ const EmployeeEnquiry = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                      Full Name <span className="font-normal text-gray-400 lowercase">(पुरा नाम)</span> *
+                      Full Name <span className="font-normal text-gray-400 lowercase">(पुरा नाम)</span> <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
@@ -1033,7 +1047,7 @@ const EmployeeEnquiry = () => {
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                      Phone Number <span className="font-normal text-gray-400 lowercase">(फ़ोन नंबर)</span> *
+                      Phone Number <span className="font-normal text-gray-400 lowercase">(फ़ोन नंबर)</span> <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="tel"
@@ -1076,7 +1090,7 @@ const EmployeeEnquiry = () => {
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                      Aadhar No. <span className="font-normal text-gray-400 lowercase">(आधार नं)</span> *
+                      Aadhar No. <span className="font-normal text-gray-400 lowercase">(आधार नं)</span> <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
@@ -1188,7 +1202,7 @@ const EmployeeEnquiry = () => {
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                      Status <span className="font-normal text-gray-400 lowercase">(स्थिति)</span> *
+                      Status <span className="font-normal text-gray-400 lowercase">(स्थिति)</span> <span className="text-red-500">*</span>
                     </label>
                     <select
                       name="status"

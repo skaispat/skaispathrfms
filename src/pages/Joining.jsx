@@ -460,7 +460,24 @@ const ShareModal = ({ isOpen, onClose, candidate }) => {
   if (!isOpen || !candidate) return null;
 
   const subject = `Candidate Joining Details - ${candidate.name_as_per_aadhar}`;
-  const message = `Dear Recipient,\n\nPlease find the joining details for candidate ${candidate.name_as_per_aadhar} who is applying for the position of ${candidate.designation}.\n\nCandidate Details:\n- Name: ${candidate.name_as_per_aadhar}\n- Position: ${candidate.designation}\n- Department: ${candidate.department}\n- Phone: ${candidate.mobile_no}\n- Email: ${candidate.personal_email || 'N/A'}\n- Candidate Enquiry Number: ${candidate.joining_id || 'N/A'}\n\nJoining Form Link: https://hr-joining-form.vercel.app/?enquiry=${candidate.joining_id}\n\nBest regards,\nHR Team`;
+  const message = `Dear Recipient,
+
+We are pleased to share the joining details for ${candidate.name_as_per_aadhar}, selected for the position of ${candidate.designation}.
+
+Candidate Overview:
+--------------------------------------------------
+• Name: ${candidate.name_as_per_aadhar}
+• Position: ${candidate.designation}
+• Department: ${candidate.department}
+• Contact: ${candidate.mobile_no}
+• Email: ${candidate.personal_email || 'N/A'}
+• Reference ID: ${candidate.joining_id || 'N/A'}
+
+Please access the joining form via the link below:
+https://skajoiningforms.vercel.app/joining-form/${candidate.joining_id}
+
+Best regards,
+HR Team`;
 
   const handleSend = () => {
     if (!recipientEmail) {
@@ -480,7 +497,7 @@ const ShareModal = ({ isOpen, onClose, candidate }) => {
         </div>
         <div className="p-6 space-y-4 overflow-y-auto">
           <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Recipient Name *</label>
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Recipient Name <span className="text-red-500">*</span></label>
             <input
               type="text"
               value={recipientName}
@@ -490,7 +507,7 @@ const ShareModal = ({ isOpen, onClose, candidate }) => {
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Email Address *</label>
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Email Address <span className="text-red-500">*</span></label>
             <input
               type="email"
               value={recipientEmail}
@@ -500,18 +517,18 @@ const ShareModal = ({ isOpen, onClose, candidate }) => {
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Subject *</label>
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Subject <span className="text-red-500">*</span></label>
             <input type="text" value={subject} readOnly className="w-full px-3 py-2 border rounded-lg text-sm text-gray-600 bg-gray-50" />
           </div>
           <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Message *</label>
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Message <span className="text-red-500">*</span></label>
             <textarea value={message} readOnly rows={8} className="w-full px-3 py-2 border rounded-lg text-sm text-gray-600 bg-gray-50 resize-none font-mono text-xs" />
           </div>
           <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-100 flex items-center gap-3">
             <div className="bg-indigo-100 p-2 rounded-md text-indigo-600"><FileText size={16} /></div>
             <div className="flex-1">
-              <p className="text-xs font-bold text-indigo-900">Attached Links</p>
-              <p className="text-xs text-indigo-700">Joining Form Link</p>
+              <p className="text-xs font-bold text-indigo-900">Attached Link</p>
+              <p className="text-xs text-indigo-700 break-all">https://skajoiningforms.vercel.app/joining-form/{candidate.joining_id}</p>
             </div>
           </div>
         </div>
