@@ -411,8 +411,7 @@ const LeaveManagement = () => {
         }),
         ...(isHr && {
           hr_remarks: currentRowRemarks.hr || '',
-          hr_id: user.emp_id,
-          hr_name: user.full_name || user.Name
+          hr_id: user.emp_id
         })
       };
 
