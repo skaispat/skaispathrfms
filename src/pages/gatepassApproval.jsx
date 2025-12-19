@@ -54,7 +54,7 @@ const GatePassApproval = () => {
             // Fetch HR Name
             const { data: hrData } = await supabase
                 .from('users')
-                .select('full_name, phone_number, emp_id, id')
+                .select('full_name, phone_number, emp_id')
                 .eq('department', 'HR')
                 .order('is_hod', { ascending: false })
                 .limit(1)
@@ -68,7 +68,7 @@ const GatePassApproval = () => {
                 arrivalTime: data.arrival_at_plant ? formatDate(data.arrival_at_plant) : 'Not specified',
                 hr_name: hrData?.full_name || 'HR Department',
                 hr_phone: hrData?.phone_number,
-                hr_id_val: hrData?.emp_id || hrData?.id
+                hr_id_val: hrData?.emp_id
             });
 
             if (approverData) {
@@ -140,8 +140,13 @@ const GatePassApproval = () => {
 
             if (action === 'approve') {
                 if (isHodAction) {
-                    newStatus = 'Pending HR';
-                    logAction = 'Approved';
+                    if (approver.department === 'HR') {
+                        newStatus = 'Approved'; // Skip 'Pending HR' step if HOD is HR
+                        logAction = 'Approved (HOD & HR)';
+                    } else {
+                        newStatus = 'Pending HR';
+                        logAction = 'Approved';
+                    }
                 } else if (isHrAction) {
                     newStatus = 'Approved';
                     logAction = 'Approved';
@@ -156,12 +161,17 @@ const GatePassApproval = () => {
                 status: newStatus,
                 ...(isHodAction && {
                     hod_remarks: currentRemarks,
-                    hod_id: approver.emp_id || approver.id,
+                    hod_id: approver.emp_id,
                     hod_name: approver.full_name
                 }),
                 ...(isHrAction && {
                     hr_remarks: currentRemarks,
-                    hr_id: approver.emp_id || approver.id
+                    hr_id: approver.emp_id
+                }),
+                // If HOD is HR and skipping, ensure HR fields are also filled
+                ...((isHodAction && approver.department === 'HR' && action === 'approve') && {
+                    hr_remarks: currentRemarks,
+                    hr_id: approver.emp_id
                 })
             };
 
@@ -180,14 +190,14 @@ const GatePassApproval = () => {
                     hod_action: logAction,
                     hod_approval_time: new Date().toISOString(),
                     hod_remarks: currentRemarks,
-                    hod_id: approver.emp_id || approver.id,
+                    hod_id: approver.emp_id,
                     hod_name: approver.full_name
                 }),
                 ...(isHrAction && {
                     hr_action: logAction,
                     hr_approval_time: new Date().toISOString(),
                     hr_remarks: currentRemarks,
-                    hr_id: approver.emp_id || approver.id,
+                    hr_id: approver.emp_id,
                     hr_name: approver.full_name
                 })
             };
@@ -202,7 +212,7 @@ const GatePassApproval = () => {
 
             setSuccessData({
                 action: action === 'approve' ? 'Approved' : 'Rejected',
-                role: isHodAction ? 'HOD' : 'HR'
+                role: (isHodAction && approver.department === 'HR') ? 'HR' : (isHodAction ? 'HOD' : 'HR')
             });
             setActionSuccess(true);
 

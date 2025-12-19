@@ -34,27 +34,17 @@ const ApprovalForm = () => {
             if (!data) throw new Error('Request not found');
 
             // Fetch Approver Details
-            // Try fetching by emp_id first (assuming approverId might be an employee ID string)
+            // Fetch by emp_id (schema primary key)
             let { data: approverData, error: approverError } = await supabase
                 .from('users')
                 .select('*')
                 .eq('emp_id', approverId)
                 .maybeSingle();
 
-            // If not found by emp_id, try by UUID
-            if (!approverData) {
-                const { data: approverUuidData } = await supabase
-                    .from('users')
-                    .select('*')
-                    .eq('id', approverId)
-                    .maybeSingle();
-                approverData = approverUuidData;
-            }
-
             // Fetch HR Name (for display purposes if needed)
             const { data: hrData } = await supabase
                 .from('users')
-                .select('full_name, phone_number, emp_id, id')
+                .select('full_name, phone_number, emp_id')
                 .eq('department', 'HR')
                 .order('is_hod', { ascending: false })
                 .limit(1)
@@ -66,7 +56,7 @@ const ApprovalForm = () => {
                 endDate: formatDate(data.leave_date_end),
                 hr_name: hrData?.full_name || 'HR Department',
                 hr_phone: hrData?.phone_number,
-                hr_id_val: hrData?.emp_id || hrData?.id
+                hr_id_val: hrData?.emp_id
             });
 
             if (approverData) {
@@ -141,8 +131,13 @@ const ApprovalForm = () => {
 
             if (action === 'approve') {
                 if (isHodAction) {
-                    newStatus = 'Pending HR';
-                    logAction = 'Approved';
+                    if (approver.department === 'HR') {
+                        newStatus = 'Approved'; // Skip 'Pending HR' step if HOD is HR
+                        logAction = 'Approved (HOD & HR)';
+                    } else {
+                        newStatus = 'Pending HR';
+                        logAction = 'Approved';
+                    }
                 } else if (isHrAction) {
                     newStatus = 'Approved';
                     logAction = 'Approved';
@@ -157,12 +152,17 @@ const ApprovalForm = () => {
                 status: newStatus,
                 ...(isHodAction && {
                     hod_remarks: currentRemarks,
-                    hod_id: approver.emp_id || approver.id,
+                    hod_id: approver.emp_id,
                     hod_name: approver.full_name
                 }),
                 ...(isHrAction && {
                     hr_remarks: currentRemarks,
-                    hr_id: approver.emp_id || approver.id
+                    hr_id: approver.emp_id
+                }),
+                // If HOD is HR and skipping, ensure HR fields are also filled
+                ...((isHodAction && approver.department === 'HR' && action === 'approve') && {
+                    hr_remarks: currentRemarks,
+                    hr_id: approver.emp_id
                 })
             };
 
@@ -181,14 +181,14 @@ const ApprovalForm = () => {
                     hod_action: logAction,
                     hod_approval_time: new Date().toISOString(),
                     hod_remarks: currentRemarks,
-                    hod_id: approver.emp_id || approver.id,
+                    hod_id: approver.emp_id,
                     hod_name: approver.full_name
                 }),
                 ...(isHrAction && {
                     hr_action: logAction,
                     hr_approval_time: new Date().toISOString(),
                     hr_remarks: currentRemarks,
-                    hr_id: approver.emp_id || approver.id,
+                    hr_id: approver.emp_id,
                     hr_name: approver.full_name
                 })
             };
@@ -203,7 +203,7 @@ const ApprovalForm = () => {
 
             setSuccessData({
                 action: action === 'approve' ? 'Approved' : 'Rejected',
-                role: isHodAction ? 'HOD' : 'HR'
+                role: (isHodAction && approver.department === 'HR') ? 'HR' : (isHodAction ? 'HOD' : 'HR')
             });
             setActionSuccess(true);
 

@@ -73,17 +73,17 @@ const GatePassRequest = () => {
       if (teamData?.hod_id) {
         const { data: hodUser } = await supabase
           .from('users')
-          .select('full_name')
+          .select('full_name, department')
           .eq('emp_id', teamData.hod_id)
           .single();
 
         if (hodUser) {
-          setHodDetails({ name: hodUser.full_name, id: teamData.hod_id });
+          setHodDetails({ name: hodUser.full_name, id: teamData.hod_id, department: hodUser.department });
         } else {
-          setHodDetails({ name: 'HR', id: null });
+          setHodDetails({ name: 'Pawan Tiwari', id: 1, department: 'HR' });
         }
       } else {
-        setHodDetails({ name: 'HR', id: null });
+        setHodDetails({ name: 'Pawan Tiwari', id: 1, department: 'HR' });
       }
 
       // 2. Fetch HR Details
@@ -238,7 +238,8 @@ const GatePassRequest = () => {
         arrival_at_plant: formData.arrivalTime || null,
         employee_whatsapp_number: formData.whatsappNumber,
         image_gate_pass: imageUrl,
-        status: (hodDetails.name === 'HR' || isUserHod) ? 'Pending HR' : 'Pending', // Initial status
+        image_gate_pass: imageUrl,
+        status: (hodDetails.name === 'HR' || hodDetails.department === 'HR' || isUserHod) ? 'Pending HR' : 'Pending', // Initial status
         hod_name: isUserHod ? 'HR' : hodDetails.name,
         hod_id: isUserHod ? null : hodDetails.id, // Insert HOD ID if not user
         hr_id: hrDetails.id // Insert HR ID

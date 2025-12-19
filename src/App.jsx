@@ -39,8 +39,8 @@ function App() {
         <Toaster position="top-right" />
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/leave-approve/:approverId/:id" element={<ApprovalForm />} />
-          <Route path="/gatepass-approve/:approverId/:id" element={<GatePassApproval />} />
+          {/* <Route path="/leave-approve/:approverId/:id" element={<ApprovalForm />} /> */}
+          {/* <Route path="/gatepass-approve/:approverId/:id" element={<GatePassApproval />} /> */}
 
           <Route path="/" element={
             <ProtectedRoute>

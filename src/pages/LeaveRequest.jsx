@@ -54,17 +54,17 @@ const LeaveRequest = () => {
         // Then get HOD name from users
         const { data: hodUser, error: hodUserError } = await supabase
           .from('users')
-          .select('full_name')
+          .select('full_name, department')
           .eq('emp_id', teamData.hod_id)
           .single();
 
         if (hodUser) {
-          setHodDetails({ name: hodUser.full_name, id: teamData.hod_id });
+          setHodDetails({ name: hodUser.full_name, id: teamData.hod_id, department: hodUser.department });
         } else {
-          setHodDetails({ name: 'HR', id: null });
+          setHodDetails({ name: 'Pawan Tiwari', id: 1, department: 'HR' });
         }
       } else {
-        setHodDetails({ name: 'HR', id: null });
+        setHodDetails({ name: 'Pawan Tiwari', id: 1, department: 'HR' });
       }
 
       // 2. Fetch HR Details
@@ -182,7 +182,7 @@ const LeaveRequest = () => {
         leave_date_start: formData.fromDate,
         leave_date_end: formData.toDate,
         remarks: formData.reason,
-        status: hodDetails.name === 'HR' ? 'Pending HR' : 'Pending',
+        status: (hodDetails.name === 'HR' || hodDetails.department === 'HR' || user.is_hod) ? 'Pending HR' : 'Pending',
         leave_type: formData.leaveType,
         hod_name: hodDetails.name,
         designation: user.designation || user.role, // Fallback if designation missing
