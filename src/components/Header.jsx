@@ -166,6 +166,38 @@ const Header = ({ children }) => {
           });
         }
 
+        // 3. Fetch System Notifications (e.g. Requests for more leaves)
+        if (isAdmin) {
+          const { data: systemNotifs } = await supabase
+            .from('notifications')
+            .select('*')
+            // You might want to filter by recipient_role or similar if valid
+            .order('created_at', { ascending: false })
+            .limit(20);
+
+          systemNotifs?.forEach(item => {
+            const uniqueId = `sys-${item.id}`;
+            notificationsMap.set(uniqueId, {
+              id: uniqueId,
+              type: 'System Alert',
+              title: 'Admin Notification',
+              time: item.created_at,
+              link: '/settings',
+              status: item.is_read ? 'Read' : 'Unread',
+              context: 'management',
+              isLeave: false,
+              message: item.message, // Use message directly for simple notifications
+              details: {
+                type: 'Alert',
+                description: item.message,
+                date: new Date(item.created_at).toLocaleDateString(),
+                hod: null,
+                hr: null
+              }
+            });
+          });
+        }
+
         const allNotifications = Array.from(notificationsMap.values()).sort((a, b) => new Date(b.time) - new Date(a.time));
         setNotifications(allNotifications);
 

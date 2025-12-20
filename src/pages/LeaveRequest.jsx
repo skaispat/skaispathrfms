@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Clock, Calendar, Plus, User, FileText, CheckCircle, AlertCircle, X, History, Briefcase, Users, Search, ChevronDown, Shield } from 'lucide-react';
+import { Clock, Calendar, Plus, User, FileText, CheckCircle, AlertCircle, X, History, Briefcase, Users, Search, ChevronDown, Shield, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../supabaseClient';
 import useAuthStore from '../store/authStore';
@@ -11,12 +11,15 @@ const LeaveRequest = () => {
   // State
   const [loading, setLoading] = useState(true);
   const [leaveHistory, setLeaveHistory] = useState([]);
+  const [currentMonthlyCount, setCurrentMonthlyCount] = useState(0);
   const [leaveBalances, setLeaveBalances] = useState({
     casual: { total: 12, used: 0, remaining: 12 },
     earned: { total: 24, used: 0, remaining: 24 },
     unpaid: { used: 0 }
   });
-  const [hasAppliedThisMonth, setHasAppliedThisMonth] = useState(false);
+  const [isMonthlyLimitReached, setIsMonthlyLimitReached] = useState(false);
+  const [hasAppliedToday, setHasAppliedToday] = useState(false);
+  const [isLeaveAllowedByAdmin, setIsLeaveAllowedByAdmin] = useState(true);
   const [hodDetails, setHodDetails] = useState({ name: 'Not Assigned', id: null });
   const [hrDetails, setHrDetails] = useState({ name: 'HR Department', id: null });
   const [searchTerm, setSearchTerm] = useState('');
@@ -25,12 +28,14 @@ const LeaveRequest = () => {
   // Modal State
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [requestingMore, setRequestingMore] = useState(false);
   const [formData, setFormData] = useState({
     leaveType: '',
     fromDate: '',
     toDate: '',
     reason: ''
   });
+  const [dateError, setDateError] = useState(null);
 
   // Fetch Data on component mount
   useEffect(() => {
@@ -79,7 +84,20 @@ const LeaveRequest = () => {
       if (hrData) {
         setHrDetails({ name: hrData.full_name, id: hrData.emp_id });
       }
-      // 2. Fetch Leave History for this user
+
+      // 3. Fetch current user details for leave access permission
+      const { data: userData } = await supabase
+        .from('users')
+        .select('is_leave_allowed')
+        .eq('emp_id', user.emp_id)
+        .single();
+
+      if (userData) {
+        // If is_leave_allowed is null/undefined, default to true
+        setIsLeaveAllowedByAdmin(userData.is_leave_allowed !== false);
+      }
+
+      // 4. Fetch Leave History for this user
       const { data: historyData, error: historyError } = await supabase
         .from('leave_management')
         .select('*')
@@ -105,18 +123,25 @@ const LeaveRequest = () => {
     const currentYear = new Date().getFullYear();
     const currentMonth = new Date().getMonth();
 
+    const currentDate = new Date().getDate();
+
     let casualUsed = 0;
     let earnedUsed = 0;
     let unpaidUsed = 0;
-    let appliedThisMonth = false;
+    let monthlyCount = 0;
+    let appliedToday = false;
 
     history.forEach(leave => {
-      const leaveDate = new Date(leave.timestamp); // Use submission date for "applied this month" check
+      const leaveDate = new Date(leave.timestamp); // Use submission date for "monthly count" check
       const leaveYear = new Date(leave.leave_date_start).getFullYear();
 
       // Check if applied in current month (based on submission timestamp)
       if (leaveDate.getMonth() === currentMonth && leaveDate.getFullYear() === currentYear) {
-        appliedThisMonth = true;
+        monthlyCount++;
+        // Check if applied today (nested check to ensure we are looking at relevant records)
+        if (leaveDate.getDate() === currentDate) {
+          appliedToday = true;
+        }
       }
 
       // Calculate Usage for Approved leaves in current year
@@ -139,13 +164,17 @@ const LeaveRequest = () => {
       }
     });
 
+
+
     setLeaveBalances({
       casual: { total: 12, used: casualUsed, remaining: 12 - casualUsed },
       earned: { total: 24, used: earnedUsed, remaining: 24 - earnedUsed },
       unpaid: { used: unpaidUsed }
     });
 
-    setHasAppliedThisMonth(appliedThisMonth);
+    setCurrentMonthlyCount(monthlyCount);
+    setIsMonthlyLimitReached(monthlyCount >= 3);
+    setHasAppliedToday(appliedToday);
   };
 
   const calculateDays = (startDateStr, endDateStr) => {
@@ -154,6 +183,28 @@ const LeaveRequest = () => {
     const end = new Date(endDateStr);
     const diffTime = Math.abs(end - start);
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+  };
+
+  const checkOverlap = (startDateStr, endDateStr) => {
+    if (!startDateStr) return null;
+
+    const start = new Date(startDateStr);
+    const end = endDateStr ? new Date(endDateStr) : new Date(startDateStr);
+    start.setHours(0, 0, 0, 0);
+    end.setHours(0, 0, 0, 0);
+
+    return leaveHistory.find(leave => {
+      // Skip rejected applications
+      if (leave.status?.toLowerCase().includes('rejected')) return false;
+
+      const lStart = new Date(leave.leave_date_start);
+      const lEnd = new Date(leave.leave_date_end);
+      lStart.setHours(0, 0, 0, 0);
+      lEnd.setHours(0, 0, 0, 0);
+
+      // Check for overlap: (StartA <= EndB) and (EndA >= StartB)
+      return start <= lEnd && end >= lStart;
+    });
   };
 
   const handleInputChange = (e) => {
@@ -168,8 +219,21 @@ const LeaveRequest = () => {
       return;
     }
 
-    if (hasAppliedThisMonth) {
-      toast.error('You have already applied for leave this month.');
+    if (!isLeaveAllowedByAdmin) {
+      toast.error('Your leave access has been disabled by the admin.');
+      return;
+    }
+
+
+
+
+
+    // If Admin has overridden the limit (isMonthlyLimitReached + isLeaveAllowedByAdmin), we allow the request
+    // even if the user has applied today (assuming emergency override).
+    const isOverride = isMonthlyLimitReached && isLeaveAllowedByAdmin;
+
+    if (hasAppliedToday && !isOverride) {
+      toast.error('You have already applied for leave today.');
       return;
     }
 
@@ -213,9 +277,22 @@ const LeaveRequest = () => {
 
       if (error) throw error;
 
+      // Check if we hit the limit of 3 with this new request
+      // We use currentMonthlyCount from state (which was before this request) + 1
+      const newCount = currentMonthlyCount + 1;
+      if (newCount >= 3) {
+        // Auto-disable access
+        await supabase
+          .from('users')
+          .update({ is_leave_allowed: false })
+          .eq('emp_id', user.emp_id);
+      }
+
       toast.success('Leave Request Submitted Successfully');
       setShowModal(false);
+      setShowModal(false);
       setFormData({ leaveType: '', fromDate: '', toDate: '', reason: '' });
+      setDateError(null);
       fetchUserDataAndHistory(); // Refresh data
 
     } catch (error) {
@@ -223,6 +300,30 @@ const LeaveRequest = () => {
       toast.error(`Error: ${error.message}`);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleRequestException = async () => {
+    if (!user) return;
+
+    setRequestingMore(true);
+    try {
+      const { error } = await supabase.from('notifications').insert({
+        sender_id: user.emp_id,
+        sender_name: user?.full_name || user?.Name,
+        recipient_role: 'admin',
+        message: `The ${user?.full_name || user?.Name} has asked for more leave request`,
+        type: 'limit_exceeded',
+        is_read: false
+      });
+
+      if (error) throw error;
+      toast.success('Request sent to Admin');
+    } catch (err) {
+      console.error('Error sending request:', err);
+      toast.error('Failed to send request');
+    } finally {
+      setRequestingMore(false);
     }
   };
 
@@ -277,28 +378,50 @@ const LeaveRequest = () => {
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">My Leave Request</h1>
           <p className="text-slate-500 mt-1 text-sm">View your leave balance and history</p>
         </div>
-        <button
-          onClick={() => !hasAppliedThisMonth && setShowModal(true)}
-          disabled={hasAppliedThisMonth}
-          className={`inline-flex items-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 
-            ${hasAppliedThisMonth
-              ? 'bg-slate-400 cursor-not-allowed shadow-none'
-              : 'bg-indigo-600 hover:bg-indigo-700'}`}
-        >
-          <Plus size={18} className="mr-2" />
-          {hasAppliedThisMonth ? 'Monthly Limit Reached' : 'New Leave Request'}
-        </button>
+        <div className="flex items-center gap-2">
+          {isMonthlyLimitReached && !isLeaveAllowedByAdmin && (
+            <button
+              onClick={handleRequestException}
+              disabled={requestingMore}
+              className="inline-flex items-center px-4 py-2.5 border border-indigo-200 rounded-lg shadow-sm text-sm font-medium text-indigo-700 bg-white hover:bg-indigo-50 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            >
+              <Send size={18} className="mr-2" />
+              {requestingMore ? 'Sending...' : 'Request More'}
+            </button>
+          )}
+          <button
+            onClick={() => isLeaveAllowedByAdmin && (!hasAppliedToday || (isMonthlyLimitReached && isLeaveAllowedByAdmin)) && setShowModal(true)}
+            disabled={!isLeaveAllowedByAdmin || (hasAppliedToday && !(isMonthlyLimitReached && isLeaveAllowedByAdmin))}
+            className={`inline-flex items-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 
+              ${!isLeaveAllowedByAdmin || (hasAppliedToday && !(isMonthlyLimitReached && isLeaveAllowedByAdmin))
+                ? 'bg-slate-400 cursor-not-allowed shadow-none'
+                : 'bg-indigo-600 hover:bg-indigo-700'}`}
+          >
+            <Plus size={18} className="mr-2" />
+            {!isLeaveAllowedByAdmin
+              ? (isMonthlyLimitReached ? 'Monthly Limit Reached' : 'Access Disabled')
+              : (hasAppliedToday && !(isMonthlyLimitReached && isLeaveAllowedByAdmin))
+                ? 'Daily Limit Reached'
+                : 'New Leave Request'}
+          </button>
+        </div>
       </div>
 
-      {hasAppliedThisMonth && (
+      {(!isLeaveAllowedByAdmin || (hasAppliedToday && !(isMonthlyLimitReached && isLeaveAllowedByAdmin))) && (
         <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 flex items-center gap-4 shrink-0">
           <div className="p-2 bg-orange-100 rounded-full text-orange-600">
             <AlertCircle size={20} />
           </div>
           <div>
-            <h4 className="text-sm font-bold text-orange-900">Monthly Application Limit</h4>
+            <h4 className="text-sm font-bold text-orange-900">
+              {!isLeaveAllowedByAdmin
+                ? (isMonthlyLimitReached ? 'Monthly Application Limit Reached' : 'Leave Application Disabled')
+                : 'Daily Application Limit'}
+            </h4>
             <p className="text-sm text-orange-700 mt-0.5">
-              You've already submitted a request this month. Only one request is allowed per month.
+              {!isLeaveAllowedByAdmin
+                ? (isMonthlyLimitReached ? 'You have used your 3 allowed leave requests for this month. Please contact HR for urgent requests.' : 'Your ability to apply for new leaves has been disabled by the administrator.')
+                : 'You have already submitted a request today. Only one request is allowed per day.'}
             </p>
           </div>
         </div>
@@ -583,13 +706,25 @@ const LeaveRequest = () => {
                       value={formData.fromDate}
                       onChange={(e) => {
                         const newFrom = e.target.value;
+
+                        const potentialEnd = (formData.toDate && new Date(newFrom) <= new Date(formData.toDate))
+                          ? formData.toDate
+                          : newFrom;
+
+                        const conflict = checkOverlap(newFrom, potentialEnd);
+                        if (conflict) {
+                          setDateError(`Already applied for leave: ${formatDate(conflict.leave_date_start)} - ${formatDate(conflict.leave_date_end)}`);
+                          return;
+                        }
+
+                        setDateError(null);
                         setFormData(prev => ({
                           ...prev,
                           fromDate: newFrom,
                           toDate: (prev.toDate && new Date(newFrom) > new Date(prev.toDate)) ? '' : prev.toDate
                         }));
                       }}
-                      className="block w-full rounded-xl border-slate-200 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-3 px-3 bg-white"
+                      className={`block w-full rounded-xl border-slate-200 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-3 px-3 bg-white ${dateError ? 'border-red-300 focus:border-red-500 focus:ring-red-200' : ''}`}
                       required
                     />
                   </div>
@@ -603,14 +738,29 @@ const LeaveRequest = () => {
                       onChange={(e) => {
                         const newTo = e.target.value;
                         if (!formData.fromDate || new Date(newTo) >= new Date(formData.fromDate)) {
+
+                          const conflict = checkOverlap(formData.fromDate, newTo);
+                          if (conflict) {
+                            setDateError(`Already applied for leave: ${formatDate(conflict.leave_date_start)} - ${formatDate(conflict.leave_date_end)}`);
+                            return;
+                          }
+
+                          setDateError(null);
                           setFormData(prev => ({ ...prev, toDate: newTo }));
                         }
                       }}
-                      className="block w-full rounded-xl border-slate-200 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-3 px-3 bg-white"
+                      className={`block w-full rounded-xl border-slate-200 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-3 px-3 bg-white ${dateError ? 'border-red-300 focus:border-red-500 focus:ring-red-200' : ''}`}
                       required
                     />
                   </div>
                 </div>
+
+                {dateError && (
+                  <div className="flex items-center gap-2 text-red-600 bg-red-50 p-3 rounded-lg border border-red-100 animate-in fade-in slide-in-from-top-1">
+                    <AlertCircle size={16} />
+                    <span className="text-sm font-medium">{dateError}</span>
+                  </div>
+                )}
 
                 {/* Duration Display - Matching style */}
                 {formData.fromDate && formData.toDate && (

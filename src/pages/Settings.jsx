@@ -727,6 +727,27 @@ const Settings = () => {
         }
     };
 
+    const handleToggleLeaveAccess = async (user) => {
+        const newStatus = !user.is_leave_allowed;
+        // Optimistic update
+        setUsers(users.map(u => u.emp_id === user.emp_id ? { ...u, is_leave_allowed: newStatus } : u));
+
+        try {
+            const { error } = await supabase
+                .from('users')
+                .update({ is_leave_allowed: newStatus })
+                .eq('emp_id', user.emp_id);
+
+            if (error) throw error;
+            toast.success(`Leave access ${newStatus ? 'enabled' : 'disabled'} for ${user.full_name}`);
+        } catch (error) {
+            console.error('Error toggling leave access:', error);
+            toast.error('Failed to update leave access');
+            // Revert on error
+            setUsers(users.map(u => u.emp_id === user.emp_id ? { ...u, is_leave_allowed: !newStatus } : u));
+        }
+    };
+
     return (
         <div className="h-full flex flex-col gap-4 sm:gap-6 overflow-hidden">
             {/* Header */}
@@ -840,6 +861,7 @@ const Settings = () => {
                                         <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Role & Designation</th>
                                         <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Department</th>
                                         <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Reporting To</th>
+                                        <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Leave Access</th>
                                         <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
                                         <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Actions</th>
                                     </tr>
@@ -909,6 +931,17 @@ const Settings = () => {
                                                     ) : (
                                                         <span className="text-xs text-slate-400 italic">Not Assigned</span>
                                                     )}
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <label className="relative inline-flex items-center cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={user.is_leave_allowed !== false} // Default true
+                                                            onChange={() => handleToggleLeaveAccess(user)}
+                                                            className="sr-only peer"
+                                                        />
+                                                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                                                    </label>
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${user.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'

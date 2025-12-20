@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Search, Download, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 import toast from 'react-hot-toast';
 import jsPDF from 'jspdf';
@@ -25,6 +25,8 @@ const Attendancedaily = () => {
     setTableLoading(true);
     setError(null);
 
+    let resultData = [];
+
     try {
       // Fetch users for name mapping
       const { data: users, error: userError } = await supabase
@@ -38,7 +40,8 @@ const Attendancedaily = () => {
         userMap[user.emp_id] = user;
       });
 
-      const response = await fetch("https://sohcm.com/SmartApp_ess/api/SwipeDetails/GetDeviceLogs?APIKey=341813122509&AccountName=SKAISPAT&FromDate=2025-12-01&ToDate=2026-12-01");
+      const year = new Date().getFullYear();
+      const response = await fetch(`https://sohcm.com/SmartApp_ess/api/SwipeDetails/GetDeviceLogs?APIKey=341813122509&AccountName=SKAISPAT&FromDate=${year}-01-01&ToDate=${year}-12-31`);
 
       if (!response.ok) {
         throw new Error(`API Error: ${response.statusText}`);
@@ -128,6 +131,7 @@ const Attendancedaily = () => {
 
       console.log('Processed attendance data:', processedData);
       setAttendanceData(processedData);
+      resultData = processedData;
 
       // Auto-sync after fetching
       syncToSupabase(processedData);
@@ -139,6 +143,7 @@ const Attendancedaily = () => {
       setLoading(false);
       setTableLoading(false);
     }
+    return resultData;
   };
 
   const syncToSupabase = async (dataToSync = attendanceData) => {
@@ -203,16 +208,84 @@ const Attendancedaily = () => {
     }
   };
 
-  // Schedule daily sync at 12:00 PM if app is open
-  useEffect(() => {
-    const checkTime = () => {
+  const uploadDailyReport = async (data, isManual = false) => {
+    try {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const todaysData = data.filter(item => item.date === todayStr);
+
+      if (todaysData.length === 0) {
+        console.log("No data for today to generate report.");
+        if (isManual) toast.error(`No attendance data found for today (${todayStr})`);
+        return;
+      }
+
+      const doc = generatePDFDoc(todaysData, todayStr);
+      const pdfBlob = doc.output('blob');
       const now = new Date();
-      if (now.getHours() === 12 && now.getMinutes() === 0 && now.getSeconds() === 0) {
-        fetchAttendanceData();
+
+      // Format current time for DB and Filename
+      let hours = now.getHours();
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12;
+      hours = hours ? hours : 12; // the hour '0' should be '12'
+      const timeStr = `${hours}:${minutes} ${ampm}`;
+
+      // Format Date for filename (DD-MM-YYYY)
+      const [y, m, d] = todayStr.split('-');
+      const dateForFilename = `${d}-${m}-${y}`;
+
+      // Filename: AttendanceData_DD-MM-YYYY_Time_HH-MM-SS_AM/PM.pdf
+      const fileName = `AttendanceData_${dateForFilename}_Time_${hours}-${minutes}-${seconds}_${ampm}.pdf`;
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('attendance_docs')
+        .upload(fileName, pdfBlob, {
+          contentType: 'application/pdf',
+          upsert: false
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('attendance_docs')
+        .getPublicUrl(fileName);
+
+      const { error: dbError } = await supabase
+        .from('attendance_reports')
+        .insert([{
+          date: todayStr,
+          pdf_link: publicUrl,
+          time: timeStr
+        }]);
+
+      if (dbError) throw dbError;
+
+      toast.success("Daily attendance report auto-saved!");
+    } catch (error) {
+      console.error("Error uploading daily report:", error);
+      toast.error("Failed to auto-save daily report");
+    }
+  };
+
+  // Schedule daily sync and report upload
+  const lastRunRef = useRef(null);
+
+  useEffect(() => {
+    const checkTime = async () => {
+      const now = new Date();
+      if (now.getHours() === 11 && now.getMinutes() === 50) {
+        const todayStr = now.toDateString();
+        if (lastRunRef.current !== todayStr) {
+          lastRunRef.current = todayStr;
+          const freshData = await fetchAttendanceData();
+          if (freshData?.length) uploadDailyReport(freshData, false);
+        }
       }
     };
 
-    const timer = setInterval(checkTime, 1000);
+    const timer = setInterval(checkTime, 15000); // Check every 15s
     return () => clearInterval(timer);
   }, []);
 
@@ -251,24 +324,23 @@ const Attendancedaily = () => {
     return matchesSearch && matchesDateRange;
   });
 
-  // Download PDF function
-  const downloadPDF = () => {
-    let dataToExport = filteredData;
-
-    if (exportDate) {
-      dataToExport = attendanceData.filter(item => item.date === exportDate);
-    }
-
-    if (dataToExport.length === 0) {
-      alert("No data available to export" + (exportDate ? " for the selected date" : ""));
-      return;
-    }
-
+  const generatePDFDoc = (dataToExport, dateExp) => {
     const doc = new jsPDF({
       orientation: 'landscape',
       unit: 'mm',
       format: 'a4'
     });
+
+    // Helper to format date (YYYY-MM-DD -> DD/MM/YYYY)
+    const formatDate = (dateStr) => {
+      if (!dateStr) return '';
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        const [y, m, d] = parts;
+        return `${d}/${m}/${y}`;
+      }
+      return dateStr;
+    };
 
     // Title
     doc.setFontSize(16);
@@ -277,23 +349,31 @@ const Attendancedaily = () => {
     // Metadata
     doc.setFontSize(10);
     doc.setTextColor(100);
-    const dateStr = new Date().toLocaleDateString();
-    doc.text(`Generated on: ${dateStr}`, 14, 20);
 
-    if (exportDate) {
-      doc.text(`Date: ${exportDate}`, 14, 25);
+    const today = new Date();
+    const day = String(today.getDate()).padStart(2, '0');
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const year = today.getFullYear();
+
+    // Format time (HH:MM AM/PM)
+    let hours = today.getHours();
+    const minutes = String(today.getMinutes()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12; // the hour '0' should be '12'
+    const timeStr = `${hours}:${minutes} ${ampm}`;
+
+    const generatedDateStr = `${day}/${month}/${year} at ${timeStr}`;
+
+    doc.text(`Generated on: ${generatedDateStr}`, 14, 20);
+
+    if (dateExp) {
+      doc.text(`Date: ${formatDate(dateExp)}`, 14, 25);
     } else if (startDate || endDate) {
-      doc.text(`Range: ${startDate || 'Start'} to ${endDate || 'End'}`, 14, 25);
+      doc.text(`Range: ${formatDate(startDate) || 'Start'} to ${formatDate(endDate) || 'End'}`, 14, 25);
     }
 
     doc.text(`Total Entries: ${dataToExport.length}`, 14, 30);
-
-    // Helper to format date
-    const formatDate = (dateStr) => {
-      if (!dateStr) return '';
-      const [y, m, d] = dateStr.split('-');
-      return `${d}/${m}/${y}`;
-    };
 
     // Prepare table data
     const tableHeaders = [
@@ -340,7 +420,23 @@ const Attendancedaily = () => {
       }
     });
 
-    // Save
+    return doc;
+  };
+
+  // Download PDF function
+  const downloadPDF = () => {
+    let dataToExport = filteredData;
+
+    if (exportDate) {
+      dataToExport = attendanceData.filter(item => item.date === exportDate);
+    }
+
+    if (dataToExport.length === 0) {
+      alert("No data available to export" + (exportDate ? " for the selected date" : ""));
+      return;
+    }
+
+    const doc = generatePDFDoc(dataToExport, exportDate);
     doc.save(`attendance_report_${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
@@ -389,6 +485,7 @@ const Attendancedaily = () => {
             <Download size={16} className="mr-2 group-hover:-translate-y-0.5 transition-transform" />
             Export PDF
           </button>
+
         </div>
       </div>
 
