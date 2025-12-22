@@ -275,17 +275,29 @@ const Attendancedaily = () => {
   useEffect(() => {
     const checkTime = async () => {
       const now = new Date();
+      // Check for 11:50 AM
       if (now.getHours() === 11 && now.getMinutes() === 50) {
         const todayStr = now.toDateString();
-        if (lastRunRef.current !== todayStr) {
-          lastRunRef.current = todayStr;
+        const lastSaved = localStorage.getItem('last_daily_report_date');
+
+        // Check if explicitly run this session OR saved in local storage
+        if (lastRunRef.current !== todayStr && lastSaved !== todayStr) {
+          console.log("Triggering scheduled 11:50 AM attendance report...");
+          lastRunRef.current = todayStr; // Block immediate re-entry
+
           const freshData = await fetchAttendanceData();
-          if (freshData?.length) uploadDailyReport(freshData, false);
+
+          if (freshData && freshData.length > 0) {
+            await uploadDailyReport(freshData, false);
+            // Persist success to prevent re-run on reload
+            localStorage.setItem('last_daily_report_date', todayStr);
+          }
         }
       }
     };
 
-    const timer = setInterval(checkTime, 15000); // Check every 15s
+    checkTime(); // Check immediately on mount
+    const timer = setInterval(checkTime, 10000); // Check every 10s
     return () => clearInterval(timer);
   }, []);
 

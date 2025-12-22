@@ -353,7 +353,8 @@ const GatePass = () => {
         hod_name: formData.hodName,
         hod_id: formData.hodId,
         hr_id: formData.hrId,
-        image_gate_pass: imageUrl
+        image_gate_pass: imageUrl,
+        emp_name: formData.employeeName
       };
 
       const { data, error } = await supabase.from('gate_pass').insert([insertData]).select();
@@ -597,7 +598,7 @@ const GatePass = () => {
         </div>
 
         {/* Table Content */}
-        <div className="overflow-auto flex-1 custom-scrollbar">
+        <div className="flex-1 flex flex-col min-h-0">
           {loading ? (
             <div className="flex text-center items-center justify-center flex-1 h-64">
               <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>

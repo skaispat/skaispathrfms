@@ -238,7 +238,7 @@ const GatePassRequest = () => {
         arrival_at_plant: formData.arrivalTime || null,
         employee_whatsapp_number: formData.whatsappNumber,
         image_gate_pass: imageUrl,
-        image_gate_pass: imageUrl,
+        emp_name: user?.full_name || user?.Name,
         status: (hodDetails.name === 'HR' || hodDetails.department === 'HR' || isUserHod) ? 'Pending HR' : 'Pending', // Initial status
         hod_name: isUserHod ? 'HR' : hodDetails.name,
         hod_id: isUserHod ? null : hodDetails.id, // Insert HOD ID if not user

@@ -1,3 +1,6 @@
+-- WARNING: This schema is for context only and is not meant to be run.
+-- Table order and constraints may not be valid for execution.
+
 CREATE TABLE public.after_joining (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   joining_id text,
@@ -60,7 +63,15 @@ CREATE TABLE public.attendance_daily (
   punch_miss text,
   remarks text,
   created_at timestamp with time zone DEFAULT timezone('utc'::text, now()),
+  daily_pdf_link text,
   CONSTRAINT attendance_daily_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.attendance_reports (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  date date NOT NULL,
+  pdf_link text NOT NULL,
+  time text,
+  CONSTRAINT attendance_reports_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.attendance_summary (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
@@ -161,6 +172,7 @@ CREATE TABLE public.gate_pass (
   hr_remarks text,
   hod_id text,
   hr_id text,
+  emp_name text,
   CONSTRAINT gate_pass_pkey PRIMARY KEY (id),
   CONSTRAINT gate_pass_emp_id_fkey FOREIGN KEY (emp_id) REFERENCES public.users(emp_id)
 );
@@ -293,6 +305,18 @@ CREATE TABLE public.mis_report (
   all_pending_till_date text,
   CONSTRAINT mis_report_pkey PRIMARY KEY (id)
 );
+CREATE TABLE public.notifications (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  created_at timestamp with time zone NOT NULL DEFAULT timezone('utc'::text, now()),
+  recipient_role text,
+  recipient_id text,
+  sender_id text,
+  sender_name text,
+  message text NOT NULL,
+  is_read boolean DEFAULT false,
+  type text,
+  CONSTRAINT notifications_pkey PRIMARY KEY (id)
+);
 CREATE TABLE public.payroll (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   serial_no integer NOT NULL,
@@ -345,6 +369,7 @@ CREATE TABLE public.users (
   is_hod boolean DEFAULT false,
   page_access ARRAY DEFAULT '{}'::text[],
   hod_id text,
+  is_leave_allowed boolean DEFAULT true,
   CONSTRAINT users_pkey PRIMARY KEY (emp_id),
   CONSTRAINT users_hod_id_fkey FOREIGN KEY (hod_id) REFERENCES public.users(emp_id)
 );
