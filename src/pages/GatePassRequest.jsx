@@ -239,7 +239,7 @@ const GatePassRequest = () => {
         employee_whatsapp_number: formData.whatsappNumber,
         image_gate_pass: imageUrl,
         emp_name: user?.full_name || user?.Name,
-        status: (hodDetails.name === 'HR' || hodDetails.department === 'HR' || isUserHod) ? 'Pending HR' : 'Pending', // Initial status
+        status: (hodDetails.name === 'HR' || hodDetails.department === 'HR' || isUserHod || hodDetails.id === 1 || hodDetails.name === 'Pawan Tiwari') ? 'Pending HR' : 'Pending', // Initial status
         hod_name: isUserHod ? 'HR' : hodDetails.name,
         hod_id: isUserHod ? null : hodDetails.id, // Insert HOD ID if not user
         hr_id: hrDetails.id // Insert HR ID
@@ -527,7 +527,7 @@ const GatePassRequest = () => {
                     </div>
                   </div>
 
-                  {!isUserHod && (
+                  {!isUserHod && hodDetails.id !== 1 && (
                     <div className="flex items-center gap-3 p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
                       <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-indigo-600 border border-indigo-100 shadow-sm shrink-0">
                         <Users size={20} />

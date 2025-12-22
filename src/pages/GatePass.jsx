@@ -124,7 +124,13 @@ const GatePass = () => {
 
           if (hodUser) {
             setFormData(prev => ({ ...prev, hodName: hodUser.full_name, hodId: teamMember.hod_id }));
+          } else {
+            // Default HOD if user found but has no details (fallback)
+            setFormData(prev => ({ ...prev, hodName: 'Pawan Tiwari', hodId: 1 }));
           }
+        } else {
+          // No HOD assigned in team_members
+          setFormData(prev => ({ ...prev, hodName: 'Pawan Tiwari', hodId: 1 }));
         }
 
         // Fetch HR Details
@@ -349,7 +355,7 @@ const GatePass = () => {
         departure_from_plant: formData.departureTime,
         arrival_at_plant: formData.arrivalTime || null,
         employee_whatsapp_number: formData.whatsappNumber,
-        status: 'Pending',
+        status: (formData.hodName === 'HR' || formData.hodId === 1 || formData.hodName === 'Pawan Tiwari') ? 'Pending HR' : 'Pending',
         hod_name: formData.hodName,
         hod_id: formData.hodId,
         hr_id: formData.hrId,
@@ -366,7 +372,7 @@ const GatePass = () => {
           request_type: 'Gate Pass',
           emp_id: formData.employeeId,
           emp_name: formData.employeeName,
-          status: 'Pending',
+          status: (formData.hodName === 'HR' || formData.hodId === 1 || formData.hodName === 'Pawan Tiwari') ? 'Pending HR' : 'Pending',
           hod_id: formData.hodId,
           hod_name: formData.hodName,
           hr_id: formData.hrId,
