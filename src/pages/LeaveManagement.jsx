@@ -177,8 +177,13 @@ const LeaveManagement = () => {
             toast.success(`HOD found: ${hodUser.full_name}`);
           }
         } else {
-          // Optional: Notify if no HOD is assigned
-          console.log('No HOD assigned in team_members for this employee');
+          // Default HOD logic if none assigned
+          setFormData(prev => ({
+            ...prev,
+            hodName: 'Pawan Tiwari',
+            hodId: 1
+          }));
+          // toast.success('Default HOD assigned: Pawan Tiwari'); 
         }
 
         // Fetch HR Details
@@ -282,7 +287,7 @@ const LeaveManagement = () => {
         leave_date_start: formData.fromDate,
         leave_date_end: formData.toDate,
         remarks: formData.reason,
-        status: 'Pending',
+        status: (formData.hodId === 1 || formData.hodName === 'Pawan Tiwari' || formData.hodName === 'HR' || user.role === 'hr' || user.role === 'HR' || user.role === 'admin') ? 'Pending HR' : 'Pending',
         leave_type: formData.leaveType,
         hod_name: formData.hodName,
         designation: formData.designation,

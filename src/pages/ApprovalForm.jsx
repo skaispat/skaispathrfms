@@ -102,6 +102,7 @@ const ApprovalForm = () => {
             let logAction = '';
 
             const isHodAction = request.status === 'Pending';
+            // If HOD ID is 1 (Default), it should have been 'Pending HR' from start, so this logic holds.
             const isHrAction = request.status === 'Pending HR';
 
             // Validate Approver Role
