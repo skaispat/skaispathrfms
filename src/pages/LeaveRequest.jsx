@@ -652,7 +652,9 @@ const LeaveRequest = () => {
                       <Users size={20} />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-0.5">HOD</p>
+                      <p className="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-0.5">
+                        {(hodDetails.name === 'Pawan Tiwari' || hodDetails.name === 'HR' || hodDetails.department === 'HR') ? 'HR Name (एचआर का नाम)' : 'HOD'}
+                      </p>
                       <p className="font-semibold text-sm text-slate-900 break-words leading-tight">
                         {hodDetails.name === 'Not Assigned' ? 'HR' : hodDetails.name}
                       </p>

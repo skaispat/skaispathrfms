@@ -126,7 +126,9 @@ const Settings = () => {
         leaveType: '',
         fromDate: '',
         toDate: '',
-        reason: ''
+        toDate: '',
+        reason: '',
+        hodId: '' // Add hodId to state
     });
 
     // Custom Dropdown State for Leave Request
@@ -668,7 +670,10 @@ const Settings = () => {
             leaveType: '',
             fromDate: '',
             toDate: '',
-            reason: ''
+            fromDate: '',
+            toDate: '',
+            reason: '',
+            hodId: ''
         });
         setIsLeaveModalOpen(true);
     };
@@ -685,7 +690,8 @@ const Settings = () => {
                     employeeId: value,
                     employeeName: selectedEmployee.full_name,
                     designation: selectedEmployee.designation || '',
-                    hodName: hod ? hod.full_name : 'Not Assigned'
+                    hodName: hod ? hod.full_name : 'Pawan Tiwari',
+                    hodId: hod ? hod.emp_id : 1
                 }));
             }
         } else {
@@ -704,10 +710,11 @@ const Settings = () => {
                 leave_date_start: leaveFormData.fromDate,
                 leave_date_end: leaveFormData.toDate,
                 remarks: leaveFormData.reason,
-                status: 'Pending', // Start flow regardless of who adds it
+                status: (leaveFormData.hodId === 1 || leaveFormData.hodName === 'Pawan Tiwari' || leaveFormData.hodName === 'HR') ? 'Pending HR' : 'Pending', // Start flow regardless of who adds it
 
                 leave_type: leaveFormData.leaveType,
                 hod_name: leaveFormData.hodName,
+                hod_id: leaveFormData.hodId,
                 designation: leaveFormData.designation
             };
 
@@ -1848,7 +1855,9 @@ const Settings = () => {
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-1.5">HOD Name (एचओडी का नाम)</label>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                                            {(leaveFormData.hodName === 'Pawan Tiwari' || leaveFormData.hodName === 'HR') ? 'HR Name (एचआर का नाम)' : 'HOD Name (एचओडी का नाम)'}
+                                        </label>
                                         <input
                                             type="text"
                                             value={leaveFormData.hodName}
