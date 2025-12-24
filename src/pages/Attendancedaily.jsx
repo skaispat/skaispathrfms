@@ -255,15 +255,15 @@ const Attendancedaily = () => {
         .from('attendance_docs')
         .getPublicUrl(fileName);
 
-      const { error: dbError } = await supabase
-        .from('attendance_reports')
-        .insert([{
+      const { error: funcError } = await supabase.functions.invoke('save-daily-report', {
+        body: {
           date: todayStr,
           pdf_link: publicUrl,
           time: timeStr
-        }]);
+        }
+      });
 
-      if (dbError) throw dbError;
+      if (funcError) throw funcError;
 
       toast.success("Daily attendance report auto-saved!");
     } catch (error) {
