@@ -11,6 +11,7 @@ const Attendancedaily = () => {
   const [endDate, setEndDate] = useState('');
   const [exportDate, setExportDate] = useState('');
   const [attendanceData, setAttendanceData] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [tableLoading, setTableLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -34,6 +35,8 @@ const Attendancedaily = () => {
         .select('emp_id, full_name, designation');
 
       if (userError) throw userError;
+
+      setAllUsers(users);
 
       const userMap = {};
       users.forEach(user => {
@@ -336,7 +339,10 @@ const Attendancedaily = () => {
     return matchesSearch && matchesDateRange;
   });
 
-  const generatePDFDoc = (dataToExport, dateExp) => {
+  const generatePDFDoc = (originalDataToExport, dateExp) => {
+    // Filter out EMP001 from the main data to export
+    const dataToExport = originalDataToExport.filter(item => item.empIdCode !== 'EMP001');
+
     const doc = new jsPDF({
       orientation: 'landscape',
       unit: 'mm',
@@ -432,24 +438,90 @@ const Attendancedaily = () => {
       }
     });
 
+    // --- Absent Employees Table ---
+    if (allUsers.length > 0) {
+      // Get IDs of employees present in the current export data
+      const presentEmpIds = new Set(dataToExport.map(item => String(item.empIdCode)));
+
+      // Filter all users to find those not present AND exclude EMP001
+      const absentEmployees = allUsers.filter(user =>
+        !presentEmpIds.has(String(user.emp_id)) && user.emp_id !== 'EMP001'
+      );
+
+      if (absentEmployees.length > 0) {
+        // Space between tables
+        let currentY = doc.lastAutoTable.finalY + 20;
+
+        doc.setFontSize(14);
+        doc.setTextColor(220, 38, 38); // Red color for title
+        doc.text('Absent Employees', 14, currentY);
+
+        // Metadata for Absent Section
+        doc.setFontSize(10);
+        doc.setTextColor(100);
+
+        currentY += 6;
+        doc.text(`Generated on: ${generatedDateStr}`, 14, currentY);
+
+        currentY += 5;
+        doc.text(`Date: ${formatDate(dateExp)}`, 14, currentY);
+
+        currentY += 5;
+        doc.text(`Total Entries: ${absentEmployees.length}`, 14, currentY);
+
+        const absentTableData = absentEmployees.map(user => [
+          formatDate(dateExp),
+          user.emp_id,
+          user.full_name,
+          user.designation || '-',
+          'Absent'
+        ]);
+
+        autoTable(doc, {
+          startY: currentY + 5,
+          head: [['Date', 'Emp ID', 'Name', 'Designation', 'Status']],
+          body: absentTableData,
+          theme: 'grid',
+          styles: {
+            fontSize: 9,
+            cellPadding: 2,
+            overflow: 'linebreak'
+          },
+          headStyles: {
+            fillColor: [220, 38, 38], // Red Header
+            textColor: 255,
+            fontStyle: 'bold'
+          },
+          alternateRowStyles: {
+            fillColor: [254, 242, 242] // Light red background for rows
+          }
+        });
+      }
+    }
+
     return doc;
   };
 
   // Download PDF function
   const downloadPDF = () => {
-    let dataToExport = filteredData;
-
-    if (exportDate) {
-      dataToExport = attendanceData.filter(item => item.date === exportDate);
+    // Ensure strictly downloaded for the selected date only
+    if (!exportDate) {
+      toast.error("Please select a date to export");
+      return;
     }
 
+    // Filter from the full dataset to ensure we get all records for that specific date
+    // regardless of other UI filters (like search or date ranges)
+    const dataToExport = attendanceData.filter(item => item.date === exportDate);
+
     if (dataToExport.length === 0) {
-      alert("No data available to export" + (exportDate ? " for the selected date" : ""));
+      toast.error(`No attendance data found for ${exportDate}`);
       return;
     }
 
     const doc = generatePDFDoc(dataToExport, exportDate);
-    doc.save(`attendance_report_${new Date().toISOString().slice(0, 10)}.pdf`);
+    // Use the specific export date in the filename
+    doc.save(`attendance_report_${exportDate}.pdf`);
   };
 
   // Pagination Logic
