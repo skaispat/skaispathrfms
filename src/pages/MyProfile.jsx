@@ -14,7 +14,10 @@ import {
   Clock,
   FileText,
   Check,
-  ChevronRight
+  ChevronRight,
+  Eye,
+  EyeOff,
+  Lock
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../supabaseClient';
@@ -57,7 +60,8 @@ const MyProfile = () => {
       if (!data) throw new Error("User profile not found.");
 
       setProfileData(data);
-      setFormData(data);
+      setProfileData(data);
+      setFormData({ ...data, password: '' });
 
       // Store ID for other components if needed
       localStorage.setItem("employeeId", data.emp_id);
@@ -176,7 +180,11 @@ const MyProfile = () => {
       setLoading(true);
 
       // Update everything in formData except emp_id (pk) and timestamps
-      const { created_at, updated_at, emp_id, ...updates } = formData;
+      const { created_at, updated_at, emp_id, password, ...updates } = formData;
+
+      if (password && password.trim() !== '') {
+        updates.password = password;
+      }
 
       const { error } = await supabase
         .from('users')
@@ -185,7 +193,8 @@ const MyProfile = () => {
 
       if (error) throw error;
 
-      setProfileData(formData);
+      setProfileData({ ...formData, password: '' });
+      setFormData(prev => ({ ...prev, password: '' })); // Clear password after save
       setIsEditing(false);
       toast.success("Profile updated successfully!");
 
@@ -219,7 +228,7 @@ const MyProfile = () => {
               <button
                 onClick={() => {
                   setIsEditing(false);
-                  setFormData(profileData); // Reset changes
+                  setFormData({ ...profileData, password: '' }); // Reset changes and clear password
                 }}
                 className="px-4 py-2 text-slate-600 hover:text-slate-800 font-medium bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors shadow-sm"
               >
@@ -364,6 +373,18 @@ const MyProfile = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <InfoField label="Full Name" name="full_name" value={formData.full_name} onChange={handleInputChange} icon={User} isEditing={isEditing} required />
                   <InfoField label="Username" value={formData.username} icon={User} disabled={true} isEditing={isEditing} />
+                  {isEditing && (
+                    <InfoField
+                      label="New Password"
+                      name="password"
+                      type="password"
+                      value={formData.password}
+                      onChange={handleInputChange}
+                      icon={Lock}
+                      isEditing={isEditing}
+                      placeholder="Update password"
+                    />
+                  )}
 
                   <InfoField label="Date of Birth" name="date_of_birth" type="date" value={formData.date_of_birth} onChange={handleInputChange} icon={Calendar} isEditing={isEditing} />
                   <InfoField label="Gender" name="gender" type="select" options={['Male', 'Female', 'Other']} value={formData.gender} onChange={handleInputChange} icon={User} isEditing={isEditing} />
@@ -417,7 +438,9 @@ const SectionCard = ({ title, icon: Icon, children }) => (
   </div>
 );
 
-const InfoField = ({ label, icon: Icon, name, value, onChange, type = "text", required = false, disabled = false, isEditing = true, options = null }) => {
+const InfoField = ({ label, icon: Icon, name, value, onChange, type = "text", required = false, disabled = false, isEditing = true, options = null, placeholder = null }) => {
+  const [showPassword, setShowPassword] = useState(false);
+
   // Read Only View
   if (!isEditing || disabled) {
     return (
@@ -426,7 +449,7 @@ const InfoField = ({ label, icon: Icon, name, value, onChange, type = "text", re
         <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-200 group-hover:border-slate-300 transition-colors">
           <Icon className="h-4 w-4 text-slate-400 flex-shrink-0" />
           <span className={`text-sm font-medium ${!value ? 'text-slate-400 italic' : 'text-slate-700'}`}>
-            {value ? (type === 'date' ? new Date(value).toLocaleDateString('en-GB') : value) : 'Not set'}
+            {value ? (type === 'date' ? new Date(value).toLocaleDateString('en-GB') : type === 'password' ? '••••••••' : value) : 'Not set'}
           </span>
         </div>
       </div>
@@ -461,17 +484,31 @@ const InfoField = ({ label, icon: Icon, name, value, onChange, type = "text", re
             onChange={onChange}
             rows="3"
             className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none resize-none transition-all shadow-sm"
-            placeholder={`Enter ${label}`}
+            placeholder={placeholder || `Enter ${label}`}
           ></textarea>
         ) : (
-          <input
-            type={type}
-            name={name}
-            value={value || ''}
-            onChange={onChange}
-            className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all shadow-sm"
-            placeholder={`Enter ${label}`}
-          />
+          <>
+            <input
+              type={type === 'password' ? (showPassword ? 'text' : 'password') : type}
+              name={name}
+              value={value || ''}
+              onChange={(e) => {
+                if (type === 'password' && !showPassword) setShowPassword(true);
+                onChange(e);
+              }}
+              className="w-full pl-10 pr-10 py-2.5 rounded-lg border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all shadow-sm"
+              placeholder={placeholder || `Enter ${label}`}
+            />
+            {type === 'password' && (
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-indigo-600 transition-colors"
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>
