@@ -26,7 +26,19 @@ serve(async (req) => {
         /* --------------------------------------------------
            1. Resolve target date (today OR request body)
         -------------------------------------------------- */
-        let targetDateStr = new Date().toISOString().split("T")[0];
+        // Use IST timezone (Asia/Kolkata)
+        const getISTDate = () => {
+            const d = new Date().toLocaleString("en-CA", {
+                timeZone: "Asia/Kolkata",
+                year: "numeric",
+                month: "2-digit",
+                day: "2-digit",
+            });
+            // en-CA returns YYYY-MM-DD
+            return d;
+        };
+
+        let targetDateStr = getISTDate();
 
         try {
             const body = await req.json();
@@ -193,11 +205,13 @@ serve(async (req) => {
         /* --------------------------------------------------
            7. Save DB record
         -------------------------------------------------- */
-        const now = new Date();
-        const timeStr = `${now.getHours()}:${now
-            .getMinutes()
-            .toString()
-            .padStart(2, "0")}`;
+        const nowIST = new Date().toLocaleString("en-GB", {
+            timeZone: "Asia/Kolkata",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+        });
+        const timeStr = nowIST;
 
         const { data: dbData, error: dbError } = await supabaseClient
             .from("attendance_reports")
