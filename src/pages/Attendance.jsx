@@ -9,6 +9,7 @@ import { supabase } from '../supabaseClient';
 const Attendance = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [attendanceData, setAttendanceData] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [tableLoading, setTableLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -31,6 +32,8 @@ const Attendance = () => {
         .select('emp_id, full_name, designation');
 
       if (userError) throw userError;
+
+      setAllUsers(users);
 
       const userMap = {};
       users.forEach(user => {
@@ -203,6 +206,14 @@ const Attendance = () => {
 
   // Download data as PDF
   const downloadPDF = () => {
+    const targetEmpIds = [
+      '3', '219', '53', '1', '321', '200', '10', '11', '175', '16',
+      '245', '233', '217', '152', '294', '261', '339', '283', '281', '363',
+      '176', '238', '112', '170', '122', '104', '86', '235', '341', '246',
+      '227', '242', '356', '172', '501', '504', '180', '199', '522', '519',
+      '145', '78', '117', '191', '134', '275', '253'
+    ];
+
     let dataToExport = filteredData;
 
     if (exportMonth) {
@@ -210,13 +221,19 @@ const Attendance = () => {
       const date = new Date(parseInt(year), parseInt(monthIndex) - 1);
       const monthShort = date.toLocaleString('default', { month: 'short' });
 
+      // If exportMonth is selected, we perform a fresh filter on the full dataset
       dataToExport = attendanceData.filter(item =>
         item.year === parseInt(year) && item.month === monthShort
       );
     }
 
-    if (dataToExport.length === 0) {
-      alert("No data available to export" + (exportMonth ? " for the selected month" : ""));
+    // Apply Target API Filter
+    dataToExport = dataToExport.filter(item =>
+      targetEmpIds.includes(String(item.empId))
+    );
+
+    if (dataToExport.length === 0 && !exportMonth) {
+      toast.error("No data available to export for the selected criteria");
       return;
     }
 
@@ -235,6 +252,8 @@ const Attendance = () => {
     if (exportMonth) {
       doc.text(`Month: ${exportMonth}`, 14, 25);
     }
+
+    doc.text(`Total Records: ${dataToExport.length}`, 14, exportMonth ? 30 : 25);
 
     const tableHeaders = [
       'Year', 'Month', 'Emp ID', 'Name',
@@ -261,7 +280,7 @@ const Attendance = () => {
     autoTable(doc, {
       head: [tableHeaders],
       body: tableData,
-      startY: 30, // Adjusted for extra metadata
+      startY: exportMonth ? 35 : 30,
       styles: { fontSize: 9, cellPadding: 2, halign: 'center' },
       headStyles: { fillColor: [79, 70, 229], fontStyle: 'bold' },
       columnStyles: {
@@ -269,7 +288,65 @@ const Attendance = () => {
       }
     });
 
-    doc.save(`monthly_attendance_overview_${new Date().toISOString().slice(0, 10)}.pdf`);
+    // --- Absent / No Record Employees Table ---
+    if (allUsers.length > 0) {
+      // Get IDs present in the current export
+      const presentEmpIds = new Set(dataToExport.map(item => String(item.empId)));
+
+      // Filter users who are in the target list BUT NOT in the export data
+      const absentEmployees = allUsers.filter(user =>
+        targetEmpIds.includes(String(user.emp_id)) &&
+        !presentEmpIds.has(String(user.emp_id))
+      );
+
+      if (absentEmployees.length > 0) {
+        let currentY = doc.lastAutoTable.finalY + 20;
+
+        // Check if we need a new page
+        if (currentY > 180) {
+          doc.addPage();
+          currentY = 20;
+        }
+
+        doc.setFontSize(14);
+        doc.setTextColor(220, 38, 38); // Red
+        doc.text('Employees with No Records (Absent/Inactive)', 14, currentY);
+
+        doc.setFontSize(10);
+        doc.setTextColor(100);
+        currentY += 6;
+        doc.text(`Count: ${absentEmployees.length}`, 14, currentY);
+
+        const absentTableData = absentEmployees.map(user => [
+          user.emp_id,
+          user.full_name,
+          user.designation || '-',
+          'No Record Found'
+        ]);
+
+        autoTable(doc, {
+          startY: currentY + 5,
+          head: [['Emp ID', 'Name', 'Designation', 'Status']],
+          body: absentTableData,
+          theme: 'grid',
+          styles: {
+            fontSize: 9,
+            cellPadding: 2,
+            overflow: 'linebreak'
+          },
+          headStyles: {
+            fillColor: [220, 38, 38], // Red Header
+            textColor: 255,
+            fontStyle: 'bold'
+          },
+          alternateRowStyles: {
+            fillColor: [254, 242, 242]
+          }
+        });
+      }
+    }
+
+    doc.save(`monthly_attendance_overview_${exportMonth || 'current'}.pdf`);
   };
 
   const downloadDailyData = async (empId, name, month) => {

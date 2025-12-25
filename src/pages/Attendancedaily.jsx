@@ -340,8 +340,19 @@ const Attendancedaily = () => {
   });
 
   const generatePDFDoc = (originalDataToExport, dateExp) => {
-    // Filter out EMP001 from the main data to export
-    const dataToExport = originalDataToExport.filter(item => item.empIdCode !== 'EMP001');
+    // Target Employee IDs filtered specifically for this report
+    const targetEmpIds = [
+      '3', '219', '53', '1', '321', '200', '10', '11', '175', '16',
+      '245', '233', '217', '152', '294', '261', '339', '283', '281', '363',
+      '176', '238', '112', '170', '122', '104', '86', '235', '341', '246',
+      '227', '242', '356', '172', '501', '504', '180', '199', '522', '519',
+      '145', '78', '117', '191', '134', '275', '253'
+    ];
+
+    // Filter data to only include target employees
+    const dataToExport = originalDataToExport.filter(item =>
+      targetEmpIds.includes(String(item.empIdCode))
+    );
 
     const doc = new jsPDF({
       orientation: 'landscape',
@@ -443,9 +454,10 @@ const Attendancedaily = () => {
       // Get IDs of employees present in the current export data
       const presentEmpIds = new Set(dataToExport.map(item => String(item.empIdCode)));
 
-      // Filter all users to find those not present AND exclude EMP001
+      // Filter all users to find those not present AND in target list
       const absentEmployees = allUsers.filter(user =>
-        !presentEmpIds.has(String(user.emp_id)) && user.emp_id !== 'EMP001'
+        !presentEmpIds.has(String(user.emp_id)) &&
+        targetEmpIds.includes(String(user.emp_id))
       );
 
       if (absentEmployees.length > 0) {
