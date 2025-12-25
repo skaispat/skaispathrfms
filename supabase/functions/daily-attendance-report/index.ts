@@ -23,6 +23,17 @@ serve(async (req) => {
 
         console.log("🚀 Daily Attendance Report started");
 
+        // Helper to format date DD/MM/YYYY
+        const formatDate = (dateStr: string) => {
+            if (!dateStr) return "";
+            const parts = dateStr.split("-");
+            if (parts.length === 3) {
+                const [y, m, d] = parts;
+                return `${d}/${m}/${y}`;
+            }
+            return dateStr;
+        };
+
         /* --------------------------------------------------
            1. Resolve target date (today OR request body)
         -------------------------------------------------- */
@@ -95,6 +106,15 @@ serve(async (req) => {
             grouped[key].logs.push(log.LogDate);
         });
 
+        // Target Employee IDs
+        const targetEmpIds = [
+            "3", "219", "53", "1", "321", "200", "10", "11", "175", "16",
+            "245", "233", "217", "152", "294", "261", "339", "283", "281", "363",
+            "176", "238", "112", "170", "122", "104", "86", "235", "341", "246",
+            "227", "242", "356", "172", "501", "504", "180", "199", "522", "519",
+            "145", "78", "117", "191", "134", "275", "253"
+        ];
+
         const processed = Object.values(grouped).map((item: any) => {
             item.logs.sort();
 
@@ -129,6 +149,7 @@ serve(async (req) => {
             return {
                 empId: user.emp_id || item.userId,
                 name: user.full_name || "Unknown",
+                designation: user.designation || "-",
                 day: new Date(item.date).toLocaleDateString("en-US", {
                     weekday: "long",
                 }),
@@ -141,17 +162,26 @@ serve(async (req) => {
             };
         });
 
-        const data = processed.filter((d: any) => d.empId !== "EMP001");
+        // Filter Present Users by Target IDs
+        const presentData = processed.filter((d: any) =>
+            targetEmpIds.includes(String(d.empId))
+        );
 
-        if (data.length === 0) {
+        // Calculate Absent Users (In Target List but NOT in Present Data)
+        const presentIds = new Set(presentData.map((d: any) => String(d.empId)));
+        const absentData = users?.filter((u: any) =>
+            targetEmpIds.includes(String(u.emp_id)) && !presentIds.has(String(u.emp_id))
+        ) || [];
+
+        if (presentData.length === 0 && absentData.length === 0) {
             return new Response(
-                JSON.stringify({ message: "No records for " + targetDateStr }),
+                JSON.stringify({ message: "No relevant records for " + targetDateStr }),
                 { headers: { ...corsHeaders, "Content-Type": "application/json" } }
             );
         }
 
         /* --------------------------------------------------
-           5. Generate PDF (Edge-safe)
+           5. Generate PDF (Strictly matching Attendancedaily.jsx format)
         -------------------------------------------------- */
         const doc = new jsPDF({
             orientation: "landscape",
@@ -159,17 +189,42 @@ serve(async (req) => {
             format: "a4",
         });
 
+        // Title
         doc.setFontSize(16);
-        doc.text("Daily Attendance Report", 14, 15);
+        doc.text("Daily Attendance Logs", 14, 15);
 
+        // Metadata
         doc.setFontSize(10);
-        doc.text(`Date: ${targetDateStr}`, 14, 22);
-        doc.text(`Total Employees: ${data.length}`, 14, 28);
+        doc.setTextColor(100);
+
+        const now = new Date();
+        const genTimeStr = now.toLocaleString("en-GB", {
+            timeZone: "Asia/Kolkata",
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true
+        }); // e.g. 25/12/2025, 01:20 pm
+
+        doc.text(`Generated on: ${genTimeStr}`, 14, 20);
+        doc.text(`Date: ${formatDate(targetDateStr)}`, 14, 25);
+        doc.text(`Total Entries: ${presentData.length}`, 14, 30);
+
+        // Table 1: Present Employees
+        const tableHeaders = [
+            "Date", "Emp ID", "Name",
+            "Day", "In", "Out",
+            "Hrs", "OT", "Status",
+            "Holiday", "Remarks"
+        ];
 
         (doc as any).autoTable({
-            startY: 32,
-            head: [["Emp ID", "Name", "Day", "In", "Out", "Hours", "OT", "Status", "Remarks"]],
-            body: data.map((d: any) => [
+            startY: 35,
+            head: [tableHeaders],
+            body: presentData.map((d: any) => [
+                formatDate(targetDateStr), // Date
                 d.empId,
                 d.name,
                 d.day,
@@ -178,22 +233,106 @@ serve(async (req) => {
                 d.workingHours,
                 d.overtimeHours,
                 d.status,
+                "No", // Holiday hardcoded as per frontend logic
                 d.remarks,
             ]),
-            styles: { fontSize: 9 },
+            styles: {
+                fontSize: 9,
+                cellPadding: 2,
+                overflow: "linebreak"
+            },
+            headStyles: {
+                fillColor: [79, 70, 229], // Indigo-600
+                textColor: 255,
+                fontStyle: "bold"
+            },
+            alternateRowStyles: {
+                fillColor: [249, 250, 251] // Gray-50
+            },
+            columnStyles: {
+                2: { cellWidth: 30 }, // Name
+                10: { cellWidth: 40 } // Remarks
+            }
         });
+
+        // Table 2: Absent Employees
+        if (absentData.length > 0) {
+            // Space between tables
+            let currentY = (doc as any).lastAutoTable.finalY + 20;
+
+            // Check if we need a new page
+            if (currentY > 180) {
+                doc.addPage();
+                currentY = 20;
+            }
+
+            doc.setFontSize(14);
+            doc.setTextColor(220, 38, 38); // Red title
+            doc.text("Absent Employees", 14, currentY);
+
+            // Metadata for Absent Section
+            doc.setFontSize(10);
+            doc.setTextColor(100);
+
+            currentY += 6;
+            doc.text(`Generated on: ${genTimeStr}`, 14, currentY);
+
+            currentY += 5;
+            doc.text(`Date: ${formatDate(targetDateStr)}`, 14, currentY);
+
+            currentY += 5;
+            doc.text(`Total Entries: ${absentData.length}`, 14, currentY);
+
+            (doc as any).autoTable({
+                startY: currentY + 5,
+                head: [["Date", "Emp ID", "Name", "Designation", "Status"]],
+                body: absentData.map((u: any) => [
+                    formatDate(targetDateStr),
+                    u.emp_id,
+                    u.full_name,
+                    u.designation || "-",
+                    "Absent"
+                ]),
+                theme: "grid",
+                styles: {
+                    fontSize: 9,
+                    cellPadding: 2,
+                    overflow: "linebreak"
+                },
+                headStyles: {
+                    fillColor: [220, 38, 38], // Red Header
+                    textColor: 255,
+                    fontStyle: "bold"
+                },
+                alternateRowStyles: {
+                    fillColor: [254, 242, 242] // Light red bg
+                }
+            });
+        }
 
         const pdfBuffer = doc.output("arraybuffer");
 
         /* --------------------------------------------------
            6. Upload to Supabase Storage
         -------------------------------------------------- */
-        const fileName = `AutoReport_${targetDateStr}_${Date.now()}.pdf`;
+
+        // Format filename: AttendanceData_DD-MM-YYYY_Time_HH-MM-SS_AM/PM.pdf
+        const filenameDate = formatDate(targetDateStr).replace(/\//g, "-");
+
+        const istNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+        let fHours = istNow.getHours();
+        const fAmPm = fHours >= 12 ? 'PM' : 'AM';
+        fHours = fHours % 12;
+        fHours = fHours ? fHours : 12;
+
+        const fTimeStr = `${fHours}-${String(istNow.getMinutes()).padStart(2, '0')}-${String(istNow.getSeconds()).padStart(2, '0')}_${fAmPm}`;
+        const fileName = `AttendanceData_${filenameDate}_Time_${fTimeStr}.pdf`;
 
         const { error: uploadError } = await supabaseClient.storage
             .from("attendance_docs")
             .upload(fileName, pdfBuffer, {
                 contentType: "application/pdf",
+                upsert: false
             });
 
         if (uploadError) throw uploadError;
@@ -205,13 +344,7 @@ serve(async (req) => {
         /* --------------------------------------------------
            7. Save DB record
         -------------------------------------------------- */
-        const nowIST = new Date().toLocaleString("en-GB", {
-            timeZone: "Asia/Kolkata",
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-        });
-        const timeStr = nowIST;
+        const dbTimeStr = `${fHours}:${String(istNow.getMinutes()).padStart(2, '0')} ${fAmPm}`;
 
         const { data: dbData, error: dbError } = await supabaseClient
             .from("attendance_reports")
@@ -219,7 +352,7 @@ serve(async (req) => {
                 {
                     date: targetDateStr,
                     pdf_link: publicData.publicUrl,
-                    time: timeStr,
+                    time: dbTimeStr,
                 },
             ])
             .select();
