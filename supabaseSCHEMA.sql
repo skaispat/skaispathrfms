@@ -173,6 +173,7 @@ CREATE TABLE public.gate_pass (
   hod_id text,
   hr_id text,
   emp_name text,
+  hr_name text,
   CONSTRAINT gate_pass_pkey PRIMARY KEY (id),
   CONSTRAINT gate_pass_emp_id_fkey FOREIGN KEY (emp_id) REFERENCES public.users(emp_id)
 );
@@ -237,6 +238,7 @@ CREATE TABLE public.leave_management (
   hr_remarks text,
   hod_id text,
   hr_id text,
+  hr_name text,
   CONSTRAINT leave_management_pkey PRIMARY KEY (id),
   CONSTRAINT leave_management_emp_id_fkey FOREIGN KEY (emp_id) REFERENCES public.users(emp_id)
 );

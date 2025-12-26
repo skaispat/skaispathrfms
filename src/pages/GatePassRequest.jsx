@@ -241,10 +241,12 @@ const GatePassRequest = () => {
         employee_whatsapp_number: formData.whatsappNumber,
         image_gate_pass: imageUrl,
         emp_name: user?.full_name || user?.Name,
-        status: (hodDetails.id === null || hodDetails.name === 'HR' || hodDetails.department === 'HR' || isUserHod || hodDetails.id === 1 || hodDetails.name === 'Pawan Tiwari') ? 'Pending HR' : 'Pending', // Initial status
+        status: (hodDetails.id === null || hodDetails.name === 'HR' || hodDetails.department === 'HR' || isUserHod || hodDetails.id === 1 || hodDetails.name === 'Pawan Tiwari') ? 'Pending HR' : 'Pending HOD', // Initial status
         hod_name: isUserHod ? 'HR' : hodDetails.name,
         hod_id: isUserHod ? null : hodDetails.id, // Insert HOD ID if not user
-        hr_id: hrDetails.id // Insert HR ID
+        hod_id: isUserHod ? null : hodDetails.id, // Insert HOD ID if not user
+        hr_id: hrDetails.id, // Insert HR ID
+        hr_name: hrDetails.name
       };
 
       const { data, error } = await supabase
@@ -319,7 +321,7 @@ const GatePassRequest = () => {
       item.employee_name?.toLowerCase().includes(searchString);
 
     if (activeTab === 'all') return matchesSearch;
-    if (activeTab === 'pending') return matchesSearch && (item.status === 'Pending' || item.status === 'Pending HR');
+    if (activeTab === 'pending') return matchesSearch && (item.status === 'Pending' || item.status === 'Pending HOD' || item.status === 'Pending HR');
     if (activeTab === 'approved') return matchesSearch && item.status?.toLowerCase() === 'approved';
     if (activeTab === 'rejected') return matchesSearch && item.status?.toLowerCase().includes('rejected');
     return matchesSearch;
@@ -442,7 +444,7 @@ const GatePassRequest = () => {
                 filteredHistory.map((item) => {
                   const statusKey = item.status?.toLowerCase() || 'pending';
                   let badgeClass = 'bg-slate-100 text-slate-800';
-                  let statusLabel = item.status || 'Pending';
+                  let statusLabel = (item.status === 'Pending' || item.status === 'Pending HOD') ? 'Pending HOD' : (item.status?.includes('Rejected') ? 'Rejected' : (item.status || 'Pending'));
 
                   if (statusKey.includes('pending')) {
                     badgeClass = 'bg-yellow-100 text-yellow-800';

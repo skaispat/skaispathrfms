@@ -63,7 +63,7 @@ const GatePassApproval = () => {
             // Prepare request object
             setRequest({
                 ...data,
-                employee_name: data.users?.full_name || 'Employee', // Handle joined data
+                employee_name: data.users?.full_name || data.emp_name || 'Employee', // Handle joined data or fallback
                 departureTime: formatDate(data.departure_from_plant),
                 arrivalTime: data.arrival_at_plant ? formatDate(data.arrival_at_plant) : 'Not specified',
                 hr_name: hrData?.full_name || 'HR Department',
@@ -106,7 +106,7 @@ const GatePassApproval = () => {
             let newStatus = request.status;
             let logAction = '';
 
-            const isHodAction = request.status === 'Pending';
+            const isHodAction = request.status === 'Pending' || request.status === 'Pending HOD';
             const isHrAction = request.status === 'Pending HR';
 
             // Validate Approver Role
@@ -140,19 +140,14 @@ const GatePassApproval = () => {
 
             if (action === 'approve') {
                 if (isHodAction) {
-                    if (approver.department === 'HR') {
-                        newStatus = 'Approved'; // Skip 'Pending HR' step if HOD is HR
-                        logAction = 'Approved (HOD & HR)';
-                    } else {
-                        newStatus = 'Pending HR';
-                        logAction = 'Approved';
-                    }
+                    newStatus = 'Pending HR';
+                    logAction = 'Approved';
                 } else if (isHrAction) {
                     newStatus = 'Approved';
                     logAction = 'Approved';
                 }
             } else {
-                newStatus = isHodAction ? 'Rejected by HOD' : 'Rejected by HR';
+                newStatus = 'Rejected';
                 logAction = 'Rejected';
             }
 
@@ -166,12 +161,14 @@ const GatePassApproval = () => {
                 }),
                 ...(isHrAction && {
                     hr_remarks: currentRemarks,
-                    hr_id: approver.emp_id
+                    hr_id: approver.emp_id,
+                    hr_name: approver.full_name
                 }),
                 // If HOD is HR and skipping, ensure HR fields are also filled
                 ...((isHodAction && approver.department === 'HR' && action === 'approve') && {
                     hr_remarks: currentRemarks,
-                    hr_id: approver.emp_id
+                    hr_id: approver.emp_id,
+                    hr_name: approver.full_name
                 })
             };
 
@@ -230,10 +227,10 @@ const GatePassApproval = () => {
     if (error) return <div className="min-h-screen flex items-center justify-center bg-gray-50 text-red-500 font-medium">{error}</div>;
     if (!request) return <div className="min-h-screen flex items-center justify-center bg-gray-50 text-slate-500">Request not found</div>;
 
-    const isActionable = (request.status === 'Pending' && approver?.is_hod) ||
+    const isActionable = ((request.status === 'Pending' || request.status === 'Pending HOD') && (approver?.is_hod || approver?.department === 'HR')) ||
         (request.status === 'Pending HR' && approver?.department === 'HR');
 
-    const notActionableReason = !isActionable && (request.status === 'Pending' || request.status === 'Pending HR')
+    const notActionableReason = !isActionable && (request.status === 'Pending' || request.status === 'Pending HOD' || request.status === 'Pending HR')
         ? "You are not authorized to approve this request at this stage."
         : null;
 
@@ -284,7 +281,7 @@ const GatePassApproval = () => {
                         {request.status.includes('Rejected') ? <X className="w-3 h-3" /> :
                             request.status === 'Approved' ? <Check className="w-3 h-3" /> :
                                 <Clock className="w-3 h-3" />}
-                        {request.status}
+                        {(request.status === 'Pending' || request.status === 'Pending HOD') ? 'Pending HOD' : (request.status?.includes('Rejected') ? 'Rejected' : request.status)}
                     </div>
                 </div>
 
@@ -426,7 +423,7 @@ const GatePassApproval = () => {
                 </div>
 
                 {/* Footer Action Area */}
-                {isActionable && (
+                {request && (
                     <div className="p-4 bg-white border-t border-gray-100 shadow-xl z-30">
                         <div className="flex gap-3 items-end">
                             <div className="relative flex-1">
@@ -443,8 +440,8 @@ const GatePassApproval = () => {
                         <div className="grid grid-cols-2 gap-3 mt-3">
                             <button
                                 onClick={() => handleAction('reject')}
-                                disabled={actionLoading}
-                                className="flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-xs text-red-600 bg-white border border-red-100 hover:bg-red-50 hover:border-red-200 transition-all disabled:opacity-50"
+                                disabled={actionLoading || !isActionable}
+                                className="flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-xs text-red-600 bg-white border border-red-100 hover:bg-red-50 hover:border-red-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {actionLoading ? (
                                     <div className="w-3 h-3 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
@@ -457,8 +454,8 @@ const GatePassApproval = () => {
                             </button>
                             <button
                                 onClick={() => handleAction('approve')}
-                                disabled={actionLoading}
-                                className="flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-xs text-white bg-[#16A34A] hover:bg-[#15803d] shadow-lg shadow-green-100 hover:shadow-xl hover:shadow-green-200 transition-all active:scale-[0.98] disabled:opacity-50"
+                                disabled={actionLoading || !isActionable}
+                                className="flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-xs text-white bg-[#16A34A] hover:bg-[#15803d] shadow-lg shadow-green-100 hover:shadow-xl hover:shadow-green-200 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {actionLoading ? (
                                     <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />

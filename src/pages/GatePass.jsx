@@ -192,7 +192,7 @@ const GatePass = () => {
         return item.emp_id === user?.emp_id;
       });
 
-      setPendingPasses(filteredData.filter(p => p.status === 'Pending' || p.status === 'Pending HR'));
+      setPendingPasses(filteredData.filter(p => p.status === 'Pending' || p.status === 'Pending HOD' || p.status === 'Pending HR'));
 
       // Approved tab should show any pass that has been approved by HOD or is fully Approved
       setApprovedPasses(filteredData.filter(p =>
@@ -221,30 +221,13 @@ const GatePass = () => {
 
     // Authorization Check & Status Transition
     if (action === 'reject') {
-      newStatus = isHr ? 'Rejected by HR' : 'Rejected by HOD';
+      newStatus = 'Rejected';
     } else {
       // Approve logic
-      if (currentStatus === 'Pending') {
-        // Can be approved by HOD or Admin (treating Admin as super-approver if needed, but usually HOD->HR)
+      if (currentStatus === 'Pending' || currentStatus === 'Pending HOD') {
+        // First step approval always goes to Pending HR
         if (isHod || isHr) {
-          // If user is HOD of this employee OR Admin
-          if (isHr) {
-            // If HR/Admin approves directly (override or direct approval), depends on flow.
-            // Standard flow: Pending -> Pending HR.
-            // But if HR approves a Pending req, maybe it goes straight to Approved?
-            // Let's stick to: HOD approves -> Pending HR.
-            // If HR is the approver (e.g. for their own staff or override), then Approved.
-
-            // Check if user is the HOD for this request
-            if (request.hod_name === user.full_name || request.hod_name === user.Name) {
-              newStatus = 'Pending HR';
-            } else {
-              // HR/Admin jumping queue or approving as HR
-              newStatus = 'Approved';
-            }
-          } else if (isHod) {
-            newStatus = 'Pending HR';
-          }
+          newStatus = 'Pending HR';
         }
       } else if (currentStatus === 'Pending HR') {
         if (isHr) {
@@ -264,7 +247,10 @@ const GatePass = () => {
         .update({
           status: newStatus,
           ...(isHod && { hod_remarks: currentRowRemarks.hod || '' }),
-          ...(isHr && { hr_remarks: currentRowRemarks.hr || '' })
+          ...(isHr && {
+            hr_remarks: currentRowRemarks.hr || '',
+            hr_name: user.full_name || user.Name
+          })
         })
         .eq('id', request.id);
 
@@ -356,10 +342,12 @@ const GatePass = () => {
         departure_from_plant: formData.departureTime,
         arrival_at_plant: formData.arrivalTime || null,
         employee_whatsapp_number: formData.whatsappNumber,
-        status: (formData.hodName === 'HR' || formData.hodId === null || formData.hodId === 1 || formData.hodName === 'Pawan Tiwari') ? 'Pending HR' : 'Pending',
+        status: (formData.hodName === 'HR' || formData.hodId === null || formData.hodId === 1 || formData.hodName === 'Pawan Tiwari') ? 'Pending HR' : 'Pending HOD',
         hod_name: formData.hodName,
         hod_id: formData.hodId,
+        hod_id: formData.hodId,
         hr_id: formData.hrId,
+        hr_name: formData.hrName,
         image_gate_pass: imageUrl,
         emp_name: formData.employeeName
       };
@@ -424,7 +412,7 @@ const GatePass = () => {
             data.map((item) => (
               <tr key={item.id} className="hover:bg-slate-50 transition-colors">
                 <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
-                  {((user?.is_hod && item.status === 'Pending' && (item.hod_name === user?.full_name || item.hod_name === user?.Name)) ||
+                  {((user?.is_hod && (item.status === 'Pending' || item.status === 'Pending HOD') && (item.hod_name === user?.full_name || item.hod_name === user?.Name)) ||
                     ((user?.role === 'hr' || user?.role === 'HR' || user?.role === 'admin' || user?.role === 'Admin' || user?.Admin === 'Yes') && item.status === 'Pending HR')) && (
                       <input
                         type="checkbox"
@@ -453,7 +441,7 @@ const GatePass = () => {
                 <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-500">{item.hod_name}</td>
                 {showHodColumn && (
                   <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-500">
-                    {user?.is_hod && item.status === 'Pending' && selectedRow?.id === item.id ? (
+                    {user?.is_hod && (item.status === 'Pending' || item.status === 'Pending HOD') && selectedRow?.id === item.id ? (
                       <input
                         type="text"
                         placeholder="HOD Remarks"
@@ -488,7 +476,7 @@ const GatePass = () => {
                     item.status?.includes('Rejected') ? 'bg-red-100 text-red-800' :
                       'bg-yellow-100 text-yellow-800'
                     }`}>
-                    {item.status}
+                    {(item.status === 'Pending' || item.status === 'Pending HOD') ? 'Pending HOD' : (item.status?.includes('Rejected') ? 'Rejected' : item.status)}
                   </span>
                 </td>
                 <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-500">
@@ -502,9 +490,10 @@ const GatePass = () => {
                     {item.status !== 'Approved' && !item.status?.includes('Rejected') && (
                       // Authorization Logic for Button Visibility
                       (
-                        // If Pending: Visible ONLY for Assigned HOD
-                        (item.status === 'Pending' && (
-                          user?.is_hod && (item.hod_name === user?.full_name || item.hod_name === user?.Name)
+                        // If Pending: Visible for Assigned HOD OR HR/Admin
+                        ((item.status === 'Pending' || item.status === 'Pending HOD') && (
+                          (user?.is_hod && (item.hod_name === user?.full_name || item.hod_name === user?.Name)) ||
+                          (user?.role === 'hr' || user?.role === 'HR' || user?.role === 'admin' || user?.role === 'Admin')
                         )) ||
                         // If Pending HR: Visible ONLY for HR/Admin
                         (item.status === 'Pending HR' && (
@@ -529,9 +518,9 @@ const GatePass = () => {
                         </div>
                       )
                     )}
-                    {/* Visual feedback for HR when waiting for HOD */}
-                    {item.status === 'Pending' && (user?.role === 'hr' || user?.role === 'HR' || user?.role === 'admin' || user?.role === 'Admin') && (
-                      <span className="text-xs text-orange-400 font-medium italic">Waiting for HOD</span>
+                    {/* Visual feedback for HR when waiting for HOD - Only show if they can't act (which they now can, so this might be redundant or changed to indicate 'HOD Pending') */}
+                    {(item.status === 'Pending' || item.status === 'Pending HOD') && (user?.role === 'hr' || user?.role === 'HR' || user?.role === 'admin' || user?.role === 'Admin') && (
+                      <span className="text-[10px] text-orange-400 font-medium italic block mb-1">Current: Waiting for HOD</span>
                     )}
                   </td>
                 )}

@@ -289,12 +289,14 @@ const LeaveManagement = () => {
         leave_date_start: formData.fromDate,
         leave_date_end: formData.toDate,
         remarks: formData.reason,
-        status: (formData.hodId === null || formData.hodId === 1 || formData.hodName === 'Pawan Tiwari' || formData.hodName === 'HR' || user.role === 'hr' || user.role === 'HR' || user.role === 'admin') ? 'Pending HR' : 'Pending',
+        status: (formData.hodId === null || formData.hodId === 1 || formData.hodName === 'Pawan Tiwari' || formData.hodName === 'HR' || user.role === 'hr' || user.role === 'HR' || user.role === 'admin') ? 'Pending HR' : 'Pending HOD',
         leave_type: formData.leaveType,
         hod_name: formData.hodName,
         designation: formData.designation,
         hod_id: formData.hodId,
-        hr_id: formData.hrId
+        hod_id: formData.hodId,
+        hr_id: formData.hrId,
+        hr_name: formData.hrName
       };
 
       // Insert data into Supabase leave_management table
@@ -368,7 +370,7 @@ const LeaveManagement = () => {
       const isHr = user?.role === 'hr' || user?.role === 'HR' || user?.role === 'admin' || user?.role === 'Admin' || user?.Admin === 'Yes';
 
       // Flow Logic
-      if (currentStatus === 'Pending') {
+      if (currentStatus === 'Pending' || currentStatus === 'Pending HOD') {
         if (isHod || isHr) { // Allow HR/Admin to override HOD step if needed, or strictly HOD? 
           // Strictly speaking, if user is HOD for this request
           // For now, allow if isHod or Admin
@@ -376,7 +378,7 @@ const LeaveManagement = () => {
             newStatus = 'Pending HR';
             notificationMessage = 'Approved by HOD and sent to HR';
           } else {
-            newStatus = 'Rejected by HOD';
+            newStatus = 'Rejected';
             notificationMessage = 'Rejected by HOD';
           }
         } else {
@@ -388,7 +390,7 @@ const LeaveManagement = () => {
             newStatus = 'Approved';
             notificationMessage = 'Approved by HR';
           } else {
-            newStatus = 'Rejected by HR';
+            newStatus = 'Rejected';
             notificationMessage = 'Rejected by HR';
           }
         } else {
@@ -418,7 +420,8 @@ const LeaveManagement = () => {
         }),
         ...(isHr && {
           hr_remarks: currentRowRemarks.hr || '',
-          hr_id: user.emp_id
+          hr_id: user.emp_id,
+          hr_name: user.full_name || user.Name
         })
       };
 
@@ -518,7 +521,7 @@ const LeaveManagement = () => {
       // Pending: 'Pending' (for HOD) or 'Pending HR' (for HR)
       // We show them in the Pending tab but maybe distinguish visuals
       setPendingLeaves(filteredData.filter(leave =>
-        leave.status?.toString() === 'Pending' || leave.status?.toString() === 'Pending HR'
+        leave.status?.toString() === 'Pending' || leave.status?.toString() === 'Pending HOD' || leave.status?.toString() === 'Pending HR'
       ));
 
       setApprovedLeaves(filteredData.filter(leave =>
@@ -604,8 +607,8 @@ const LeaveManagement = () => {
           filteredPendingLeaves.map((item, index) => (
             <tr key={index} className="hover:bg-slate-50 transition-colors">
               <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
-                {((user?.is_hod && item.status === 'Pending' && (item.hodName === user?.full_name || item.hodName === user?.Name)) ||
-                  ((user?.role === 'hr' || user?.role === 'HR' || user?.role === 'admin' || user?.role === 'Admin' || user?.Admin === 'Yes') && item.status === 'Pending HR')) && (
+                {((user?.is_hod && (item.status === 'Pending' || item.status === 'Pending HOD') && (item.hodName === user?.full_name || item.hodName === user?.Name)) ||
+                  ((user?.role === 'hr' || user?.role === 'HR' || user?.role === 'admin' || user?.role === 'Admin' || user?.Admin === 'Yes') && (item.status === 'Pending HR' || item.status === 'Pending' || item.status === 'Pending HOD'))) && (
                     <input
                       type="checkbox"
                       checked={selectedRow?.id === item.id}
@@ -615,9 +618,9 @@ const LeaveManagement = () => {
                   )}
               </td>
               <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
-                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${item.status === 'Pending' ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-100 text-blue-800'
+                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${(item.status === 'Pending' || item.status === 'Pending HOD') ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-100 text-blue-800'
                   }`}>
-                  {item.status === 'Pending' ? 'Pending HOD' : item.status}
+                  {(item.status === 'Pending' || item.status === 'Pending HOD') ? 'Pending HOD' : (item.status?.includes('Rejected') ? 'Rejected' : item.status)}
                 </span>
               </td>
               <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-500">{item.employeeId}</td>
@@ -657,7 +660,7 @@ const LeaveManagement = () => {
               <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-500">{item.hodName}</td>
               {showHodColumn && (
                 <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-500">
-                  {user?.is_hod && item.status === 'Pending' && selectedRow?.id === item.id ? (
+                  {user?.is_hod && (item.status === 'Pending' || item.status === 'Pending HOD') && selectedRow?.id === item.id ? (
                     <input
                       type="text"
                       placeholder="HOD Remarks"
@@ -689,8 +692,8 @@ const LeaveManagement = () => {
               )}
               <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-500">
                 <div className="flex space-x-2">
-                  {((user?.is_hod && item.status === 'Pending' && (item.hodName === user?.full_name || item.hodName === user?.Name)) ||
-                    ((user?.role === 'hr' || user?.role === 'HR' || user?.role === 'admin' || user.role === 'Admin' || user?.Admin === 'Yes') && item.status === 'Pending HR')) ? (
+                  {((user?.is_hod && (item.status === 'Pending' || item.status === 'Pending HOD') && (item.hodName === user?.full_name || item.hodName === user?.Name)) ||
+                    ((user?.role === 'hr' || user?.role === 'HR' || user?.role === 'admin' || user.role === 'Admin' || user?.Admin === 'Yes') && (item.status === 'Pending HR' || item.status === 'Pending' || item.status === 'Pending HOD'))) ? (
                     <>
                       <button
                         onClick={() => handleLeaveAction('accept')}
@@ -727,13 +730,13 @@ const LeaveManagement = () => {
                     </>
                   ) : (
                     // Fallback for HR when status is Pending (HOD has not approved yet)
-                    ((user?.role === 'hr' || user?.role === 'HR' || user?.role === 'admin' || user?.role === 'Admin' || user?.Admin === 'Yes') && item.status === 'Pending') ? (
+                    ((user?.role === 'hr' || user?.role === 'HR' || user?.role === 'admin' || user?.role === 'Admin' || user?.Admin === 'Yes') && (item.status === 'Pending' || item.status === 'Pending HOD')) ? (
                       <span className="text-xs text-orange-500 font-medium italic">
                         Waiting for HOD
                       </span>
                     ) : (
                       <span className="text-xs text-slate-400 italic">
-                        {item.status === 'Pending' ? 'Waiting for HOD' : (item.status === 'Pending HR' ? 'Waiting for HR' : '-')}
+                        {(item.status === 'Pending' || item.status === 'Pending HOD') ? 'Waiting for HOD' : (item.status === 'Pending HR' ? 'Waiting for HR' : '-')}
                       </span>
                     )
                   )}

@@ -248,12 +248,13 @@ const LeaveRequest = () => {
         leave_date_start: formData.fromDate,
         leave_date_end: formData.toDate,
         remarks: formData.reason,
-        status: (hodDetails.id === null || hodDetails.id === 1 || hodDetails.name === 'Pawan Tiwari' || hodDetails.name === 'HR' || hodDetails.department === 'HR' || user.is_hod) ? 'Pending HR' : 'Pending',
+        status: (hodDetails.id === null || hodDetails.id === 1 || hodDetails.name === 'Pawan Tiwari' || hodDetails.name === 'HR' || hodDetails.department === 'HR' || user.is_hod) ? 'Pending HR' : 'Pending HOD',
         leave_type: formData.leaveType,
         hod_name: hodDetails.name === 'Not Assigned' ? null : hodDetails.name,
         designation: user.designation || user.role, // Fallback if designation missing
         hod_id: hodDetails.id,
-        hr_id: hrDetails.id
+        hr_id: hrDetails.id,
+        hr_name: hrDetails.name
       };
 
       const { data, error } = await supabase
@@ -365,7 +366,7 @@ const LeaveRequest = () => {
       item.remarks?.toLowerCase().includes(searchTerm.toLowerCase());
 
     if (activeTab === 'all') return matchesSearch;
-    if (activeTab === 'pending') return matchesSearch && (item.status === 'Pending' || item.status === 'Pending HR');
+    if (activeTab === 'pending') return matchesSearch && (item.status === 'Pending' || item.status === 'Pending HOD' || item.status === 'Pending HR');
     if (activeTab === 'approved') return matchesSearch && item.status?.toLowerCase() === 'approved';
     if (activeTab === 'rejected') return matchesSearch && item.status?.toLowerCase().includes('rejected');
     return matchesSearch;
@@ -558,7 +559,7 @@ const LeaveRequest = () => {
                   // Combined status Logic for cleaner UI like LeaveManagement
                   const getCombinedStatus = (status) => {
                     const s = status?.toLowerCase() || '';
-                    if (s === 'pending') return { label: 'Pending HOD', classes: 'bg-yellow-100 text-yellow-800' };
+                    if (s === 'pending' || s === 'pending hod') return { label: 'Pending HOD', classes: 'bg-yellow-100 text-yellow-800' };
                     if (s === 'pending hr') return { label: 'Pending HR', classes: 'bg-blue-100 text-blue-800' };
                     if (s === 'approved') return { label: 'Approved', classes: 'bg-green-100 text-green-800' };
                     if (s.includes('rejected')) return { label: 'Rejected', classes: 'bg-red-100 text-red-800' };
