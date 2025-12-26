@@ -358,7 +358,8 @@ const MyProfile = () => {
                       'HouseKeeping',
                       'Health & Safety',
                       'Accounts',
-                      'Sales'
+                      'Sales',
+                      'AUTOMOBILE'
                     ]}
                     value={formData.department}
                     onChange={handleInputChange}

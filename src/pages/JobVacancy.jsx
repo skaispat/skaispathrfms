@@ -480,6 +480,7 @@ const JobVacancy = () => {
                     <option value="Health & Safety">Health & Safety</option>
                     <option value="Accounts">Accounts</option>
                     <option value="Sales">Sales</option>
+                    <option value="AUTOMOBILE">Automobile</option>
                   </select>
                 </div>
 

@@ -125,12 +125,11 @@ const GatePass = () => {
           if (hodUser) {
             setFormData(prev => ({ ...prev, hodName: hodUser.full_name, hodId: teamMember.hod_id }));
           } else {
-            // Default HOD if user found but has no details (fallback)
-            setFormData(prev => ({ ...prev, hodName: 'Pawan Tiwari', hodId: 1 }));
+            setFormData(prev => ({ ...prev, hodName: '', hodId: null }));
           }
         } else {
           // No HOD assigned in team_members
-          setFormData(prev => ({ ...prev, hodName: 'Pawan Tiwari', hodId: 1 }));
+          setFormData(prev => ({ ...prev, hodName: '', hodId: null }));
         }
 
         // Fetch HR Details
@@ -144,6 +143,8 @@ const GatePass = () => {
 
         if (hrData) {
           setFormData(prev => ({ ...prev, hrName: hrData.full_name, hrId: hrData.emp_id }));
+        } else {
+          setFormData(prev => ({ ...prev, hrName: 'Pawan Tiwari', hrId: 1 }));
         }
       } catch (error) {
         console.error('Error fetching HOD/HR:', error);
@@ -336,7 +337,7 @@ const GatePass = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.employeeName || !formData.visitPlace || !formData.visitReason || !formData.departureTime || !formData.hodName) {
+    if (!formData.employeeName || !formData.visitPlace || !formData.visitReason || !formData.departureTime) {
       toast.error('Please fill all required fields');
       return;
     }
@@ -355,7 +356,7 @@ const GatePass = () => {
         departure_from_plant: formData.departureTime,
         arrival_at_plant: formData.arrivalTime || null,
         employee_whatsapp_number: formData.whatsappNumber,
-        status: (formData.hodName === 'HR' || formData.hodId === 1 || formData.hodName === 'Pawan Tiwari') ? 'Pending HR' : 'Pending',
+        status: (formData.hodName === 'HR' || formData.hodId === null || formData.hodId === 1 || formData.hodName === 'Pawan Tiwari') ? 'Pending HR' : 'Pending',
         hod_name: formData.hodName,
         hod_id: formData.hodId,
         hr_id: formData.hrId,
@@ -703,15 +704,17 @@ const GatePass = () => {
                     </div>
 
                     {/* HOD Card */}
-                    <div className="flex items-center gap-3 p-3 bg-indigo-50/50 rounded-xl border border-indigo-100">
-                      <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-indigo-600 border border-indigo-100 shadow-sm shrink-0">
-                        <Users size={16} />
+                    {formData.hodId && (
+                      <div className="flex items-center gap-3 p-3 bg-indigo-50/50 rounded-xl border border-indigo-100">
+                        <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-indigo-600 border border-indigo-100 shadow-sm shrink-0">
+                          <Users size={16} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-0.5">HOD</p>
+                          <p className="font-semibold text-xs text-slate-900 break-words">{formData.hodName || '-'}</p>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-0.5">HOD</p>
-                        <p className="font-semibold text-xs text-slate-900 break-words">{formData.hodName || '-'}</p>
-                      </div>
-                    </div>
+                    )}
 
                     {/* HR Card */}
                     <div className="flex items-center gap-3 p-3 bg-purple-50/50 rounded-xl border border-purple-100">

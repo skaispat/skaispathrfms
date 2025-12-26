@@ -66,10 +66,10 @@ const LeaveRequest = () => {
         if (hodUser) {
           setHodDetails({ name: hodUser.full_name, id: teamData.hod_id, department: hodUser.department });
         } else {
-          setHodDetails({ name: 'Pawan Tiwari', id: 1, department: 'HR' });
+          setHodDetails({ name: 'Not Assigned', id: null });
         }
       } else {
-        setHodDetails({ name: 'Pawan Tiwari', id: 1, department: 'HR' });
+        setHodDetails({ name: 'Not Assigned', id: null });
       }
 
       // 2. Fetch HR Details
@@ -83,6 +83,8 @@ const LeaveRequest = () => {
 
       if (hrData) {
         setHrDetails({ name: hrData.full_name, id: hrData.emp_id });
+      } else {
+        setHrDetails({ name: 'Pawan Tiwari', id: 1 });
       }
 
       // 3. Fetch current user details for leave access permission
@@ -246,9 +248,9 @@ const LeaveRequest = () => {
         leave_date_start: formData.fromDate,
         leave_date_end: formData.toDate,
         remarks: formData.reason,
-        status: (hodDetails.id === 1 || hodDetails.name === 'Pawan Tiwari' || hodDetails.name === 'HR' || hodDetails.department === 'HR' || user.is_hod) ? 'Pending HR' : 'Pending',
+        status: (hodDetails.id === null || hodDetails.id === 1 || hodDetails.name === 'Pawan Tiwari' || hodDetails.name === 'HR' || hodDetails.department === 'HR' || user.is_hod) ? 'Pending HR' : 'Pending',
         leave_type: formData.leaveType,
-        hod_name: hodDetails.name,
+        hod_name: hodDetails.name === 'Not Assigned' ? null : hodDetails.name,
         designation: user.designation || user.role, // Fallback if designation missing
         hod_id: hodDetails.id,
         hr_id: hrDetails.id
@@ -647,19 +649,21 @@ const LeaveRequest = () => {
                   </div>
 
                   {/* Approving Authority (HOD) */}
-                  <div className="flex items-center gap-3 p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
-                    <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-indigo-600 border border-indigo-100 shadow-sm shrink-0">
-                      <Users size={20} />
+                  {hodDetails.id && hodDetails.name !== 'Not Assigned' && (
+                    <div className="flex items-center gap-3 p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
+                      <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-indigo-600 border border-indigo-100 shadow-sm shrink-0">
+                        <Users size={20} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-0.5">
+                          {(hodDetails.name === 'Pawan Tiwari' || hodDetails.name === 'HR' || hodDetails.department === 'HR') ? 'HR Name (एचआर का नाम)' : 'HOD'}
+                        </p>
+                        <p className="font-semibold text-sm text-slate-900 break-words leading-tight">
+                          {hodDetails.name === 'Not Assigned' ? 'HR' : hodDetails.name}
+                        </p>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-0.5">
-                        {(hodDetails.name === 'Pawan Tiwari' || hodDetails.name === 'HR' || hodDetails.department === 'HR') ? 'HR Name (एचआर का नाम)' : 'HOD'}
-                      </p>
-                      <p className="font-semibold text-sm text-slate-900 break-words leading-tight">
-                        {hodDetails.name === 'Not Assigned' ? 'HR' : hodDetails.name}
-                      </p>
-                    </div>
-                  </div>
+                  )}
 
                   {/* HR Authority */}
                   <div className="flex items-center gap-3 p-4 bg-purple-50/50 rounded-xl border border-purple-100">

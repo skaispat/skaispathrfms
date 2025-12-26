@@ -1011,6 +1011,7 @@ const EmployeeEnquiry = () => {
                       <option value="Health & Safety">Health & Safety</option>
                       <option value="Accounts">Accounts</option>
                       <option value="Sales">Sales</option>
+                      <option value="AUTOMOBILE">AUTOMOBILE</option>
                     </select>
                   </div>
                 </div>

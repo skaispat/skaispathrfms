@@ -180,8 +180,8 @@ const LeaveManagement = () => {
           // Default HOD logic if none assigned
           setFormData(prev => ({
             ...prev,
-            hodName: 'Pawan Tiwari',
-            hodId: 1
+            hodName: '',
+            hodId: null
           }));
           // toast.success('Default HOD assigned: Pawan Tiwari'); 
         }
@@ -197,6 +197,8 @@ const LeaveManagement = () => {
 
         if (hrData) {
           setFormData(prev => ({ ...prev, hrName: hrData.full_name, hrId: hrData.emp_id }));
+        } else {
+          setFormData(prev => ({ ...prev, hrName: 'Pawan Tiwari', hrId: 1 }));
         }
 
       } catch (error) {
@@ -287,7 +289,7 @@ const LeaveManagement = () => {
         leave_date_start: formData.fromDate,
         leave_date_end: formData.toDate,
         remarks: formData.reason,
-        status: (formData.hodId === 1 || formData.hodName === 'Pawan Tiwari' || formData.hodName === 'HR' || user.role === 'hr' || user.role === 'HR' || user.role === 'admin') ? 'Pending HR' : 'Pending',
+        status: (formData.hodId === null || formData.hodId === 1 || formData.hodName === 'Pawan Tiwari' || formData.hodName === 'HR' || user.role === 'hr' || user.role === 'HR' || user.role === 'admin') ? 'Pending HR' : 'Pending',
         leave_type: formData.leaveType,
         hod_name: formData.hodName,
         designation: formData.designation,
@@ -1028,15 +1030,17 @@ const LeaveManagement = () => {
                     </div>
 
                     {/* HOD Card */}
-                    <div className="flex items-center gap-3 p-3 bg-indigo-50/50 rounded-xl border border-indigo-100">
-                      <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-indigo-600 border border-indigo-100 shadow-sm shrink-0">
-                        <Users size={16} />
+                    {formData.hodId && (
+                      <div className="flex items-center gap-3 p-3 bg-indigo-50/50 rounded-xl border border-indigo-100">
+                        <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-indigo-600 border border-indigo-100 shadow-sm shrink-0">
+                          <Users size={16} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-0.5">HOD</p>
+                          <p className="font-semibold text-xs text-slate-900 break-words">{formData.hodName || '-'}</p>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-0.5">HOD</p>
-                        <p className="font-semibold text-xs text-slate-900 break-words">{formData.hodName || '-'}</p>
-                      </div>
-                    </div>
+                    )}
 
                     {/* HR Card */}
                     <div className="flex items-center gap-3 p-3 bg-purple-50/50 rounded-xl border border-purple-100">

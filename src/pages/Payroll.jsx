@@ -181,6 +181,7 @@ const Payroll = () => {
                   <option value="HR">HR</option>
                   <option value="Finance">Finance</option>
                   <option value="Operations">Operations</option>
+                  <option value="AUTOMOBILE">AUTOMOBILE</option>
                 </select>
                 <Filter
                   size={18}
