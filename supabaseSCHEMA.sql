@@ -343,9 +343,9 @@ CREATE TABLE public.team_members (
   emp_id text NOT NULL,
   hod_id text NOT NULL,
   created_at timestamp with time zone NOT NULL DEFAULT timezone('utc'::text, now()),
-  CONSTRAINT team_members_pkey PRIMARY KEY (emp_id),
-  CONSTRAINT team_members_emp_id_fkey FOREIGN KEY (emp_id) REFERENCES public.users(emp_id),
-  CONSTRAINT team_members_hod_id_fkey FOREIGN KEY (hod_id) REFERENCES public.users(emp_id)
+  CONSTRAINT team_members_pkey PRIMARY KEY (emp_id, hod_id),
+  CONSTRAINT team_members_emp_id_fkey FOREIGN KEY (emp_id) REFERENCES public.users(emp_id) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT team_members_hod_id_fkey FOREIGN KEY (hod_id) REFERENCES public.users(emp_id) ON UPDATE CASCADE ON DELETE CASCADE
 );
 CREATE TABLE public.users (
   emp_id text NOT NULL,

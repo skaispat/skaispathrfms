@@ -159,16 +159,21 @@ const Settings = () => {
                 console.warn('Error fetching team members:', teamResponse.error);
             }
 
-            const teamMap = {}; // emp_id -> hod_id
+            const teamMap = {}; // emp_id -> hod_id (Last one wins - for backward compatibility)
+            const teamMapAll = {}; // emp_id -> [hod_id] (All HODs)
+
             if (teamResponse.data) {
                 teamResponse.data.forEach(t => {
                     teamMap[t.emp_id] = t.hod_id;
+                    if (!teamMapAll[t.emp_id]) teamMapAll[t.emp_id] = [];
+                    teamMapAll[t.emp_id].push(t.hod_id);
                 });
             }
 
             const usersWithTeam = (usersResponse.data || []).map(u => ({
                 ...u,
-                hod_id: teamMap[u.emp_id] || null
+                hod_id: teamMap[u.emp_id] || null,
+                hod_ids: teamMapAll[u.emp_id] || []
             }));
 
             setUsers(usersWithTeam);
@@ -962,18 +967,25 @@ const Settings = () => {
                                                         {user.department || '-'}
                                                     </td>
                                                     <td className="px-6 py-4">
-                                                        {user.hod_id ? (
-                                                            <div className="flex items-center gap-2">
-                                                                <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] text-slate-500 font-bold overflow-hidden border border-slate-200">
-                                                                    {users.find(u => u.emp_id === user.hod_id)?.profile_picture ? (
-                                                                        <img src={users.find(u => u.emp_id === user.hod_id)?.profile_picture} className="w-full h-full object-cover" />
-                                                                    ) : (
-                                                                        users.find(u => u.emp_id === user.hod_id)?.full_name?.charAt(0) || '?'
-                                                                    )}
-                                                                </div>
-                                                                <span className="text-sm text-slate-700 font-medium">
-                                                                    {users.find(u => u.emp_id === user.hod_id)?.full_name || 'Unknown HOD'}
-                                                                </span>
+                                                        {user.hod_ids && user.hod_ids.length > 0 ? (
+                                                            <div className="flex flex-col gap-2">
+                                                                {user.hod_ids.map((hodId, index) => {
+                                                                    const hodUser = users.find(u => u.emp_id === hodId);
+                                                                    return (
+                                                                        <div key={`${user.emp_id}-hod-${hodId}-${index}`} className="flex items-center gap-2">
+                                                                            <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] text-slate-500 font-bold overflow-hidden border border-slate-200">
+                                                                                {hodUser?.profile_picture ? (
+                                                                                    <img src={hodUser.profile_picture} className="w-full h-full object-cover" alt="" />
+                                                                                ) : (
+                                                                                    hodUser?.full_name?.charAt(0) || '?'
+                                                                                )}
+                                                                            </div>
+                                                                            <span className="text-sm text-slate-700 font-medium">
+                                                                                {hodUser?.full_name || 'Unknown HOD'}
+                                                                            </span>
+                                                                        </div>
+                                                                    );
+                                                                })}
                                                             </div>
                                                         ) : (
                                                             <span className="text-xs text-slate-400 italic">Not Assigned</span>
