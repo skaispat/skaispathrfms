@@ -219,8 +219,8 @@ const MyProfile = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">My Profile</h1>
-          <p className="text-slate-500 mt-1 text-sm">Manage your personal information and view history.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900"><span>My Profile</span></h1>
+          <p className="text-slate-500 mt-1 text-sm"><span>Manage your personal information and view history.</span></p>
         </div>
         <div className="flex items-center gap-3">
           {isEditing ? (
@@ -232,14 +232,14 @@ const MyProfile = () => {
                 }}
                 className="px-4 py-2 text-slate-600 hover:text-slate-800 font-medium bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors shadow-sm"
               >
-                Cancel
+                <span>Cancel</span>
               </button>
               <button
                 onClick={handleSave}
                 className="flex items-center gap-2 px-5 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm font-medium"
               >
                 <Save size={18} />
-                Save Changes
+                <span>Save Changes</span>
               </button>
             </>
           ) : (
@@ -248,7 +248,7 @@ const MyProfile = () => {
               className="flex items-center gap-2 px-5 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors shadow-sm font-medium"
             >
               <Edit2 size={18} />
-              Edit Profile
+              <span>Edit Profile</span>
             </button>
           )}
         </div>
@@ -293,38 +293,38 @@ const MyProfile = () => {
                   </div>
 
                   <div>
-                    <h2 className="text-2xl font-bold text-slate-800">{formData.full_name || 'User'}</h2>
+                    <h2 className="text-2xl font-bold text-slate-800"><span className="notranslate">{formData.full_name || 'User'}</span></h2>
                     <div className="flex flex-col gap-1 mt-1">
                       <p className="text-slate-500 font-medium flex items-center gap-2">
                         <Briefcase size={16} className="text-indigo-600" />
-                        {formData.designation || 'No Designation'}
+                        <span className="notranslate">{formData.designation || 'No Designation'}</span>
                       </p>
                       <p className="text-slate-400 text-sm flex items-center gap-2">
                         <Shield size={16} className="text-slate-400" />
-                        {formData.emp_id || 'ID N/A'}
+                        <span className="notranslate">{formData.emp_id || 'ID N/A'}</span>
                       </p>
                     </div>
 
                     <div className="mt-6 pt-6 border-t border-slate-100 flex flex-col gap-3">
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-slate-500">Department</span>
-                        <span className="font-semibold text-slate-800">{formData.department || '-'}</span>
+                        <span className="text-slate-500"><span>Department</span></span>
+                        <span className="font-semibold text-slate-800"><span className="notranslate">{formData.department || '-'}</span></span>
                       </div>
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-slate-500">Status</span>
+                        <span className="text-slate-500"><span>Status</span></span>
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${formData.is_active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                          {formData.is_active ? 'Active' : 'Inactive'}
+                          <span className="notranslate">{formData.is_active ? 'Active' : 'Inactive'}</span>
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-slate-500">Role</span>
-                        <span className="font-semibold text-slate-800 uppercase">{formData.role || 'Employee'}</span>
+                        <span className="text-slate-500"><span>Role</span></span>
+                        <span className="font-semibold text-slate-800 uppercase"><span className="notranslate">{formData.role || 'Employee'}</span></span>
                       </div>
                       {formData.is_hod && (
                         <div className="flex items-center justify-between text-sm">
-                          <span className="text-slate-500">Authority</span>
+                          <span className="text-slate-500"><span>Authority</span></span>
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
-                            HOD
+                            <span className="notranslate">HOD</span>
                           </span>
                         </div>
                       )}
@@ -408,7 +408,7 @@ const MyProfile = () => {
           <div className="mt-8">
             <h3 className="text-lg font-bold text-slate-900 mb-6 flex items-center gap-2">
               <Clock className="text-indigo-600" size={20} />
-              Activity History
+              <span>Activity History</span>
             </h3>
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
               <HistoryTable title="Leave History" data={leaveData} columns={['Type', 'From', 'To', 'Status']} keys={['type', 'from', 'to', 'status']} />
@@ -430,7 +430,7 @@ const SectionCard = ({ title, icon: Icon, children }) => (
       <div className="bg-indigo-50 p-2 rounded-lg">
         <Icon className="text-indigo-600" size={20} />
       </div>
-      <h3 className="font-bold text-slate-900">{title}</h3>
+      <h3 className="font-bold text-slate-900"><span>{title}</span></h3>
     </div>
     <div className="p-6">
       {children}
@@ -445,11 +445,11 @@ const InfoField = ({ label, icon: Icon, name, value, onChange, type = "text", re
   if (!isEditing || disabled) {
     return (
       <div className="group">
-        <label className="block text-xs font-medium text-slate-400 uppercase tracking-wide mb-1.5">{label}</label>
+        <label className="block text-xs font-medium text-slate-400 uppercase tracking-wide mb-1.5"><span>{label}</span></label>
         <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-200 group-hover:border-slate-300 transition-colors">
           <Icon className="h-4 w-4 text-slate-400 flex-shrink-0" />
           <span className={`text-sm font-medium ${!value ? 'text-slate-400 italic' : 'text-slate-700'}`}>
-            {value ? (type === 'date' ? new Date(value).toLocaleDateString('en-GB') : type === 'password' ? '••••••••' : value) : 'Not set'}
+            <span className="notranslate">{value ? (type === 'date' ? new Date(value).toLocaleDateString('en-GB') : type === 'password' ? '••••••••' : value) : 'Not set'}</span>
           </span>
         </div>
       </div>
@@ -460,7 +460,7 @@ const InfoField = ({ label, icon: Icon, name, value, onChange, type = "text", re
   return (
     <div>
       <label className="block text-sm font-medium text-slate-700 mb-1.5">
-        {label} {required && <span className="text-red-500">*</span>}
+        <span>{label}</span> {required && <span className="text-red-500">*</span>}
       </label>
       <div className="relative">
         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -472,7 +472,7 @@ const InfoField = ({ label, icon: Icon, name, value, onChange, type = "text", re
             name={name}
             value={value || ''}
             onChange={onChange}
-            className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none bg-white transition-all shadow-sm"
+            className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none bg-white transition-all shadow-sm notranslate"
           >
             <option value="">Select {label}</option>
             {options && options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
@@ -483,7 +483,7 @@ const InfoField = ({ label, icon: Icon, name, value, onChange, type = "text", re
             value={value || ''}
             onChange={onChange}
             rows="3"
-            className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none resize-none transition-all shadow-sm"
+            className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none resize-none transition-all shadow-sm notranslate"
             placeholder={placeholder || `Enter ${label}`}
           ></textarea>
         ) : (
@@ -496,7 +496,7 @@ const InfoField = ({ label, icon: Icon, name, value, onChange, type = "text", re
                 if (type === 'password' && !showPassword) setShowPassword(true);
                 onChange(e);
               }}
-              className="w-full pl-10 pr-10 py-2.5 rounded-lg border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all shadow-sm"
+              className="w-full pl-10 pr-10 py-2.5 rounded-lg border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all shadow-sm notranslate"
               placeholder={placeholder || `Enter ${label}`}
             />
             {type === 'password' && (
@@ -518,10 +518,10 @@ const InfoField = ({ label, icon: Icon, name, value, onChange, type = "text", re
 const HistoryTable = ({ title, data, columns, keys }) => (
   <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full">
     <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
-      <h3 className="font-bold text-slate-900">{title}</h3>
+      <h3 className="font-bold text-slate-900"><span>{title}</span></h3>
       <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-white border border-slate-200 text-slate-500 shadow-sm">
         <FileText size={12} />
-        {data.length} Records
+        <span>{data.length} Records</span>
       </span>
     </div>
     <div className="overflow-x-auto flex-1">
@@ -529,7 +529,7 @@ const HistoryTable = ({ title, data, columns, keys }) => (
         <thead className="bg-slate-50">
           <tr>
             {columns.map((col, i) => (
-              <th key={i} className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">{col}</th>
+              <th key={i} className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider"><span>{col}</span></th>
             ))}
           </tr>
         </thead>
@@ -542,7 +542,7 @@ const HistoryTable = ({ title, data, columns, keys }) => (
                     {key === 'status' ? (
                       <StatusBadge status={row[key]} />
                     ) : (
-                      row[key]
+                      <span className="notranslate">{row[key]}</span>
                     )}
                   </td>
                 ))}
@@ -551,7 +551,7 @@ const HistoryTable = ({ title, data, columns, keys }) => (
           ) : (
             <tr>
               <td colSpan={columns.length} className="px-6 py-12 text-center text-slate-500 italic">
-                No records found
+                <span>No records found</span>
               </td>
             </tr>
           )}
@@ -571,7 +571,7 @@ const StatusBadge = ({ status }) => {
 
   return (
     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${colorClass}`}>
-      {status}
+      <span className="notranslate">{status}</span>
     </span>
   );
 };
