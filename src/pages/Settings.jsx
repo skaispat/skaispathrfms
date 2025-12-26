@@ -268,11 +268,29 @@ const Settings = () => {
         }
 
         if (name === 'emp_id') {
+            const newEmpId = value.toUpperCase();
+
             // Auto-capitalize EMP ID
             setFormData(prev => ({
                 ...prev,
-                [name]: value.toUpperCase()
+                [name]: newEmpId
             }));
+
+            // Real-time duplicate check
+            const duplicate = users.find(u => u.emp_id === newEmpId);
+
+            if (duplicate) {
+                // If editing, it's a conflict only if the found user is NOT the one we are editing
+                // If creating (editingUser is null), any match is a conflict
+                if (!editingUser || duplicate.emp_id !== editingUser.emp_id) {
+                    setErrors(prev => ({ ...prev, emp_id: 'This EMP ID is already assigned to another user' }));
+                } else {
+                    setErrors(prev => ({ ...prev, emp_id: '' }));
+                }
+            } else {
+                setErrors(prev => ({ ...prev, emp_id: '' }));
+            }
+
             return;
         }
 
@@ -887,87 +905,96 @@ const Settings = () => {
                                             </td>
                                         </tr>
                                     ) : (
-                                        currentItems.map((user) => (
-                                            <tr key={user.emp_id} className="group hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0">
-                                                <td className="py-4 px-6">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-semibold border border-slate-200 overflow-hidden">
-                                                            {user.profile_picture ? (
-                                                                <img
-                                                                    src={user.profile_picture}
-                                                                    alt={user.full_name}
-                                                                    className="w-full h-full object-cover"
-                                                                />
-                                                            ) : (
-                                                                user.full_name?.charAt(0).toUpperCase()
-                                                            )}
-                                                        </div>
-                                                        <div>
-                                                            <p className="font-medium text-slate-800">{user.full_name}</p>
-                                                            <p className="text-sm text-slate-500">{user.email}</p>
-                                                            <p className="text-xs text-slate-400 font-mono mt-0.5">{user.emp_id}</p>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex flex-col">
-                                                        <span className={`inline-flex self-start items-center px-2 py-0.5 rounded text-xs font-medium ${user.role === 'admin' || user.role === 'Admin' ? 'bg-purple-50 text-purple-700' : 'bg-blue-50 text-blue-700'
-                                                            }`}>
-                                                            {user.role || 'N/A'}
-                                                        </span>
-                                                        <span className="text-sm text-slate-600 mt-1">{user.designation || '-'}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4 text-sm text-slate-600">
-                                                    {user.department || '-'}
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    {user.hod_id ? (
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] text-slate-500 font-bold overflow-hidden border border-slate-200">
-                                                                {users.find(u => u.emp_id === user.hod_id)?.profile_picture ? (
-                                                                    <img src={users.find(u => u.emp_id === user.hod_id)?.profile_picture} className="w-full h-full object-cover" />
+                                        <>
+                                            {currentItems.map((user) => (
+                                                <tr key={user.emp_id} className="group hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0">
+                                                    <td className="py-4 px-6">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-semibold border border-slate-200 overflow-hidden">
+                                                                {user.profile_picture ? (
+                                                                    <img
+                                                                        src={user.profile_picture}
+                                                                        alt={user.full_name}
+                                                                        className="w-full h-full object-cover"
+                                                                    />
                                                                 ) : (
-                                                                    users.find(u => u.emp_id === user.hod_id)?.full_name?.charAt(0) || '?'
+                                                                    user.full_name?.charAt(0).toUpperCase()
                                                                 )}
                                                             </div>
-                                                            <span className="text-sm text-slate-700 font-medium">
-                                                                {users.find(u => u.emp_id === user.hod_id)?.full_name || 'Unknown HOD'}
-                                                            </span>
+                                                            <div>
+                                                                <p className="font-medium text-slate-800">{user.full_name}</p>
+                                                                <p className="text-sm text-slate-500">{user.email}</p>
+                                                                <p className="text-xs text-slate-400 font-mono mt-0.5">{user.emp_id}</p>
+                                                            </div>
                                                         </div>
-                                                    ) : (
-                                                        <span className="text-xs text-slate-400 italic">Not Assigned</span>
-                                                    )}
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <label className="relative inline-flex items-center cursor-pointer">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={user.is_leave_allowed !== false} // Default true
-                                                            onChange={() => handleToggleLeaveAccess(user)}
-                                                            className="sr-only peer"
-                                                        />
-                                                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                                                    </label>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${user.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'
-                                                        }`}>
-                                                        {user.is_active ? 'Active' : 'Inactive'}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <div className="flex items-center justify-end gap-2">
-                                                        <button
-                                                            onClick={() => handleOpenModal(user)}
-                                                            className="p-2 rounded-lg text-slate-400 hover:text-[#991B1B] hover:bg-red-50 transition-colors"
-                                                        >
-                                                            <Edit2 size={18} />
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <div className="flex flex-col">
+                                                            <span className={`inline-flex self-start items-center px-2 py-0.5 rounded text-xs font-medium ${user.role === 'admin' || user.role === 'Admin' ? 'bg-purple-50 text-purple-700' : 'bg-blue-50 text-blue-700'
+                                                                }`}>
+                                                                {user.role || 'N/A'}
+                                                            </span>
+                                                            <span className="text-sm text-slate-600 mt-1">{user.designation || '-'}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-sm text-slate-600">
+                                                        {user.department || '-'}
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        {user.hod_id ? (
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] text-slate-500 font-bold overflow-hidden border border-slate-200">
+                                                                    {users.find(u => u.emp_id === user.hod_id)?.profile_picture ? (
+                                                                        <img src={users.find(u => u.emp_id === user.hod_id)?.profile_picture} className="w-full h-full object-cover" />
+                                                                    ) : (
+                                                                        users.find(u => u.emp_id === user.hod_id)?.full_name?.charAt(0) || '?'
+                                                                    )}
+                                                                </div>
+                                                                <span className="text-sm text-slate-700 font-medium">
+                                                                    {users.find(u => u.emp_id === user.hod_id)?.full_name || 'Unknown HOD'}
+                                                                </span>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-xs text-slate-400 italic">Not Assigned</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <label className="relative inline-flex items-center cursor-pointer">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={user.is_leave_allowed !== false} // Default true
+                                                                onChange={() => handleToggleLeaveAccess(user)}
+                                                                className="sr-only peer"
+                                                            />
+                                                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                                                        </label>
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${user.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'
+                                                            }`}>
+                                                            {user.is_active ? 'Active' : 'Inactive'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right">
+                                                        <div className="flex items-center justify-end gap-2">
+                                                            <button
+                                                                onClick={() => handleOpenModal(user)}
+                                                                className="p-2 rounded-lg text-slate-400 hover:text-[#991B1B] hover:bg-red-50 transition-colors"
+                                                            >
+                                                                <Edit2 size={18} />
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                            {Array.from({ length: Math.max(0, itemsPerPage - currentItems.length) }).map((_, index) => (
+                                                <tr key={`empty-${index}`} className="border-b border-transparent">
+                                                    <td colSpan="7" className="px-6 py-4 pointer-events-none">
+                                                        <div className="h-10"></div>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </>
                                     )}
                                 </tbody>
                             </table>
@@ -1300,8 +1327,8 @@ const Settings = () => {
                                                     value={formData.emp_id}
                                                     onChange={handleInputChange}
                                                     required
-                                                    disabled={!!editingUser}
-                                                    className={`w-full pl-10 pr-4 py-2 rounded-lg border ${errors.emp_id ? 'border-red-500 focus:border-red-500 focus:ring-red-200' : (editingUser ? 'bg-slate-50 text-slate-500 border-slate-200' : 'border-slate-300 focus:border-[#991B1B] focus:ring-[#991B1B]')} focus:ring-1 outline-none`}
+                                                    disabled={!!editingUser && !(currentUser?.role === 'admin' || currentUser?.role === 'Admin')}
+                                                    className={`w-full pl-10 pr-4 py-2 rounded-lg border ${errors.emp_id ? 'border-red-500 focus:border-red-500 focus:ring-red-200' : ((editingUser && !(currentUser?.role === 'admin' || currentUser?.role === 'Admin')) ? 'bg-slate-50 text-slate-500 border-slate-200' : 'border-slate-300 focus:border-[#991B1B] focus:ring-[#991B1B]')} focus:ring-1 outline-none`}
                                                     placeholder="Eg: 001"
                                                 />
                                             </div>
