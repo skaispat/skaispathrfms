@@ -71,6 +71,7 @@ const Settings = () => {
     const [editingUser, setEditingUser] = useState(null);
     const [uploading, setUploading] = useState(false);
     const [activeTab, setActiveTab] = useState('users'); // 'users' | 'hod'
+    const [selectedDepartment, setSelectedDepartment] = useState('All');
 
     // Pagination State
     const [currentPage, setCurrentPage] = useState(1);
@@ -268,9 +269,9 @@ const Settings = () => {
         }
 
         if (name === 'emp_id') {
-            const newEmpId = value.toUpperCase();
+            // Remove leading zeros and enforce uppercase (prevents 001, 0, etc.)
+            const newEmpId = value.replace(/^0+/, '').toUpperCase();
 
-            // Auto-capitalize EMP ID
             setFormData(prev => ({
                 ...prev,
                 [name]: newEmpId
@@ -597,12 +598,18 @@ const Settings = () => {
         }
     };
 
-    const filteredUsers = users.filter(user =>
-        user.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.emp_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.designation?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredUsers = users.filter(user => {
+        const matchesSearch = (
+            user.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            user.emp_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            user.designation?.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+        const matchesDepartment = selectedDepartment === 'All' || user.department === selectedDepartment;
+        return matchesSearch && matchesDepartment;
+    });
+
+    const uniqueDepartments = ['All', ...new Set(users.map(u => u.department).filter(Boolean).sort())];
 
     // Pagination Logic
     const indexOfLastItem = currentPage * itemsPerPage;
@@ -854,15 +861,29 @@ const Settings = () => {
                 </div>
 
                 {activeTab === 'users' && (
-                    <div className="relative w-full md:w-72">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                        <input
-                            type="text"
-                            placeholder="Search users..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 text-sm focus:border-[#991B1B] focus:ring-2 focus:ring-[#991B1B]/10 outline-none transition-all bg-white hover:bg-slate-50 focus:bg-white"
-                        />
+                    <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+                        <div className="relative w-full md:w-64">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                            <input
+                                type="text"
+                                placeholder="Search users..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 text-sm focus:border-[#991B1B] focus:ring-2 focus:ring-[#991B1B]/10 outline-none transition-all bg-white hover:bg-slate-50 focus:bg-white"
+                            />
+                        </div>
+                        <div className="relative w-full sm:w-48">
+                            <select
+                                value={selectedDepartment}
+                                onChange={(e) => setSelectedDepartment(e.target.value)}
+                                className="w-full pl-3 pr-8 py-2 rounded-xl border border-slate-200 text-sm focus:border-[#991B1B] focus:ring-2 focus:ring-[#991B1B]/10 outline-none transition-all bg-white hover:bg-slate-50 focus:bg-white appearance-none cursor-pointer"
+                            >
+                                {uniqueDepartments.map(dept => (
+                                    <option key={dept} value={dept}>{dept}</option>
+                                ))}
+                            </select>
+                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                        </div>
                     </div>
                 )}
             </div>
@@ -1041,9 +1062,9 @@ const Settings = () => {
                     )}
                 </div>
             ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full min-h-0">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-[calc(100vh-21rem)] min-h-0 overflow-hidden">
                     {/* Left List: Managers */}
-                    <div className="lg:col-span-4 bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden flex flex-col">
+                    <div className="lg:col-span-4 bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden flex flex-col h-full">
                         <div className="p-4 border-b border-slate-100">
                             <h3 className="font-bold text-lg text-slate-900 mb-4">Departments</h3>
                             <div className="relative">
@@ -1057,7 +1078,7 @@ const Settings = () => {
                                 />
                             </div>
                         </div>
-                        <div className="overflow-y-auto flex-1 p-2 space-y-1">
+                        <div className="overflow-y-auto flex-1 p-2 space-y-1 custom-scrollbar">
                             {filteredManagers.length === 0 ? (
                                 <p className="text-center text-slate-500 py-8 text-sm">No managers found.</p>
                             ) : (
@@ -1093,7 +1114,7 @@ const Settings = () => {
                     </div>
 
                     {/* Right Panel: Details and Team */}
-                    <div className="lg:col-span-8 bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden flex flex-col">
+                    <div className="lg:col-span-8 bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden flex flex-col h-full">
                         {selectedHod ? (
                             <>
                                 {/* HOD Header */}
@@ -1127,7 +1148,7 @@ const Settings = () => {
                                 </div>
 
                                 {/* Team List */}
-                                <div className="flex-1 overflow-y-auto p-6">
+                                <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
                                     <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4 flex items-center gap-2">
                                         Team Members
                                         <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-xs">{getEmployeesForHod(selectedHod.emp_id).length}</span>
@@ -1329,7 +1350,7 @@ const Settings = () => {
                                                     required
                                                     disabled={!!editingUser && !(currentUser?.role === 'admin' || currentUser?.role === 'Admin')}
                                                     className={`w-full pl-10 pr-4 py-2 rounded-lg border ${errors.emp_id ? 'border-red-500 focus:border-red-500 focus:ring-red-200' : ((editingUser && !(currentUser?.role === 'admin' || currentUser?.role === 'Admin')) ? 'bg-slate-50 text-slate-500 border-slate-200' : 'border-slate-300 focus:border-[#991B1B] focus:ring-[#991B1B]')} focus:ring-1 outline-none`}
-                                                    placeholder="Eg: 001"
+                                                    placeholder="Eg: 120"
                                                 />
                                             </div>
                                             {errors.emp_id && <p className="text-xs text-red-500 mt-1 ml-1">{errors.emp_id}</p>}
