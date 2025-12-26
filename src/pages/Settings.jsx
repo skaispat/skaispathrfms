@@ -594,7 +594,7 @@ const Settings = () => {
                 // Upsert to handle re-assignments
                 await supabase
                     .from('team_members')
-                    .upsert(updates, { onConflict: 'emp_id' });
+                    .upsert(updates);
             }
 
         } catch (error) {
@@ -656,7 +656,7 @@ const Settings = () => {
 
             const { error } = await supabase
                 .from('team_members')
-                .upsert(updates, { onConflict: 'emp_id' });
+                .upsert(updates);
 
             if (error) throw error;
 

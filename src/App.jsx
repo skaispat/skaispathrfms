@@ -36,7 +36,7 @@ function App() {
   return (
     <div className="gradient-bg min-h-screen">
       <Router>
-        <Toaster position="top-right" />
+        <Toaster position="top-right" containerStyle={{ zIndex: 99999 }} />
         <Routes>
           <Route path="/login" element={<Login />} />
           {/* <Route path="/leave-approve/:approverId/:id" element={<ApprovalForm />} /> */}
