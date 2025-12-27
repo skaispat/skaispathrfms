@@ -289,7 +289,7 @@ const LeaveManagement = () => {
         leave_date_start: formData.fromDate,
         leave_date_end: formData.toDate,
         remarks: formData.reason,
-        status: (formData.hodId === null || formData.hodId === 1 || formData.hodName === 'Pawan Tiwari' || formData.hodName === 'HR' || user.role === 'hr' || user.role === 'HR' || user.role === 'admin') ? 'Pending HR' : 'Pending HOD',
+        status: (formData.hodId === null) ? 'Pending HR' : 'Pending HOD',
         leave_type: formData.leaveType,
         hod_name: formData.hodName,
         designation: formData.designation,

@@ -248,7 +248,7 @@ const LeaveRequest = () => {
         leave_date_start: formData.fromDate,
         leave_date_end: formData.toDate,
         remarks: formData.reason,
-        status: (hodDetails.id === null || hodDetails.id === 1 || hodDetails.name === 'Pawan Tiwari' || hodDetails.name === 'HR' || hodDetails.department === 'HR' || user.is_hod) ? 'Pending HR' : 'Pending HOD',
+        status: (hodDetails.id === null) ? 'Pending HR' : 'Pending HOD',
         leave_type: formData.leaveType,
         hod_name: hodDetails.name === 'Not Assigned' ? null : hodDetails.name,
         designation: user.designation || user.role, // Fallback if designation missing
