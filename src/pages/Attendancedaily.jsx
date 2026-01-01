@@ -12,6 +12,8 @@ const Attendancedaily = () => {
   const [exportDate, setExportDate] = useState('');
   const [attendanceData, setAttendanceData] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
+
+  console.log(allUsers, "user ")
   const [loading, setLoading] = useState(false);
   const [tableLoading, setTableLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -32,7 +34,12 @@ const Attendancedaily = () => {
       // Fetch users for name mapping
       const { data: users, error: userError } = await supabase
         .from('users')
-        .select('emp_id, full_name, designation');
+        .select('emp_id, full_name, designation ,users(full_name)');
+
+
+      ////////console.log(users,"userdata")
+
+      console.log(users)
 
       if (userError) throw userError;
 
@@ -129,12 +136,64 @@ const Attendancedaily = () => {
         };
       });
 
-      // Sort by Date DESC
+      // Sort API data temporarily
       processedData.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-      console.log('Processed attendance data:', processedData);
-      setAttendanceData(processedData);
-      resultData = processedData;
+      // --- NEW: Fetch and Merge Database Data ---
+      const { data: dbData, error: dbError } = await supabase
+        .from('attendance_daily')
+        .select('*');
+
+      if (dbError) {
+        console.error('Error fetching DB data:', dbError);
+      }
+
+      const mappedDbData = (dbData || []).map(record => ({
+        year: record.year,
+        monthName: record.month_name,
+        date: record.date,
+        day: record.day,
+        companyName: record.company_name,
+        empIdCode: record.emp_id,
+        name: record.name,
+        designation: record.designation,
+        holiday: record.holiday,
+        workingDay: record.working_day,
+        nHoliday: record.n_holiday,
+        status: record.status,
+        inTime: record.in_time,
+        outTime: record.out_time,
+        workingHours: record.working_hours,
+        lateMinutes: 0,
+        earlyOut: record.early_out,
+        overtimeHours: record.overtime_hours,
+        punchMiss: record.punch_miss,
+        remarks: record.remarks
+      }));
+
+      // Merge: API data overwrites DB data for the same keys
+      const dataMap = new Map();
+
+      // 1. Add DB data
+      mappedDbData.forEach(item => {
+        const key = `${item.empIdCode}-${item.date}`;
+        dataMap.set(key, item);
+      });
+
+      // 2. Add/Overlay processed API data
+      processedData.forEach(item => {
+        const key = `${item.empIdCode}-${item.date}`;
+        dataMap.set(key, item);
+      });
+
+      const finalData = Array.from(dataMap.values());
+
+      // Sort by Date DESC
+      finalData.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+      console.log('Processed total attendance data (API + DB):', finalData);
+      setAttendanceData(finalData);
+      resultData = finalData;
 
       // Auto-sync after fetching
       syncToSupabase(processedData);
@@ -201,7 +260,7 @@ const Attendancedaily = () => {
         if (error) throw error;
       }
 
-      console.log("Auto-sync daily logs completed successfully");
+      ////////console.log("Auto-sync daily logs completed successfully");
       // Optional: toast.success("Daily attendance synced automatically");
     } catch (error) {
       console.error("Error auto-syncing daily data:", error);
@@ -217,7 +276,7 @@ const Attendancedaily = () => {
       const todaysData = data.filter(item => item.date === todayStr);
 
       if (todaysData.length === 0) {
-        console.log("No data for today to generate report.");
+        ////////console.log("No data for today to generate report.");
         if (isManual) toast.error(`No attendance data found for today (${todayStr})`);
         return;
       }
@@ -285,7 +344,7 @@ const Attendancedaily = () => {
 
         // Check if explicitly run this session OR saved in local storage
         if (lastRunRef.current !== todayStr && lastSaved !== todayStr) {
-          console.log("Triggering scheduled 11:50 AM attendance report...");
+          ////////console.log("Triggering scheduled 11:50 AM attendance report...");
           lastRunRef.current = todayStr; // Block immediate re-entry
 
           const freshData = await fetchAttendanceData();
