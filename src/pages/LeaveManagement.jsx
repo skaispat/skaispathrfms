@@ -369,11 +369,11 @@ const LeaveManagement = () => {
         if (formData.hodId && formData.hodPhoneNumber) {
           console.log("Sending WhatsApp message to HOD...");
           const whatsappResult = await sendWhatsappMessageToHod({
-            employeId: formData.employeeId,
+            employeId: formData.hodId,
             tableid: data[0].id,
             hodPhoneNumber: formData.hodPhoneNumber,
             employeeName: formData.employeeName,
-            who: "employee",
+            who: "hod",
           });
 
           if (whatsappResult.success) {
