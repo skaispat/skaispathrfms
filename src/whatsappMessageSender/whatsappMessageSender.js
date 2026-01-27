@@ -1,11 +1,15 @@
-
-
-
 export const sendWhatsappMessageToHod = async ({
   employeId,
   tableid,
   hodPhoneNumber,
   employeeName,
+  empId,
+  department,
+  leaveType,
+  fromDate,
+  toDate,
+  totalDays,
+  reason,
   who = "employee",
 }) => {
   try {
@@ -19,6 +23,13 @@ export const sendWhatsappMessageToHod = async ({
         body: JSON.stringify({
           whomtoSend: hodPhoneNumber,
           employeeName: employeeName,
+          empId: empId,
+          department: department,
+          leaveType: leaveType,
+          fromDate: fromDate,
+          toDate: toDate,
+          totalDays: totalDays,
+          reason: reason,
           who: who,
         }),
       },

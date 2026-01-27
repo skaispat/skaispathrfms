@@ -77,6 +77,7 @@ const LeaveManagement = () => {
     employeeId: "",
     employeeName: "",
     designation: "",
+    department: "",
     hodId: "",
     hodName: "",
     hodPhoneNumber: "",
@@ -129,7 +130,7 @@ const LeaveManagement = () => {
       // Fetch data from Supabase users table
       const { data, error } = await supabase
         .from("users")
-        .select("emp_id, full_name, designation");
+        .select("emp_id, full_name, designation, department");
 
       if (error) {
         throw new Error(error.message);
@@ -141,6 +142,7 @@ const LeaveManagement = () => {
           id: row.emp_id || "",
           name: row.full_name || "",
           designation: row.designation || "",
+          department: row.department || "",
           rowIndex: index + 1,
         }))
         .filter((emp) => emp.name && emp.id);
@@ -162,6 +164,7 @@ const LeaveManagement = () => {
       employeeName: selectedName,
       employeeId: selectedEmployee ? selectedEmployee.id : "",
       designation: selectedEmployee ? selectedEmployee.designation : "",
+      department: selectedEmployee ? selectedEmployee.department : "",
       hodName: "", // Reset HOD name while fetching
       hodId: "", // Reset HOD ID
     }));
@@ -216,6 +219,8 @@ const LeaveManagement = () => {
           .limit(1)
           .maybeSingle();
 
+        console.log(hrData, "data is coming formt eh ");
+        console.log(formData, "formdata");
         if (hrData) {
           setFormData((prev) => ({
             ...prev,
@@ -297,7 +302,6 @@ const LeaveManagement = () => {
   const handleSubmit = async (e) => {
     console.log("the trigger has been run ");
     e.preventDefault();
-  
 
     console.log("=== handleSubmit called ===");
     console.log("formData:", formData);
@@ -308,7 +312,8 @@ const LeaveManagement = () => {
       !formData.fromDate ||
       !formData.toDate ||
       !formData.reason ||
-      !formData.hodName
+      !formData.hodName ||
+      !formData.hodPhoneNumber
     ) {
       toast.error("Please fill all required fields");
       return;
@@ -368,13 +373,23 @@ const LeaveManagement = () => {
         );
         if (formData.hodId && formData.hodPhoneNumber) {
           console.log("Sending WhatsApp message to HOD...");
+          const totalDays = calculateDays(formData.fromDate, formData.toDate);
           const whatsappResult = await sendWhatsappMessageToHod({
             employeId: formData.hodId,
             tableid: data[0].id,
             hodPhoneNumber: formData.hodPhoneNumber,
             employeeName: formData.employeeName,
+            empId: formData.employeeId,
+            department: formData.department,
+            leaveType: formData.leaveType,
+            fromDate: formData.fromDate,
+            toDate: formData.toDate,
+            totalDays: totalDays,
+            reason: formData.reason,
             who: "hod",
           });
+
+          console.log(whatsappResult, "whatsapp result");
 
           if (whatsappResult.success) {
             toast.success("WhatsApp notification sent to HOD!");
@@ -397,6 +412,7 @@ const LeaveManagement = () => {
         employeeId: "",
         employeeName: "",
         designation: "",
+        department: "",
         hodId: "",
         hodName: "",
         hodPhoneNumber: "",
