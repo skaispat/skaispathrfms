@@ -320,6 +320,28 @@ const LeaveManagement = () => {
     }
 
     try {
+      // 🔴 Check if user already requested leave today
+      const today = new Date().toISOString().split("T")[0];
+
+      const { data: existingLeave, error: checkError } = await supabase
+        .from("leave_management")
+        .select("id")
+        .eq("emp_id", formData.employeeId)
+        .gte("created_at", `${today}T00:00:00`)
+        .lte("created_at", `${today}T23:59:59`)
+        .limit(1);
+
+      if (checkError) {
+        console.error(checkError);
+        toast.error("Unable to verify previous leave requests");
+        return;
+      }
+
+      if (existingLeave.length > 0) {
+        toast.error("Only 1 leave request allowed per day");
+        return;
+      }
+
       setSubmitting(true);
       console.log("Starting Supabase insert...");
 
@@ -671,10 +693,10 @@ const LeaveManagement = () => {
     return isNaN(date.getTime())
       ? dateString
       : date.toLocaleDateString("en-GB", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-        });
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      });
   };
 
   const filteredPendingLeaves = pendingLeaves.filter((item) => {
@@ -767,21 +789,20 @@ const LeaveManagement = () => {
                     (item.status === "Pending HR" ||
                       item.status === "Pending" ||
                       item.status === "Pending HOD"))) && (
-                  <input
-                    type="checkbox"
-                    checked={selectedRow?.id === item.id}
-                    onChange={() => handleCheckboxChange(item.id, item)}
-                    className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 border-slate-300"
-                  />
-                )}
+                    <input
+                      type="checkbox"
+                      checked={selectedRow?.id === item.id}
+                      onChange={() => handleCheckboxChange(item.id, item)}
+                      className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 border-slate-300"
+                    />
+                  )}
               </td>
               <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
                 <span
-                  className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                    item.status === "Pending" || item.status === "Pending HOD"
+                  className={`px-2 py-1 text-xs font-semibold rounded-full ${item.status === "Pending" || item.status === "Pending HOD"
                       ? "bg-yellow-100 text-yellow-800"
                       : "bg-blue-100 text-blue-800"
-                  }`}
+                    }`}
                 >
                   {item.status === "Pending" || item.status === "Pending HOD"
                     ? "Pending HOD"
@@ -837,9 +858,9 @@ const LeaveManagement = () => {
               {showHodColumn && (
                 <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
                   {user?.is_hod &&
-                  (item.status === "Pending" ||
-                    item.status === "Pending HOD") &&
-                  selectedRow?.id === item.id ? (
+                    (item.status === "Pending" ||
+                      item.status === "Pending HOD") &&
+                    selectedRow?.id === item.id ? (
                     <input
                       type="text"
                       placeholder="HOD Remarks"
@@ -858,8 +879,8 @@ const LeaveManagement = () => {
               {showHrColumn && (
                 <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
                   {isHr &&
-                  item.status === "Pending HR" &&
-                  selectedRow?.id === item.id ? (
+                    item.status === "Pending HR" &&
+                    selectedRow?.id === item.id ? (
                     <input
                       type="text"
                       placeholder="HR Remarks"
@@ -882,29 +903,28 @@ const LeaveManagement = () => {
                       item.status === "Pending HOD") &&
                     (item.hodName === user?.full_name ||
                       item.hodName === user?.Name)) ||
-                  ((user?.role === "hr" ||
-                    user?.role === "HR" ||
-                    user?.role === "admin" ||
-                    user.role === "Admin" ||
-                    user?.Admin === "Yes") &&
-                    (item.status === "Pending HR" ||
-                      item.status === "Pending" ||
-                      item.status === "Pending HOD")) ? (
+                    ((user?.role === "hr" ||
+                      user?.role === "HR" ||
+                      user?.role === "admin" ||
+                      user.role === "Admin" ||
+                      user?.Admin === "Yes") &&
+                      (item.status === "Pending HR" ||
+                        item.status === "Pending" ||
+                        item.status === "Pending HOD")) ? (
                     <>
                       <button
                         onClick={() => handleLeaveAction("accept")}
                         disabled={
                           !selectedRow || selectedRow.id !== item.id || loading
                         }
-                        className={`px-3 py-1.5 text-xs font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-sm ${
-                          !selectedRow || selectedRow.id !== item.id || loading
+                        className={`px-3 py-1.5 text-xs font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-sm ${!selectedRow || selectedRow.id !== item.id || loading
                             ? "opacity-75 cursor-not-allowed"
                             : ""
-                        }`}
+                          }`}
                       >
                         {loading &&
-                        selectedRow?.id === item.id &&
-                        actionInProgress === "accept" ? (
+                          selectedRow?.id === item.id &&
+                          actionInProgress === "accept" ? (
                           <span className="flex items-center">
                             <svg
                               className="w-3 h-3 mr-1 text-white animate-spin"
@@ -933,16 +953,15 @@ const LeaveManagement = () => {
                       <button
                         onClick={() => handleLeaveAction("rejected")}
                         disabled={selectedRow?.id !== item.id || loading}
-                        className={`px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors shadow-sm ${
-                          selectedRow?.id !== item.id ||
-                          (loading && actionInProgress === "accept")
+                        className={`px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors shadow-sm ${selectedRow?.id !== item.id ||
+                            (loading && actionInProgress === "accept")
                             ? "opacity-75 cursor-not-allowed"
                             : ""
-                        }`}
+                          }`}
                       >
                         {loading &&
-                        selectedRow?.id === item.id &&
-                        actionInProgress === "rejected" ? (
+                          selectedRow?.id === item.id &&
+                          actionInProgress === "rejected" ? (
                           <span className="flex items-center">
                             <svg
                               className="w-3 h-3 mr-1 text-white animate-spin"
@@ -970,26 +989,26 @@ const LeaveManagement = () => {
                       </button>
                     </>
                   ) : // Fallback for HR when status is Pending (HOD has not approved yet)
-                  (user?.role === "hr" ||
+                    (user?.role === "hr" ||
                       user?.role === "HR" ||
                       user?.role === "admin" ||
                       user?.role === "Admin" ||
                       user?.Admin === "Yes") &&
-                    (item.status === "Pending" ||
-                      item.status === "Pending HOD") ? (
-                    <span className="text-xs italic font-medium text-orange-500">
-                      Waiting for HOD
-                    </span>
-                  ) : (
-                    <span className="text-xs italic text-slate-400">
-                      {item.status === "Pending" ||
-                      item.status === "Pending HOD"
-                        ? "Waiting for HOD"
-                        : item.status === "Pending HR"
-                          ? "Waiting for HR"
-                          : "-"}
-                    </span>
-                  )}
+                      (item.status === "Pending" ||
+                        item.status === "Pending HOD") ? (
+                      <span className="text-xs italic font-medium text-orange-500">
+                        Waiting for HOD
+                      </span>
+                    ) : (
+                      <span className="text-xs italic text-slate-400">
+                        {item.status === "Pending" ||
+                          item.status === "Pending HOD"
+                          ? "Waiting for HOD"
+                          : item.status === "Pending HR"
+                            ? "Waiting for HR"
+                            : "-"}
+                      </span>
+                    )}
                 </div>
               </td>
             </tr>
@@ -1238,19 +1257,17 @@ const LeaveManagement = () => {
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`px-3 sm:px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 whitespace-nowrap ${
-                    isActive
+                  className={`px-3 sm:px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 whitespace-nowrap ${isActive
                       ? "bg-white text-indigo-600 shadow-sm border border-slate-100"
                       : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
-                  }`}
+                    }`}
                 >
                   {tab.charAt(0).toUpperCase() + tab.slice(1)}
                   <span
-                    className={`ml-2 py-0.5 px-2 rounded-full text-xs ${
-                      isActive
+                    className={`ml-2 py-0.5 px-2 rounded-full text-xs ${isActive
                         ? "bg-indigo-50 text-indigo-700"
                         : "bg-slate-200 text-slate-600"
-                    }`}
+                      }`}
                   >
                     {count}
                   </span>

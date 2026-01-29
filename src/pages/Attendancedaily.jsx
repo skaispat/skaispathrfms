@@ -575,24 +575,33 @@ const Attendancedaily = () => {
 
   // Download PDF function
   const downloadPDF = () => {
-    // Ensure strictly downloaded for the selected date only
     if (!exportDate) {
       toast.error("Please select a date to export");
       return;
     }
 
-    // Filter from the full dataset to ensure we get all records for that specific date
-    // regardless of other UI filters (like search or date ranges)
-    const dataToExport = attendanceData.filter(item => item.date === exportDate);
+    const today = new Date().toISOString().split("T")[0];
+
+    let finalDate = exportDate;
+
+    // If today → auto shift to yesterday
+    if (exportDate === today) {
+      const y = new Date();
+      y.setDate(y.getDate() - 1);
+      finalDate = y.toISOString().split("T")[0];
+    }
+
+    const dataToExport = attendanceData.filter(
+      item => item.date === finalDate
+    );
 
     if (dataToExport.length === 0) {
-      toast.error(`No attendance data found for ${exportDate}`);
+      toast.error(`No attendance data found for ${finalDate}`);
       return;
     }
 
-    const doc = generatePDFDoc(dataToExport, exportDate);
-    // Use the specific export date in the filename
-    doc.save(`attendance_report_${exportDate}.pdf`);
+    const doc = generatePDFDoc(dataToExport, finalDate);
+    doc.save(`attendance_report_${finalDate}.pdf`);
   };
 
   // Pagination Logic

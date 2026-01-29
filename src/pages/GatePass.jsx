@@ -352,6 +352,57 @@ const GatePass = () => {
         emp_name: formData.employeeName
       };
 
+      // 🔐 LIMIT CHECKS — PLACE BEFORE INSERT
+      const today = new Date();
+      const todayStart = new Date(today.setHours(0, 0, 0, 0)).toISOString();
+      const todayEnd = new Date(today.setHours(23, 59, 59, 999)).toISOString();
+
+      // Current month range
+      const firstDayOfMonth = new Date(
+        today.getFullYear(),today.getMonth(),1
+      ).toISOString();
+
+      const lastDayOfMonth = new Date(
+        today.getFullYear(),today.getMonth() + 1,
+        0,23,59,59
+      ).toISOString();
+
+      // 1️⃣ Check: One request per day
+      const { data: todayRequests, error: todayError } = await supabase
+        .from("gate_pass")
+        .select("id")
+        .eq("emp_id", formData.employeeId)
+        .gte("timestamp", todayStart)
+        .lte("timestamp", todayEnd);
+
+      if (todayError) {
+        toast.error("Error checking daily limit");
+        return;
+      }
+
+      if (todayRequests.length > 0) {
+        toast.error("Only 1 gate pass request allowed per day");
+        return;
+      }
+
+      // 2️⃣ Check: Max 3 per month
+      const { data: monthlyRequests, error: monthError } = await supabase
+        .from("gate_pass")
+        .select("id")
+        .eq("emp_id", formData.employeeId)
+        .gte("timestamp", firstDayOfMonth)
+        .lte("timestamp", lastDayOfMonth);
+
+      if (monthError) {
+        toast.error("Error checking monthly limit");
+        return;
+      }
+
+      if (monthlyRequests.length >= 3) {
+        toast.error("You can only request 3 gate passes in a month");
+        return;
+      }
+
       const { data, error } = await supabase.from('gate_pass').insert([insertData]).select();
       if (error) throw error;
 
