@@ -4,6 +4,7 @@ import { Clock, Calendar, Plus, User, FileText, CheckCircle, AlertCircle, X, His
 import toast from 'react-hot-toast';
 import { supabase } from '../supabaseClient';
 import useAuthStore from '../store/authStore';
+import { sendWhatsappMessageToHod } from "../whatsappMessageSender/whatsappMessageSender.js";
 
 const LeaveRequest = () => {
   const { user } = useAuthStore();
@@ -59,12 +60,12 @@ const LeaveRequest = () => {
         // Then get HOD name from users
         const { data: hodUser, error: hodUserError } = await supabase
           .from('users')
-          .select('full_name, department')
+          .select('full_name, department, phone_number')
           .eq('emp_id', teamData.hod_id)
           .single();
 
         if (hodUser) {
-          setHodDetails({ name: hodUser.full_name, id: teamData.hod_id, department: hodUser.department });
+          setHodDetails({ name: hodUser.full_name, id: teamData.hod_id, department: hodUser.department, phone_number: hodUser.phone_number });
         } else {
           setHodDetails({ name: 'Not Assigned', id: null });
         }
@@ -276,6 +277,44 @@ const LeaveRequest = () => {
           hr_id: hrDetails.id,
           hr_name: hrDetails.name
         });
+
+        console.log(
+          "WhatsApp Debug - hodId:",
+          hodDetails.id,
+          "hodPhoneNumber:",
+          hodDetails.phone_number,
+        );
+
+        if (hodDetails.id && hodDetails.phone_number) {
+                  console.log("Sending WhatsApp message to HOD...");
+                  const totalDays = calculateDays(formData.fromDate, formData.toDate);
+                  const whatsappResult = await sendWhatsappMessageToHod({
+                    employeId: hodDetails.id,
+                    tableid: data[0].id,
+                    hodPhoneNumber: hodDetails.phone_number,
+                    employeeName: user.full_name || user.Name,
+                    empId: user.emp_id,
+                    department: user.department || user.designation || user.role,
+                    leaveType: formData.leaveType,
+                    fromDate: formData.fromDate,
+                    toDate: formData.toDate,
+                    totalDays: totalDays,
+                    reason: formData.reason,
+                    who: "hod",
+                  });
+        
+                  console.log(whatsappResult, "whatsapp result");
+        
+                  if (whatsappResult.success) {
+                    toast.success("WhatsApp notification sent to HOD!");
+                  } else {
+                    console.error(
+                      "WhatsApp notification failed:",
+                      whatsappResult.error,
+                    );
+                    // Don't show error toast as leave request was successful
+                  }
+                }
       }
 
       if (error) throw error;
