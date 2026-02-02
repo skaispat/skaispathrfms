@@ -1,19 +1,25 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { Search, Download, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
-import toast from 'react-hot-toast';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import { supabase } from '../supabaseClient';
+import React, { useEffect, useState, useRef } from "react";
+import {
+  Search,
+  Download,
+  ChevronLeft,
+  ChevronRight,
+  Calendar,
+} from "lucide-react";
+import toast from "react-hot-toast";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import { supabase } from "../supabaseClient";
 
 const Attendancedaily = () => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [exportDate, setExportDate] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [exportDate, setExportDate] = useState("");
   const [attendanceData, setAttendanceData] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
 
-  console.log(allUsers, "user ")
+  console.log(allUsers, "user ");
   const [loading, setLoading] = useState(false);
   const [tableLoading, setTableLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -33,25 +39,26 @@ const Attendancedaily = () => {
     try {
       // Fetch users for name mapping
       const { data: users, error: userError } = await supabase
-        .from('users')
-        .select('emp_id, full_name, designation ,users(full_name)');
-
+        .from("users")
+        .select("emp_id, full_name, designation ,users(full_name)");
 
       ////////console.log(users,"userdata")
 
-      console.log(users)
+      console.log(users);
 
       if (userError) throw userError;
 
       setAllUsers(users);
 
       const userMap = {};
-      users.forEach(user => {
+      users.forEach((user) => {
         userMap[user.emp_id] = user;
       });
 
       const year = new Date().getFullYear();
-      const response = await fetch(`https://sohcm.com/SmartApp_ess/api/SwipeDetails/GetDeviceLogs?APIKey=341813122509&AccountName=SKAISPAT&FromDate=${year}-01-01&ToDate=${year}-12-31`);
+      const response = await fetch(
+        `https://sohcm.com/SmartApp_ess/api/SwipeDetails/GetDeviceLogs?APIKey=341813122509&AccountName=SKAISPAT&FromDate=${year}-01-01&ToDate=${year}-12-31`,
+      );
 
       if (!response.ok) {
         throw new Error(`API Error: ${response.statusText}`);
@@ -62,8 +69,8 @@ const Attendancedaily = () => {
       // Process raw logs into daily attendance
       const groupedData = {};
 
-      data.forEach(log => {
-        const dateStr = log.LogDate.split('T')[0];
+      data.forEach((log) => {
+        const dateStr = log.LogDate.split("T")[0];
         const userId = log.UserId;
         const key = `${userId}-${dateStr}`;
 
@@ -71,25 +78,25 @@ const Attendancedaily = () => {
           groupedData[key] = {
             userId: userId,
             date: dateStr,
-            logs: []
+            logs: [],
           };
         }
         groupedData[key].logs.push(log.LogDate);
       });
 
-      const processedData = Object.values(groupedData).map(item => {
+      const processedData = Object.values(groupedData).map((item) => {
         item.logs.sort(); // Ensure chronological order
         const firstLog = item.logs[0];
         const lastLog = item.logs[item.logs.length - 1];
 
-        const inTime = firstLog.split('T')[1];
-        const outTime = item.logs.length > 1 ? lastLog.split('T')[1] : null;
+        const inTime = firstLog.split("T")[1];
+        const outTime = item.logs.length > 1 ? lastLog.split("T")[1] : null;
 
-        let workingHours = '';
+        let workingHours = "";
         let hours = 0;
         let minutes = 0;
 
-        let overtimeHours = '0h 0m';
+        let overtimeHours = "0h 0m";
 
         if (outTime) {
           const start = new Date(firstLog);
@@ -114,25 +121,25 @@ const Attendancedaily = () => {
 
         return {
           year: dateObj.getFullYear(),
-          monthName: dateObj.toLocaleString('default', { month: 'long' }),
+          monthName: dateObj.toLocaleString("default", { month: "long" }),
           date: item.date,
-          day: dateObj.toLocaleString('default', { weekday: 'long' }),
-          companyName: 'SKAISPAT',
+          day: dateObj.toLocaleString("default", { weekday: "long" }),
+          companyName: "SKAISPAT",
           empIdCode: userInfo.emp_id || item.userId,
           name: userInfo.full_name || `User ${item.userId}`,
-          designation: userInfo.designation || '-', // Not available in API, taking from DB
-          holiday: 'No',
-          workingDay: 'Yes',
-          nHoliday: '',
-          status: 'P',
+          designation: userInfo.designation || "-", // Not available in API, taking from DB
+          holiday: "No",
+          workingDay: "Yes",
+          nHoliday: "",
+          status: "P",
           inTime: inTime,
-          outTime: outTime || '',
+          outTime: outTime || "",
           workingHours: workingHours,
           lateMinutes: 0,
           earlyOut: 0,
           overtimeHours: overtimeHours,
-          punchMiss: outTime ? 'No' : 'Yes',
-          remarks: item.logs.length === 1 ? 'Single Punch' : ''
+          punchMiss: outTime ? "No" : "Yes",
+          remarks: item.logs.length === 1 ? "Single Punch" : "",
         };
       });
 
@@ -141,14 +148,14 @@ const Attendancedaily = () => {
 
       // --- NEW: Fetch and Merge Database Data ---
       const { data: dbData, error: dbError } = await supabase
-        .from('attendance_daily')
-        .select('*');
+        .from("attendance_daily")
+        .select("*");
 
       if (dbError) {
-        console.error('Error fetching DB data:', dbError);
+        console.error("Error fetching DB data:", dbError);
       }
 
-      const mappedDbData = (dbData || []).map(record => ({
+      const mappedDbData = (dbData || []).map((record) => ({
         year: record.year,
         monthName: record.month_name,
         date: record.date,
@@ -168,20 +175,20 @@ const Attendancedaily = () => {
         earlyOut: record.early_out,
         overtimeHours: record.overtime_hours,
         punchMiss: record.punch_miss,
-        remarks: record.remarks
+        remarks: record.remarks,
       }));
 
       // Merge: API data overwrites DB data for the same keys
       const dataMap = new Map();
 
       // 1. Add DB data
-      mappedDbData.forEach(item => {
+      mappedDbData.forEach((item) => {
         const key = `${item.empIdCode}-${item.date}`;
         dataMap.set(key, item);
       });
 
       // 2. Add/Overlay processed API data
-      processedData.forEach(item => {
+      processedData.forEach((item) => {
         const key = `${item.empIdCode}-${item.date}`;
         dataMap.set(key, item);
       });
@@ -191,15 +198,14 @@ const Attendancedaily = () => {
       // Sort by Date DESC
       finalData.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-      console.log('Processed total attendance data (API + DB):', finalData);
+      console.log("Processed total attendance data (API + DB):", finalData);
       setAttendanceData(finalData);
       resultData = finalData;
 
       // Auto-sync after fetching
       syncToSupabase(processedData);
-
     } catch (error) {
-      console.error('Error fetching Report Daily data from API:', error);
+      console.error("Error fetching Report Daily data from API:", error);
       setError(error.message);
     } finally {
       setLoading(false);
@@ -225,7 +231,7 @@ const Attendancedaily = () => {
       };
 
       // Format data for Supabase
-      const recordsToUpsert = dataToSync.map(item => ({
+      const recordsToUpsert = dataToSync.map((item) => ({
         emp_id: item.empIdCode,
         date: item.date,
         year: item.year,
@@ -236,16 +242,16 @@ const Attendancedaily = () => {
         designation: item.designation,
         holiday: item.holiday,
         working_day: item.workingDay,
-        n_holiday: item.nHoliday || '',
+        n_holiday: item.nHoliday || "",
         status: item.status,
         in_time: item.inTime,
         out_time: item.outTime,
         working_hours: item.workingHours,
         present_minutes: parseDuration(item.workingHours),
-        early_out: item.earlyOut || '0',
+        early_out: item.earlyOut || "0",
         overtime_hours: item.overtimeHours,
         punch_miss: item.punchMiss,
-        remarks: item.remarks
+        remarks: item.remarks,
       }));
 
       // Upsert data in batches
@@ -254,8 +260,8 @@ const Attendancedaily = () => {
         const batch = recordsToUpsert.slice(i, i + batchSize);
         // Using upsert with conflict on emp_id and date
         const { error } = await supabase
-          .from('attendance_daily')
-          .upsert(batch, { onConflict: 'emp_id, date' });
+          .from("attendance_daily")
+          .upsert(batch, { onConflict: "emp_id, date" });
 
         if (error) throw error;
       }
@@ -272,55 +278,59 @@ const Attendancedaily = () => {
 
   const uploadDailyReport = async (data, isManual = false) => {
     try {
-      const todayStr = new Date().toISOString().split('T')[0];
-      const todaysData = data.filter(item => item.date === todayStr);
+      const todayStr = new Date().toISOString().split("T")[0];
+      const todaysData = data.filter((item) => item.date === todayStr);
 
       if (todaysData.length === 0) {
         ////////console.log("No data for today to generate report.");
-        if (isManual) toast.error(`No attendance data found for today (${todayStr})`);
+        if (isManual)
+          toast.error(`No attendance data found for today (${todayStr})`);
         return;
       }
 
       const doc = generatePDFDoc(todaysData, todayStr);
-      const pdfBlob = doc.output('blob');
+      const pdfBlob = doc.output("blob");
       const now = new Date();
 
       // Format current time for DB and Filename
       let hours = now.getHours();
-      const minutes = String(now.getMinutes()).padStart(2, '0');
-      const seconds = String(now.getSeconds()).padStart(2, '0');
-      const ampm = hours >= 12 ? 'PM' : 'AM';
+      const minutes = String(now.getMinutes()).padStart(2, "0");
+      const seconds = String(now.getSeconds()).padStart(2, "0");
+      const ampm = hours >= 12 ? "PM" : "AM";
       hours = hours % 12;
       hours = hours ? hours : 12; // the hour '0' should be '12'
       const timeStr = `${hours}:${minutes} ${ampm}`;
 
       // Format Date for filename (DD-MM-YYYY)
-      const [y, m, d] = todayStr.split('-');
+      const [y, m, d] = todayStr.split("-");
       const dateForFilename = `${d}-${m}-${y}`;
 
       // Filename: AttendanceData_DD-MM-YYYY_Time_HH-MM-SS_AM/PM.pdf
       const fileName = `AttendanceData_${dateForFilename}_Time_${hours}-${minutes}-${seconds}_${ampm}.pdf`;
 
       const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('attendance_docs')
+        .from("attendance_docs")
         .upload(fileName, pdfBlob, {
-          contentType: 'application/pdf',
-          upsert: false
+          contentType: "application/pdf",
+          upsert: false,
         });
 
       if (uploadError) throw uploadError;
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('attendance_docs')
-        .getPublicUrl(fileName);
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("attendance_docs").getPublicUrl(fileName);
 
-      const { error: funcError } = await supabase.functions.invoke('save-daily-report', {
-        body: {
-          date: todayStr,
-          pdf_link: publicUrl,
-          time: timeStr
-        }
-      });
+      const { error: funcError } = await supabase.functions.invoke(
+        "save-daily-report",
+        {
+          body: {
+            date: todayStr,
+            pdf_link: publicUrl,
+            time: timeStr,
+          },
+        },
+      );
 
       if (funcError) throw funcError;
 
@@ -333,14 +343,56 @@ const Attendancedaily = () => {
 
   // Schedule daily sync and report upload
   const lastRunRef = useRef(null);
+  const lastSyncRef = useRef(null); // New ref for 6 AM sync
 
+  // 🕕 6 AM Daily Sync - External API to Database
+  useEffect(() => {
+    const checkSyncTime = async () => {
+      const now = new Date();
+      // Check for 6:00 AM
+      if (now.getHours() === 6 && now.getMinutes() === 0) {
+        const todayStr = now.toDateString();
+        const lastSynced = localStorage.getItem("last_6am_sync_date");
+
+        // Only run once per day
+        if (lastSyncRef.current !== todayStr && lastSynced !== todayStr) {
+          console.log(
+            "🕕 Triggering scheduled 6:00 AM attendance data sync...",
+          );
+          lastSyncRef.current = todayStr; // Block immediate re-entry
+
+          try {
+            const freshData = await fetchAttendanceData();
+
+            if (freshData && freshData.length > 0) {
+              console.log(
+                `✅ 6 AM Sync completed: ${freshData.length} records synced to database`,
+              );
+              // Persist success to prevent re-run on reload
+              localStorage.setItem("last_6am_sync_date", todayStr);
+              toast.success("6 AM: Attendance data synced successfully!");
+            }
+          } catch (error) {
+            console.error("❌ 6 AM Sync failed:", error);
+            toast.error("6 AM sync failed: " + error.message);
+          }
+        }
+      }
+    };
+
+    checkSyncTime(); // Check immediately on mount
+    const syncTimer = setInterval(checkSyncTime, 10000); // Check every 10s
+    return () => clearInterval(syncTimer);
+  }, []);
+
+  // 🕚 11:50 AM Daily Report Upload
   useEffect(() => {
     const checkTime = async () => {
       const now = new Date();
       // Check for 11:50 AM
       if (now.getHours() === 11 && now.getMinutes() === 50) {
         const todayStr = now.toDateString();
-        const lastSaved = localStorage.getItem('last_daily_report_date');
+        const lastSaved = localStorage.getItem("last_daily_report_date");
 
         // Check if explicitly run this session OR saved in local storage
         if (lastRunRef.current !== todayStr && lastSaved !== todayStr) {
@@ -352,7 +404,7 @@ const Attendancedaily = () => {
           if (freshData && freshData.length > 0) {
             await uploadDailyReport(freshData, false);
             // Persist success to prevent re-run on reload
-            localStorage.setItem('last_daily_report_date', todayStr);
+            localStorage.setItem("last_daily_report_date", todayStr);
           }
         }
       }
@@ -368,7 +420,7 @@ const Attendancedaily = () => {
   }, []);
 
   // Filter data based on search term and date range
-  const filteredData = attendanceData.filter(item => {
+  const filteredData = attendanceData.filter((item) => {
     // Text search filter - now includes additional columns
     const matchesSearch =
       item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -401,28 +453,70 @@ const Attendancedaily = () => {
   const generatePDFDoc = (originalDataToExport, dateExp) => {
     // Target Employee IDs filtered specifically for this report
     const targetEmpIds = [
-      '3', '219', '53', '1', '321', '200', '10', '11', '175', '16',
-      '245', '233', '217', '152', '294', '261', '339', '283', '281', '363',
-      '176', '238', '112', '170', '122', '104', '86', '235', '341', '246',
-      '227', '242', '356', '172', '501', '504', '180', '199', '522', '519',
-      '145', '78', '117', '191', '134', '275', '253'
+      "3",
+      "219",
+      "53",
+      "1",
+      "321",
+      "200",
+      "10",
+      "11",
+      "175",
+      "16",
+      "245",
+      "233",
+      "217",
+      "152",
+      "294",
+      "261",
+      "339",
+      "283",
+      "281",
+      "363",
+      "176",
+      "238",
+      "112",
+      "170",
+      "122",
+      "104",
+      "86",
+      "235",
+      "341",
+      "246",
+      "227",
+      "242",
+      "356",
+      "172",
+      "501",
+      "504",
+      "180",
+      "199",
+      "522",
+      "519",
+      "145",
+      "78",
+      "117",
+      "191",
+      "134",
+      "275",
+      "253",
     ];
 
     // Filter data to only include target employees
-    const dataToExport = originalDataToExport.filter(item =>
-      targetEmpIds.includes(String(item.empIdCode))
+    const dataToExport = originalDataToExport.filter((item) =>
+      targetEmpIds.includes(String(item.empIdCode)),
     );
 
     const doc = new jsPDF({
-      orientation: 'landscape',
-      unit: 'mm',
-      format: 'a4'
+      orientation: "landscape",
+      unit: "mm",
+      format: "a4",
     });
 
     // Helper to format date (YYYY-MM-DD -> DD/MM/YYYY)
     const formatDate = (dateStr) => {
-      if (!dateStr) return '';
-      const parts = dateStr.split('-');
+      if (!dateStr) return "";
+      const parts = dateStr.split("-");
       if (parts.length === 3) {
         const [y, m, d] = parts;
         return `${d}/${m}/${y}`;
@@ -432,21 +526,21 @@ const Attendancedaily = () => {
 
     // Title
     doc.setFontSize(16);
-    doc.text('Daily Attendance Logs', 14, 15);
+    doc.text("Daily Attendance Logs", 14, 15);
 
     // Metadata
     doc.setFontSize(10);
     doc.setTextColor(100);
 
     const today = new Date();
-    const day = String(today.getDate()).padStart(2, '0');
-    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, "0");
+    const month = String(today.getMonth() + 1).padStart(2, "0");
     const year = today.getFullYear();
 
     // Format time (HH:MM AM/PM)
     let hours = today.getHours();
-    const minutes = String(today.getMinutes()).padStart(2, '0');
-    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const minutes = String(today.getMinutes()).padStart(2, "0");
+    const ampm = hours >= 12 ? "PM" : "AM";
     hours = hours % 12;
     hours = hours ? hours : 12; // the hour '0' should be '12'
     const timeStr = `${hours}:${minutes} ${ampm}`;
@@ -458,31 +552,42 @@ const Attendancedaily = () => {
     if (dateExp) {
       doc.text(`Date: ${formatDate(dateExp)}`, 14, 25);
     } else if (startDate || endDate) {
-      doc.text(`Range: ${formatDate(startDate) || 'Start'} to ${formatDate(endDate) || 'End'}`, 14, 25);
+      doc.text(
+        `Range: ${formatDate(startDate) || "Start"} to ${formatDate(endDate) || "End"}`,
+        14,
+        25,
+      );
     }
 
     doc.text(`Total Entries: ${dataToExport.length}`, 14, 30);
 
     // Prepare table data
     const tableHeaders = [
-      'Date', 'Emp ID', 'Name',
-      'Day', 'In', 'Out',
-      'Hrs', 'OT', 'Status',
-      'Holiday', 'Remarks'
+      "Date",
+      "Emp ID",
+      "Name",
+      "Day",
+      "In",
+      "Out",
+      "Hrs",
+      "OT",
+      "Status",
+      "Holiday",
+      "Remarks",
     ];
 
-    const tableData = dataToExport.map(item => [
+    const tableData = dataToExport.map((item) => [
       formatDate(item.date),
       item.empIdCode,
       item.name,
       item.day,
-      item.inTime || '-',
-      item.outTime || '-',
-      item.workingHours || '-',
-      item.overtimeHours || '-',
+      item.inTime || "-",
+      item.outTime || "-",
+      item.workingHours || "-",
+      item.overtimeHours || "-",
       item.status,
-      item.holiday === 'Yes' ? 'Yes' : 'No',
-      item.remarks || ''
+      item.holiday === "Yes" ? "Yes" : "No",
+      item.remarks || "",
     ]);
 
     autoTable(doc, {
@@ -492,31 +597,34 @@ const Attendancedaily = () => {
       styles: {
         fontSize: 9,
         cellPadding: 2,
-        overflow: 'linebreak'
+        overflow: "linebreak",
       },
       headStyles: {
         fillColor: [79, 70, 229], // Indigo-600 to match UI
         textColor: 255,
-        fontStyle: 'bold'
+        fontStyle: "bold",
       },
       alternateRowStyles: {
-        fillColor: [249, 250, 251] // Gray-50
+        fillColor: [249, 250, 251], // Gray-50
       },
       columnStyles: {
         2: { cellWidth: 30 }, // Name
-        10: { cellWidth: 40 } // Remarks
-      }
+        10: { cellWidth: 40 }, // Remarks
+      },
     });
 
     // --- Absent Employees Table ---
     if (allUsers.length > 0) {
       // Get IDs of employees present in the current export data
-      const presentEmpIds = new Set(dataToExport.map(item => String(item.empIdCode)));
+      const presentEmpIds = new Set(
+        dataToExport.map((item) => String(item.empIdCode)),
+      );
 
       // Filter all users to find those not present AND in target list
-      const absentEmployees = allUsers.filter(user =>
-        !presentEmpIds.has(String(user.emp_id)) &&
-        targetEmpIds.includes(String(user.emp_id))
+      const absentEmployees = allUsers.filter(
+        (user) =>
+          !presentEmpIds.has(String(user.emp_id)) &&
+          targetEmpIds.includes(String(user.emp_id)),
       );
 
       if (absentEmployees.length > 0) {
@@ -525,7 +633,7 @@ const Attendancedaily = () => {
 
         doc.setFontSize(14);
         doc.setTextColor(220, 38, 38); // Red color for title
-        doc.text('Absent Employees', 14, currentY);
+        doc.text("Absent Employees", 14, currentY);
 
         // Metadata for Absent Section
         doc.setFontSize(10);
@@ -540,32 +648,32 @@ const Attendancedaily = () => {
         currentY += 5;
         doc.text(`Total Entries: ${absentEmployees.length}`, 14, currentY);
 
-        const absentTableData = absentEmployees.map(user => [
+        const absentTableData = absentEmployees.map((user) => [
           formatDate(dateExp),
           user.emp_id,
           user.full_name,
-          user.designation || '-',
-          'Absent'
+          user.designation || "-",
+          "Absent",
         ]);
 
         autoTable(doc, {
           startY: currentY + 5,
-          head: [['Date', 'Emp ID', 'Name', 'Designation', 'Status']],
+          head: [["Date", "Emp ID", "Name", "Designation", "Status"]],
           body: absentTableData,
-          theme: 'grid',
+          theme: "grid",
           styles: {
             fontSize: 9,
             cellPadding: 2,
-            overflow: 'linebreak'
+            overflow: "linebreak",
           },
           headStyles: {
             fillColor: [220, 38, 38], // Red Header
             textColor: 255,
-            fontStyle: 'bold'
+            fontStyle: "bold",
           },
           alternateRowStyles: {
-            fillColor: [254, 242, 242] // Light red background for rows
-          }
+            fillColor: [254, 242, 242], // Light red background for rows
+          },
         });
       }
     }
@@ -592,7 +700,7 @@ const Attendancedaily = () => {
     }
 
     const dataToExport = attendanceData.filter(
-      item => item.date === finalDate
+      (item) => item.date === finalDate,
     );
 
     if (dataToExport.length === 0) {
@@ -620,17 +728,21 @@ const Attendancedaily = () => {
   }, [searchTerm, startDate, endDate]);
 
   return (
-    <div className="h-full flex flex-col gap-6 overflow-hidden">
+    <div className="flex flex-col h-full gap-6 overflow-hidden">
       {/* Header Section */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between shrink-0">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Daily Attendance Logs</h1>
-          <p className="text-slate-500 mt-1 text-sm">Detailed daily punch records and status for all employees</p>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+            Daily Attendance Logs
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Detailed daily punch records and status for all employees
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Calendar className="h-4 w-4 text-slate-400" />
+            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+              <Calendar className="w-4 h-4 text-slate-400" />
             </div>
             <input
               type="date"
@@ -646,23 +758,26 @@ const Attendancedaily = () => {
             disabled={!exportDate || loading}
             className="group inline-flex items-center justify-center px-4 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg shadow-sm hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 active:scale-95"
           >
-            <Download size={16} className="mr-2 group-hover:-translate-y-0.5 transition-transform" />
+            <Download
+              size={16}
+              className="mr-2 group-hover:-translate-y-0.5 transition-transform"
+            />
             Export PDF
           </button>
-
         </div>
       </div>
 
       {/* Filters Card */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 shrink-0">
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-
+      <div className="p-4 bg-white border shadow-sm rounded-xl border-slate-200 shrink-0">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-12">
           {/* Search */}
-          <div className="md:col-span-5 relative">
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Search</label>
+          <div className="relative md:col-span-5">
+            <label className="block mb-2 text-xs font-semibold tracking-wider uppercase text-slate-500">
+              Search
+            </label>
             <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search className="h-4 w-4 text-slate-400" />
+              <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                <Search className="w-4 h-4 text-slate-400" />
               </div>
               <input
                 type="text"
@@ -675,12 +790,14 @@ const Attendancedaily = () => {
           </div>
 
           {/* Date Ranges */}
-          <div className="md:col-span-7 grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-4 md:col-span-7">
             <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Start Date</label>
+              <label className="block mb-2 text-xs font-semibold tracking-wider uppercase text-slate-500">
+                Start Date
+              </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Calendar className="h-4 w-4 text-slate-400" />
+                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                  <Calendar className="w-4 h-4 text-slate-400" />
                 </div>
                 <input
                   type="date"
@@ -693,10 +810,12 @@ const Attendancedaily = () => {
               </div>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">End Date</label>
+              <label className="block mb-2 text-xs font-semibold tracking-wider uppercase text-slate-500">
+                End Date
+              </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Calendar className="h-4 w-4 text-slate-400" />
+                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                  <Calendar className="w-4 h-4 text-slate-400" />
                 </div>
                 <input
                   type="date"
@@ -713,40 +832,60 @@ const Attendancedaily = () => {
       </div>
 
       {/* Table Section */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex-1 flex flex-col">
-        <div className="overflow-auto flex-1 custom-scrollbar">
-          <table className="min-w-full whitespace-nowrap text-left text-sm">
-            <thead className="bg-slate-50 sticky top-0 z-10 border-b border-slate-200">
+      <div className="flex flex-col flex-1 overflow-hidden bg-white border shadow-sm rounded-xl border-slate-200">
+        <div className="flex-1 overflow-auto custom-scrollbar">
+          <table className="min-w-full text-sm text-left whitespace-nowrap">
+            <thead className="sticky top-0 z-10 border-b bg-slate-50 border-slate-200">
               <tr>
                 {[
-                  "Date", "Day", "Emp ID", "Name", "In Time", "Out Time",
-                  "Working Hrs", "Status", "Holiday", "Remarks",
-                  "Designation", "Company", "Overtime", "Punch Miss"
+                  "Date",
+                  "Day",
+                  "Emp ID",
+                  "Name",
+                  "In Time",
+                  "Out Time",
+                  "Working Hrs",
+                  "Status",
+                  "Holiday",
+                  "Remarks",
+                  "Designation",
+                  "Company",
+                  "Overtime",
+                  "Punch Miss",
                 ].map((header) => (
-                  <th key={header} className="px-6 py-4 first:pl-8 last:pr-8 font-semibold text-slate-500 uppercase tracking-wider text-xs">{header}</th>
+                  <th
+                    key={header}
+                    className="px-6 py-4 text-xs font-semibold tracking-wider uppercase first:pl-8 last:pr-8 text-slate-500"
+                  >
+                    {header}
+                  </th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
+            <tbody className="bg-white divide-y divide-slate-100">
               {tableLoading ? (
                 <tr>
                   <td colSpan="14" className="px-6 py-24 text-center">
                     <div className="flex flex-col items-center justify-center space-y-3">
-                      <div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-                      <span className="text-slate-500 font-medium">Loading daily records...</span>
+                      <div className="w-8 h-8 border-2 border-indigo-600 rounded-full border-t-transparent animate-spin"></div>
+                      <span className="font-medium text-slate-500">
+                        Loading daily records...
+                      </span>
                     </div>
                   </td>
                 </tr>
               ) : error ? (
                 <tr>
                   <td colSpan="14" className="px-6 py-12 text-center">
-                    <div className="inline-flex items-center px-4 py-2 rounded-lg bg-red-50 text-red-600 mb-4">
-                      <span className="font-medium">Error loading data: {error}</span>
+                    <div className="inline-flex items-center px-4 py-2 mb-4 text-red-600 rounded-lg bg-red-50">
+                      <span className="font-medium">
+                        Error loading data: {error}
+                      </span>
                     </div>
                     <br />
                     <button
                       onClick={fetchAttendanceData}
-                      className="px-4 py-2 bg-slate-100 text-slate-700 font-medium rounded-lg hover:bg-slate-200 transition-colors"
+                      className="px-4 py-2 font-medium transition-colors rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200"
                     >
                       Try Again
                     </button>
@@ -754,9 +893,14 @@ const Attendancedaily = () => {
                 </tr>
               ) : currentItems.length > 0 ? (
                 currentItems.map((item, index) => (
-                  <tr key={index} className="group hover:bg-slate-50 transition-colors duration-150">
-                    <td className="px-6 py-4 pl-8 text-slate-900 font-medium">
-                      {item.date ? item.date.split('-').reverse().join('/') : '-'}
+                  <tr
+                    key={index}
+                    className="transition-colors duration-150 group hover:bg-slate-50"
+                  >
+                    <td className="px-6 py-4 pl-8 font-medium text-slate-900">
+                      {item.date
+                        ? item.date.split("-").reverse().join("/")
+                        : "-"}
                     </td>
                     <td className="px-6 py-4 text-slate-500">{item.day}</td>
                     <td className="px-6 py-4">
@@ -764,36 +908,66 @@ const Attendancedaily = () => {
                         {item.empIdCode}
                       </span>
                     </td>
-                    <td className="px-6 py-4 font-semibold text-slate-900 group-hover:text-indigo-700 transition-colors">
+                    <td className="px-6 py-4 font-semibold transition-colors text-slate-900 group-hover:text-indigo-700">
                       {item.name}
                     </td>
-                    <td className="px-6 py-4 text-emerald-600 font-medium">{item.inTime || '-'}</td>
-                    <td className="px-6 py-4 text-red-600 font-medium">{item.outTime || '-'}</td>
-                    <td className="px-6 py-4 font-bold text-slate-700">{item.workingHours || '-'}</td>
+                    <td className="px-6 py-4 font-medium text-emerald-600">
+                      {item.inTime || "-"}
+                    </td>
+                    <td className="px-6 py-4 font-medium text-red-600">
+                      {item.outTime || "-"}
+                    </td>
+                    <td className="px-6 py-4 font-bold text-slate-700">
+                      {item.workingHours || "-"}
+                    </td>
                     <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${item.status === 'P' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                        }`}>
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          item.status === "P"
+                            ? "bg-green-100 text-green-800"
+                            : "bg-red-100 text-red-800"
+                        }`}
+                      >
                         {item.status}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-slate-500">{item.holiday}</td>
-                    <td className="px-6 py-4 text-slate-500 max-w-[200px] truncate" title={item.remarks}>{item.remarks}</td>
+                    <td
+                      className="px-6 py-4 text-slate-500 max-w-[200px] truncate"
+                      title={item.remarks}
+                    >
+                      {item.remarks}
+                    </td>
 
                     {/* Secondary Info */}
-                    <td className="px-6 py-4 text-slate-400 text-xs">{item.designation}</td>
-                    <td className="px-6 py-4 text-slate-400 text-xs">{item.companyName}</td>
-                    <td className="px-6 py-4 text-slate-500">{item.overtimeHours}</td>
-                    <td className="px-6 py-4 pr-8 text-slate-500">{item.punchMiss}</td>
+                    <td className="px-6 py-4 text-xs text-slate-400">
+                      {item.designation}
+                    </td>
+                    <td className="px-6 py-4 text-xs text-slate-400">
+                      {item.companyName}
+                    </td>
+                    <td className="px-6 py-4 text-slate-500">
+                      {item.overtimeHours}
+                    </td>
+                    <td className="px-6 py-4 pr-8 text-slate-500">
+                      {item.punchMiss}
+                    </td>
                   </tr>
                 ))
               ) : (
                 <tr>
                   <td colSpan="14" className="px-6 py-24 text-center">
-                    <p className="text-slate-400 text-lg">No daily records found.</p>
+                    <p className="text-lg text-slate-400">
+                      No daily records found.
+                    </p>
                     {searchTerm || startDate || endDate ? (
                       <button
-                        onClick={() => { setSearchTerm(''); setStartDate(''); setEndDate(''); }}
-                        className="mt-4 text-indigo-600 font-medium hover:underline"
+                        onClick={() => {
+                          setSearchTerm("");
+                          setStartDate("");
+                          setEndDate("");
+                        }}
+                        className="mt-4 font-medium text-indigo-600 hover:underline"
                       >
                         Clear filters
                       </button>
@@ -807,16 +981,28 @@ const Attendancedaily = () => {
 
         {/* Pagination Footer */}
         {filteredData.length > 0 && (
-          <div className="bg-slate-50 border-t border-slate-200 p-4 flex items-center justify-between shrink-0">
+          <div className="flex items-center justify-between p-4 border-t bg-slate-50 border-slate-200 shrink-0">
             <div className="text-sm text-slate-500">
-              Showing <span className="font-medium text-slate-900">{indexOfFirstItem + 1}</span> to <span className="font-medium text-slate-900">{Math.min(indexOfLastItem, filteredData.length)}</span> of <span className="font-medium text-slate-900">{filteredData.length}</span> results
+              Showing{" "}
+              <span className="font-medium text-slate-900">
+                {indexOfFirstItem + 1}
+              </span>{" "}
+              to{" "}
+              <span className="font-medium text-slate-900">
+                {Math.min(indexOfLastItem, filteredData.length)}
+              </span>{" "}
+              of{" "}
+              <span className="font-medium text-slate-900">
+                {filteredData.length}
+              </span>{" "}
+              results
             </div>
 
             <div className="flex items-center space-x-2">
               <button
                 onClick={() => handlePageChange(currentPage - 1)}
                 disabled={currentPage === 1}
-                className="p-2 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="p-2 transition-colors bg-white border rounded-lg border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <ChevronLeft size={16} />
               </button>
@@ -838,10 +1024,11 @@ const Attendancedaily = () => {
                     <button
                       key={pageNum}
                       onClick={() => handlePageChange(pageNum)}
-                      className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${currentPage === pageNum
-                        ? 'bg-indigo-600 text-white border border-indigo-600'
-                        : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                        }`}
+                      className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${
+                        currentPage === pageNum
+                          ? "bg-indigo-600 text-white border border-indigo-600"
+                          : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+                      }`}
                     >
                       {pageNum}
                     </button>
@@ -852,7 +1039,7 @@ const Attendancedaily = () => {
               <button
                 onClick={() => handlePageChange(currentPage + 1)}
                 disabled={currentPage === totalPages}
-                className="p-2 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="p-2 transition-colors bg-white border rounded-lg border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <ChevronRight size={16} />
               </button>
