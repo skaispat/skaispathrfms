@@ -289,18 +289,18 @@ const GatePass = () => {
   const uploadImageToDrive = async (file) => {
     try {
       const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}.${fileExt}`;
+      const fileName = `gate-passes/${Date.now()}.${fileExt}`;
 
       const { error } = await supabase
         .storage
-        .from('gate-pass-images')
+        .from('images')
         .upload(fileName, file);
 
       if (error) throw error;
 
       const { data: { publicUrl } } = supabase
         .storage
-        .from('gate-pass-images')
+        .from('images')
         .getPublicUrl(fileName);
 
       return publicUrl;
@@ -325,6 +325,10 @@ const GatePass = () => {
     e.preventDefault();
     if (!formData.employeeName || !formData.visitPlace || !formData.visitReason || !formData.departureTime) {
       toast.error('Please fill all required fields');
+      return;
+    }
+    if (!formData.gatePassImage) {
+      toast.error('Please upload the image');
       return;
     }
 
@@ -359,12 +363,12 @@ const GatePass = () => {
 
       // Current month range
       const firstDayOfMonth = new Date(
-        today.getFullYear(),today.getMonth(),1
+        today.getFullYear(), today.getMonth(), 1
       ).toISOString();
 
       const lastDayOfMonth = new Date(
-        today.getFullYear(),today.getMonth() + 1,
-        0,23,59,59
+        today.getFullYear(), today.getMonth() + 1,
+        0, 23, 59, 59
       ).toISOString();
 
       // 1️⃣ Check: One request per day
@@ -847,7 +851,7 @@ const GatePass = () => {
 
                 {/* Attachment */}
                 <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide">Attachment (Optional)</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide">Attachment <span className="text-red-500">*</span></label>
                   <div className="flex items-center justify-center w-full">
                     <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-slate-300 border-dashed rounded-xl cursor-pointer bg-slate-50 hover:bg-slate-100 transition-all group">
                       <div className="flex flex-col items-center justify-center pt-5 pb-6">
