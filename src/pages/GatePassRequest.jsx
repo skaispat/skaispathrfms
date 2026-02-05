@@ -4,6 +4,8 @@ import { Clock, Calendar, Plus, User, FileText, CheckCircle, AlertCircle, X, Map
 import toast from 'react-hot-toast';
 import { supabase } from '../supabaseClient';
 import useAuthStore from '../store/authStore';
+import { sendWhatsappMessageToHod } from '../whatsappMessageSender/whatsappMessageSender';
+import { sendWhatsappMessageToHr } from '../whatsappMessageSender/sendWhatsappMessageToHr';
 
 const GatePassRequest = () => {
   const { user } = useAuthStore();
@@ -73,12 +75,12 @@ const GatePassRequest = () => {
       if (teamData?.hod_id) {
         const { data: hodUser } = await supabase
           .from('users')
-          .select('full_name, department')
+          .select('full_name, department, phone_number')
           .eq('emp_id', teamData.hod_id)
           .single();
 
         if (hodUser) {
-          setHodDetails({ name: hodUser.full_name, id: teamData.hod_id, department: hodUser.department });
+          setHodDetails({ name: hodUser.full_name, id: teamData.hod_id, department: hodUser.department, phone: hodUser.phone_number });
         } else {
           setHodDetails({ name: 'Not Assigned', id: null });
         }
@@ -244,7 +246,6 @@ const GatePassRequest = () => {
         status: (hodDetails.id === null || hodDetails.name === 'HR' || hodDetails.department === 'HR' || isUserHod || hodDetails.id === 1 || hodDetails.name === 'Pawan Tiwari') ? 'Pending HR' : 'Pending HOD', // Initial status
         hod_name: isUserHod ? 'HR' : hodDetails.name,
         hod_id: isUserHod ? null : hodDetails.id, // Insert HOD ID if not user
-        hod_id: isUserHod ? null : hodDetails.id, // Insert HOD ID if not user
         hr_id: hrDetails.id, // Insert HR ID
         hr_name: hrDetails.name
       };
@@ -272,6 +273,65 @@ const GatePassRequest = () => {
       }
 
       if (error) throw error;
+
+      // Send WhatsApp notification based on status
+      if (data && data[0]) {
+        console.log('=== WhatsApp Notification Debug ===');
+        console.log('insertData.status:', insertData.status);
+        console.log('hodDetails:', hodDetails);
+        console.log('hodDetails.phone:', hodDetails.phone);
+        console.log('hrDetails:', hrDetails);
+        console.log('Condition Pending HOD:', insertData.status === 'Pending HOD');
+        console.log('Condition has phone:', !!hodDetails.phone);
+        
+        const formatDateTime = (dateString) => {
+          if (!dateString) return 'N/A';
+          return new Date(dateString).toLocaleString('en-GB', {
+            day: '2-digit', month: '2-digit', year: 'numeric',
+            hour: '2-digit', minute: '2-digit'
+          });
+        };
+
+        if (insertData.status === 'Pending HOD' && hodDetails.phone) {
+          // Send to HOD
+          console.log('Sending WhatsApp to HOD...');
+          const hodResult = await sendWhatsappMessageToHod({
+            employeId: hodDetails.id,
+            tableid: data[0].id,
+            hodPhoneNumber: hodDetails.phone,
+            employeeName: user?.full_name || user?.Name || 'Employee',
+            empId: user.emp_id,
+            department: 'Gate Pass',
+            leaveType: 'Gate Pass',
+            fromDate: formatDateTime(formData.departureTime),
+            toDate: formatDateTime(formData.arrivalTime),
+            totalDays: 'N/A',
+            reason: `${formData.visitPlace} - ${formData.visitReason}`,
+            who: 'employee',
+          });
+          if (!hodResult.success) {
+            console.warn('Failed to send WhatsApp to HOD:', hodResult.error);
+          }
+        } else if (insertData.status === 'Pending HR') {
+          // Send directly to HR (skipping HOD)
+          console.log('Sending WhatsApp to HR (direct)...');
+          const hrResult = await sendWhatsappMessageToHr({
+            employeId: hrDetails.id,
+            tableid: data[0].id,
+            employeeName: user?.full_name || user?.Name || 'Employee',
+            empId: user.emp_id,
+            department: 'Gate Pass',
+            leaveType: 'Gate Pass',
+            fromDate: formatDateTime(formData.departureTime),
+            toDate: formatDateTime(formData.arrivalTime),
+            totalDays: 'N/A',
+            reason: `${formData.visitPlace} - ${formData.visitReason}`,
+          });
+          if (!hrResult.success) {
+            console.warn('Failed to send WhatsApp to HR:', hrResult.error);
+          }
+        }
+      }
 
       toast.success('Gate Pass Request Submitted Successfully');
       setShowModal(false);
