@@ -292,6 +292,27 @@ const GatePassRequest = () => {
           });
         };
 
+        // Calculate duration between departure and arrival
+        // Note: Show only date difference, same as approval page
+        const calculateDuration = (fromDate, toDate) => {
+          if (!fromDate) return 'N/A';
+          if (!toDate) return 'Same'; // If no arrival time specified, assume same day
+          const from = new Date(fromDate);
+          const to = new Date(toDate);
+          
+          // Check if the dates are the same (ignoring time)
+          const fromDateStr = fromDate.toString().split('T')[0];
+          const toDateStr = toDate.toString().split('T')[0];
+          if (fromDateStr === toDateStr) return 'Same';
+          
+          // Calculate difference in days for multi-day gate passes
+          const diffMs = to - from;
+          if (diffMs < 0) return 'N/A';
+          const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+          if (diffDays === 1) return '1';
+          return `${diffDays}`;
+        };
+
         if (insertData.status === 'Pending HOD' && hodDetails.phone) {
           // Send to HOD
           console.log('Sending WhatsApp to HOD...');
@@ -305,7 +326,7 @@ const GatePassRequest = () => {
             leaveType: 'Gate Pass',
             fromDate: formatDateTime(formData.departureTime),
             toDate: formatDateTime(formData.arrivalTime),
-            totalDays: 'N/A',
+            totalDays: calculateDuration(formData.departureTime, formData.arrivalTime),
             reason: `${formData.visitPlace} - ${formData.visitReason}`,
             who: 'employee',
           });
@@ -324,7 +345,7 @@ const GatePassRequest = () => {
             leaveType: 'Gate Pass',
             fromDate: formatDateTime(formData.departureTime),
             toDate: formatDateTime(formData.arrivalTime),
-            totalDays: 'N/A',
+            totalDays: calculateDuration(formData.departureTime, formData.arrivalTime),
             reason: `${formData.visitPlace} - ${formData.visitReason}`,
           });
           if (!hrResult.success) {
