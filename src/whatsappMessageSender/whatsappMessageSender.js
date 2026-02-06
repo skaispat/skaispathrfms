@@ -17,7 +17,7 @@ export const sendWhatsappMessageToHod = async ({
       ? import.meta.env.VITE_BACKEND_URL.slice(0, -1)
       : import.meta.env.VITE_BACKEND_URL;
 
-    const url = `${baseUrl}/api/send-gatepass-whatsapp-hod?employeId=${employeId}&tableid=${tableid}`;
+    const url = `${baseUrl}/api/send-whatsappMessage-hod?employeId=${employeId}&tableid=${tableid}`;
     console.log("Sending WhatsApp request to:", url);
 
     const response = await fetch(url, {
