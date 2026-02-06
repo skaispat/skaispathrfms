@@ -4,8 +4,7 @@ import { Clock, Calendar, Plus, User, FileText, CheckCircle, AlertCircle, X, Map
 import toast from 'react-hot-toast';
 import { supabase } from '../supabaseClient';
 import useAuthStore from '../store/authStore';
-import { sendWhatsappMessageToHod } from '../whatsappMessageSender/whatsappMessageSender';
-import { sendWhatsappMessageToHr } from '../whatsappMessageSender/sendWhatsappMessageToHr';
+import { sendGatePassMessageToHod, sendGatePassMessageToHr } from '../whatsappMessageSender/sendGatePassWhatsapp';
 
 const GatePassRequest = () => {
   const { user } = useAuthStore();
@@ -316,19 +315,17 @@ const GatePassRequest = () => {
         if (insertData.status === 'Pending HOD' && hodDetails.phone) {
           // Send to HOD
           console.log('Sending WhatsApp to HOD...');
-          const hodResult = await sendWhatsappMessageToHod({
+          const hodResult = await sendGatePassMessageToHod({
             employeId: hodDetails.id,
             tableid: data[0].id,
-            hodPhoneNumber: hodDetails.phone,
+            whomtoSend: hodDetails.phone,
             employeeName: user?.full_name || user?.Name || 'Employee',
-            empId: user.emp_id,
-            department: 'Gate Pass',
+            department: user?.department || 'N/A',
             leaveType: 'Gate Pass',
             fromDate: formatDateTime(formData.departureTime),
             toDate: formatDateTime(formData.arrivalTime),
             totalDays: calculateDuration(formData.departureTime, formData.arrivalTime),
             reason: `${formData.visitPlace} - ${formData.visitReason}`,
-            who: 'employee',
           });
           if (!hodResult.success) {
             console.warn('Failed to send WhatsApp to HOD:', hodResult.error);
@@ -336,12 +333,12 @@ const GatePassRequest = () => {
         } else if (insertData.status === 'Pending HR') {
           // Send directly to HR (skipping HOD)
           console.log('Sending WhatsApp to HR (direct)...');
-          const hrResult = await sendWhatsappMessageToHr({
+          const hrResult = await sendGatePassMessageToHr({
             employeId: hrDetails.id,
             tableid: data[0].id,
             employeeName: user?.full_name || user?.Name || 'Employee',
             empId: user.emp_id,
-            department: 'Gate Pass',
+            department: user?.department || 'N/A',
             leaveType: 'Gate Pass',
             fromDate: formatDateTime(formData.departureTime),
             toDate: formatDateTime(formData.arrivalTime),
