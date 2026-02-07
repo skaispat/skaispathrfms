@@ -216,6 +216,11 @@ const GatePassRequest = () => {
       return;
     }
 
+    if (!formData.gatePassImage) {
+      toast.error('Please upload an attachment image');
+      return;
+    }
+
     // Validate Arrival Time
     if (formData.arrivalTime) {
       const departure = new Date(formData.departureTime);
@@ -714,7 +719,7 @@ const GatePassRequest = () => {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide">Attachment (Optional)</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide">Attachment <span className="text-red-500">*</span></label>
                   <div className="flex items-center justify-center w-full">
                     <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-slate-300 border-dashed rounded-xl cursor-pointer bg-slate-50 hover:bg-slate-100 transition-all">
                       <div className="flex flex-col items-center justify-center pt-5 pb-6">
