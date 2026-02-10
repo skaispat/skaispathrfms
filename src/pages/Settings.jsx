@@ -20,7 +20,8 @@ import {
     EyeOff,
     ChevronLeft,
     ChevronRight,
-    ChevronDown
+    ChevronDown,
+    AlertCircle
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import toast from 'react-hot-toast';
@@ -90,6 +91,14 @@ const Settings = () => {
 
     // Validation Errors
     const [errors, setErrors] = useState({});
+
+    // Leave Quota State - uses employee_leave_balances view fields
+    const [leaveQuota, setLeaveQuota] = useState({
+        casual_leave_remaining: 12,
+        earned_leave_remaining: 24,
+        unpaid_leave_total_taken: 0
+    });
+    const [loadingQuota, setLoadingQuota] = useState(false);
 
 
     // Form State
@@ -214,7 +223,7 @@ const Settings = () => {
 
 
 
-    const handleOpenModal = (user = null) => {
+    const handleOpenModal = async (user = null) => {
         if (user) {
             setEditingUser(user);
             setFormData({
@@ -242,10 +251,53 @@ const Settings = () => {
             // If editing, find current team members
             const currentTeam = users.filter(u => u.hod_id === user.emp_id).map(u => u.emp_id);
             setSelectedTeam(currentTeam);
+
+            // Fetch leave quota for the user
+            await fetchLeaveQuota(user.emp_id);
         } else {
             resetForm();
+            // Reset leave quota for new users only
+            setLeaveQuota({
+                casual_leave_remaining: 12,
+                earned_leave_remaining: 24,
+                unpaid_leave_total_taken: 0
+            });
         }
         setIsModalOpen(true);
+    };
+
+    const fetchLeaveQuota = async (empId) => {
+        setLoadingQuota(true);
+        try {
+            // Use the employee_leave_balances view which computes remaining balances
+            const { data, error } = await supabase
+                .from('employee_leave_balances')
+                .select('*')
+                .eq('emp_id', empId)
+                .maybeSingle();
+
+            if (error) throw error;
+
+            if (data) {
+                setLeaveQuota({
+                    casual_leave_remaining: data.casual_leave_remaining ?? 12,
+                    earned_leave_remaining: data.earned_leave_remaining ?? 24,
+                    unpaid_leave_total_taken: data.unpaid_leave_total_taken ?? 0
+                });
+            } else {
+                // No record exists yet for this year - show full limits
+                setLeaveQuota({
+                    casual_leave_remaining: 12,
+                    earned_leave_remaining: 24,
+                    unpaid_leave_total_taken: 0
+                });
+            }
+        } catch (error) {
+            console.error('Error fetching leave quota:', error);
+            toast.error('Failed to load leave information');
+        } finally {
+            setLoadingQuota(false);
+        }
     };
 
     const handleCloseModal = () => {
@@ -1753,6 +1805,111 @@ const Settings = () => {
                                             </div>
                                         </div>
                                     </div>
+
+                                    {/* Leave Information Section - Only show when editing */}
+                                    {editingUser && (
+                                        <>
+                                            <div className="col-span-1 md:col-span-2 mt-4">
+                                                <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wider mb-4 border-b pb-2 flex items-center gap-2">
+                                                    <Calendar className="h-4 w-4 text-slate-500" />
+                                                    Leave Information ({new Date().getFullYear()})
+                                                </h3>
+                                            </div>
+
+                                            {loadingQuota ? (
+                                                <div className="col-span-1 md:col-span-2 flex items-center justify-center py-8">
+                                                    <div className="w-6 h-6 border-2 border-slate-200 border-t-[#991B1B] rounded-full animate-spin"></div>
+                                                    <span className="ml-2 text-sm text-slate-500">Loading leave data...</span>
+                                                </div>
+                                            ) : (
+                                                <div className="col-span-1 md:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                                    {/* Casual Leave Card */}
+                                                    <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 rounded-xl p-4 border border-indigo-100 relative overflow-hidden">
+                                                        <div className="absolute top-0 right-0 opacity-5">
+                                                            <Calendar size={80} className="transform rotate-12 translate-x-4 -translate-y-2" />
+                                                        </div>
+                                                        <div className="relative z-10">
+                                                            <div className="flex items-center justify-between mb-2">
+                                                                <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">Casual Leave</span>
+                                                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-200/50 text-indigo-700">CL</span>
+                                                            </div>
+                                                            <div className="flex items-baseline gap-1">
+                                                                <span className="text-2xl font-bold text-slate-900">
+                                                                    {leaveQuota.casual_leave_remaining}
+                                                                </span>
+                                                                <span className="text-sm text-slate-500">/ 12</span>
+                                                            </div>
+                                                            <div className="mt-2">
+                                                                <div className="flex justify-between text-[10px] text-slate-500 mb-1">
+                                                                    <span>Used: {12 - leaveQuota.casual_leave_remaining}</span>
+                                                                    <span>Remaining</span>
+                                                                </div>
+                                                                <div className="w-full bg-white/50 rounded-full h-1.5 overflow-hidden">
+                                                                    <div
+                                                                        className="bg-indigo-500 h-full rounded-full transition-all duration-500"
+                                                                        style={{ width: `${(leaveQuota.casual_leave_remaining / 12) * 100}%` }}
+                                                                    ></div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Earned Leave Card */}
+                                                    <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 rounded-xl p-4 border border-emerald-100 relative overflow-hidden">
+                                                        <div className="absolute top-0 right-0 opacity-5">
+                                                            <Briefcase size={80} className="transform rotate-12 translate-x-4 -translate-y-2" />
+                                                        </div>
+                                                        <div className="relative z-10">
+                                                            <div className="flex items-center justify-between mb-2">
+                                                                <span className="text-xs font-bold text-emerald-600 uppercase tracking-wider">Earned Leave</span>
+                                                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-200/50 text-emerald-700">EL</span>
+                                                            </div>
+                                                            <div className="flex items-baseline gap-1">
+                                                                <span className="text-2xl font-bold text-slate-900">
+                                                                    {leaveQuota.earned_leave_remaining}
+                                                                </span>
+                                                                <span className="text-sm text-slate-500">/ 24</span>
+                                                            </div>
+                                                            <div className="mt-2">
+                                                                <div className="flex justify-between text-[10px] text-slate-500 mb-1">
+                                                                    <span>Used: {24 - leaveQuota.earned_leave_remaining}</span>
+                                                                    <span>Remaining</span>
+                                                                </div>
+                                                                <div className="w-full bg-white/50 rounded-full h-1.5 overflow-hidden">
+                                                                    <div
+                                                                        className="bg-emerald-500 h-full rounded-full transition-all duration-500"
+                                                                        style={{ width: `${(leaveQuota.earned_leave_remaining / 24) * 100}%` }}
+                                                                    ></div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Unpaid Leave Card */}
+                                                    <div className="bg-gradient-to-br from-rose-50 to-rose-100/50 rounded-xl p-4 border border-rose-100 relative overflow-hidden">
+                                                        <div className="absolute top-0 right-0 opacity-5">
+                                                            <AlertCircle size={80} className="transform rotate-12 translate-x-4 -translate-y-2" />
+                                                        </div>
+                                                        <div className="relative z-10">
+                                                            <div className="flex items-center justify-between mb-2">
+                                                                <span className="text-xs font-bold text-rose-600 uppercase tracking-wider">Unpaid Leave</span>
+                                                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-rose-200/50 text-rose-700">LOP</span>
+                                                            </div>
+                                                            <div className="flex items-baseline gap-1">
+                                                                <span className="text-2xl font-bold text-slate-900">
+                                                                    {leaveQuota.unpaid_leave_total_taken}
+                                                                </span>
+                                                                <span className="text-sm text-slate-500">Taken</span>
+                                                            </div>
+                                                            <div className="mt-2">
+                                                                <p className="text-[10px] text-slate-500">Recorded as Loss of Pay</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
 
                                 </form>
                             </div>

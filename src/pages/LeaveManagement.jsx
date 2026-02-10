@@ -13,6 +13,7 @@ import {
   Users,
   ChevronDown,
   Shield,
+  AlertCircle,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { supabase } from "../supabaseClient";
@@ -154,6 +155,61 @@ const LeaveManagement = () => {
     }
   };
 
+  // State for selected employee's leave balance
+  const [leaveBalances, setLeaveBalances] = useState({
+    casual: { total: 12, used: 0, remaining: 12 },
+    earned: { total: 24, used: 0, remaining: 24 },
+    unpaid: { used: 0 }
+  });
+
+  // Calculate days helper (moved up or ensuring access) - it is defined later in the file, 
+  // so we might need to rely on the view mostly. 
+
+  // Fetch leave balance for a specific employee
+  const fetchEmployeeBalance = async (employeeId) => {
+    if (!employeeId) return;
+    
+    try {
+      console.log('Fetching balance for employee:', employeeId);
+      const { data: balanceData, error: balanceError } = await supabase
+        .from('employee_leave_balances')
+        .select('*')
+        .eq('emp_id', employeeId)
+        .maybeSingle();
+
+      if (balanceError) {
+        console.error('Error fetching employee balance:', balanceError);
+        return;
+      }
+
+      if (balanceData) {
+        console.log('Balance data found:', balanceData);
+        setLeaveBalances({
+          casual: { 
+            total: 12, 
+            used: 12 - (balanceData.casual_leave_remaining ?? 12), 
+            remaining: balanceData.casual_leave_remaining ?? 12 
+          },
+          earned: { 
+            total: 24, 
+            used: 24 - (balanceData.earned_leave_remaining ?? 24), 
+            remaining: balanceData.earned_leave_remaining ?? 24 
+          },
+          unpaid: { used: balanceData.unpaid_leave_total_taken ?? 0 }
+        });
+      } else {
+        // Reset to defaults if no data found (or handle as 0 used)
+        setLeaveBalances({
+          casual: { total: 12, used: 0, remaining: 12 },
+          earned: { total: 24, used: 0, remaining: 24 },
+          unpaid: { used: 0 }
+        });
+      }
+    } catch (error) {
+      console.error('Error in fetchEmployeeBalance:', error);
+    }
+  };
+
   // Handle employee selection
   const handleEmployeeChange = async (selectedName) => {
     const selectedEmployee = employees.find((emp) => emp.name === selectedName);
@@ -168,6 +224,18 @@ const LeaveManagement = () => {
       hodName: "", // Reset HOD name while fetching
       hodId: "", // Reset HOD ID
     }));
+
+    // Fetch leave balances for the selected employee
+    if (selectedEmployee && selectedEmployee.id) {
+      fetchEmployeeBalance(selectedEmployee.id);
+    } else {
+       // Reset balances if no employee selected
+       setLeaveBalances({
+        casual: { total: 12, used: 0, remaining: 12 },
+        earned: { total: 24, used: 0, remaining: 24 },
+        unpaid: { used: 0 }
+      });
+    }
 
     // Fetch HOD from team_members
     if (selectedEmployee && selectedEmployee.id) {
@@ -571,6 +639,118 @@ const LeaveManagement = () => {
         .update(logUpdate)
         .eq("request_id", selectedRow.id)
         .eq("request_type", "Leave");
+
+      // Update yearly_quota when leave is approved
+      if (newStatus === "Approved") {
+        console.log("=== LEAVE APPROVED - Starting quota update ===");
+        
+        const leaveDays = calculateDays(
+          editableDates.from || selectedRow.startDate,
+          editableDates.to || selectedRow.endDate
+        );
+        const currentYear = new Date().getFullYear();
+        const employeeId = selectedRow.employeeId;
+        const leaveType = selectedRow.leaveType;
+
+        console.log("Leave Details:", {
+          leaveDays,
+          currentYear,
+          employeeId,
+          leaveType,
+          startDate: editableDates.from || selectedRow.startDate,
+          endDate: editableDates.to || selectedRow.endDate
+        });
+
+        // Determine which leave type column to update
+        let quotaColumn = "";
+
+        if (leaveType === "Casual Leave") {
+          quotaColumn = "casual_leave_used";
+        } else if (leaveType === "Earned Leave") {
+          quotaColumn = "earned_leave_used";
+        } else if (leaveType === "UnPaid Leave") {
+          quotaColumn = "unpaid_leave_used";
+        }
+
+        console.log("Column to update:", quotaColumn);
+
+        if (quotaColumn) {
+          try {
+            // Check if yearly_quota record exists
+            console.log("Checking for existing yearly_quota record...");
+            const { data: existingQuota, error: quotaCheckError } = await supabase
+              .from("yearly_quota")
+              .select("*")
+              .eq("emp_id", employeeId)
+              .eq("year", currentYear)
+              .maybeSingle();
+
+            console.log("Existing quota check result:", { existingQuota, quotaCheckError });
+
+            if (quotaCheckError) {
+              console.error("Error checking yearly quota:", quotaCheckError);
+              toast.error("Failed to check leave quota: " + quotaCheckError.message);
+            } else if (existingQuota) {
+              // Update existing record
+              const currentUsed = existingQuota[quotaColumn] || 0;
+              const newUsed = currentUsed + leaveDays;
+              console.log(`Updating yearly_quota: ${quotaColumn} from ${currentUsed} to ${newUsed}`);
+              
+              const { data: updateData, error: quotaUpdateError } = await supabase
+                .from("yearly_quota")
+                .update({
+                  [quotaColumn]: newUsed,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("id", existingQuota.id)
+                .select();
+
+              console.log("Yearly quota update result:", { updateData, quotaUpdateError });
+
+              if (quotaUpdateError) {
+                console.error("Error updating yearly quota:", quotaUpdateError);
+                toast.error("Failed to update leave quota: " + quotaUpdateError.message);
+              } else {
+                console.log("Successfully updated yearly_quota");
+              }
+            } else {
+              // Create new record for this year
+              console.log("No existing record, creating new yearly_quota entry...");
+              const insertPayload = {
+                emp_id: employeeId,
+                year: currentYear,
+                casual_leave_used: leaveType === "Casual Leave" ? leaveDays : 0,
+                earned_leave_used: leaveType === "Earned Leave" ? leaveDays : 0,
+                unpaid_leave_used: leaveType === "UnPaid Leave" ? leaveDays : 0,
+                casual_leave_limit: 12,
+                earned_leave_limit: 24,
+              };
+              console.log("Insert payload:", insertPayload);
+
+              const { data: insertData, error: quotaInsertError } = await supabase
+                .from("yearly_quota")
+                .insert(insertPayload)
+                .select();
+
+              console.log("Yearly quota insert result:", { insertData, quotaInsertError });
+
+              if (quotaInsertError) {
+                console.error("Error inserting yearly quota:", quotaInsertError);
+                toast.error("Failed to create leave quota: " + quotaInsertError.message);
+              } else {
+                console.log("Successfully created yearly_quota record");
+              }
+            }
+          } catch (quotaError) {
+            console.error("Quota update error:", quotaError);
+            toast.error("Error updating leave balances: " + quotaError.message);
+          }
+        } else {
+          console.warn("Unknown leave type, skipping quota update:", leaveType);
+        }
+        
+        console.log("=== LEAVE QUOTA UPDATE COMPLETE ===");
+      }
 
       toast.success(
         `Leave ${notificationMessage} for ${selectedRow.employeeName || "employee"}`,
@@ -1485,6 +1665,7 @@ const LeaveManagement = () => {
                     </div>
                   </div>
 
+
                   {/* Leave Type */}
                   <div className="space-y-1.5">
                     <label className="block text-xs font-bold tracking-wide uppercase text-slate-500">
@@ -1506,16 +1687,31 @@ const LeaveManagement = () => {
                         required
                       >
                         <option value="">Select Leave Type</option>
-                        {leaveTypes.map((type) => (
-                          <option key={type} value={type}>
-                            {type}
-                          </option>
-                        ))}
+                        <option 
+                          value="Casual Leave" 
+                          disabled={leaveBalances.casual.remaining <= 0}
+                        >
+                          Casual Leave {leaveBalances.casual.remaining <= 0 ? '(Quota Exhausted)' : `(${leaveBalances.casual.remaining} remaining)`}
+                        </option>
+                        <option 
+                          value="Earned Leave" 
+                          disabled={leaveBalances.earned.remaining <= 0}
+                        >
+                          Earned Leave {leaveBalances.earned.remaining <= 0 ? '(Quota Exhausted)' : `(${leaveBalances.earned.remaining} remaining)`}
+                        </option>
+                        <option value="UnPaid Leave">UnPaid Leave (No Limit)</option>
                       </select>
                       <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
                         <ChevronDown size={16} className="text-slate-400" />
                       </div>
                     </div>
+                     {/* Show warning if selected leave type has low balance */}
+                    {formData.leaveType === 'Casual Leave' && leaveBalances.casual.remaining > 0 && leaveBalances.casual.remaining <= 2 && (
+                      <p className="mt-1 text-xs text-orange-600 flex items-center gap-1">
+                        <AlertCircle size={12} />
+                        Low balance: Only {leaveBalances.casual.remaining} casual leave(s) remaining
+                      </p>
+                    )}
                   </div>
 
                   {/* Dates & Duration */}

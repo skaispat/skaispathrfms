@@ -289,3 +289,71 @@ export const sendGatePassRejectedToEmployee = async ({
         return { success: false, error: error.message };
     }
 };
+
+// Send HOD rejected Gate Pass message to employee (uses hod_reject template)
+export const sendGatePassHodRejectedToEmployee = async ({
+    employeePhone,
+    employeeName,
+    requestType,
+    leaveType,
+    fromDate,
+    toDate,
+}) => {
+    const backendUrl = import.meta.env.VITE_BACKEND_URL;
+
+    console.log('VITE_BACKEND_URL:', backendUrl);
+    console.log('Employee Phone:', employeePhone);
+
+    if (!backendUrl) {
+        console.error('VITE_BACKEND_URL is not set in .env');
+        return { success: false, error: 'Backend URL not configured' };
+    }
+
+    if (!employeePhone) {
+        console.error('Employee phone number is missing');
+        return { success: false, error: 'Employee phone number not provided' };
+    }
+
+    try {
+        const baseUrl = backendUrl.endsWith("/")
+            ? backendUrl.slice(0, -1)
+            : backendUrl;
+
+        const url = `${baseUrl}/api/send-gatepass-whatsapp-employee-hod-rejected`;
+        console.log("Sending Gate Pass HOD rejected message:", url);
+
+        const response = await fetch(url, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                employeePhone,
+                employeeName,
+                requestType: requestType || "gate pass request",
+                leaveType: leaveType || "Gate Pass",
+                fromDate,
+                toDate,
+            }),
+        });
+
+        const contentType = response.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+            const text = await response.text();
+            console.error("Expected JSON but received:", text.substring(0, 100));
+            throw new Error(`Server returned non-JSON response: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error?.message || "Failed to send Gate Pass HOD rejected message");
+        }
+
+        console.log("Gate Pass HOD rejected message sent successfully:", data);
+        return { success: true, data };
+    } catch (error) {
+        console.error("Error sending Gate Pass HOD rejected message:", error);
+        return { success: false, error: error.message };
+    }
+};

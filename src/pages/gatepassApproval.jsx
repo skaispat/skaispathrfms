@@ -3,8 +3,7 @@ import { useParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { FileText, User, Briefcase, Calendar, Clock, MessageSquare, Check, X, Shield, ChevronRight, Quote, MapPin, Phone, Image as ImageIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { sendWhatsappMessageToHr } from '../whatsappMessageSender/sendWhatsappMessageToHr';
-import { sendApprovedMessageToEmployee, sendRejectedMessageToEmployee } from '../whatsappMessageSender/sendWhatsappMessageToEmployee';
+import { sendGatePassMessageToHr, sendGatePassApprovedToEmployee, sendGatePassRejectedToEmployee, sendGatePassHodRejectedToEmployee } from '../whatsappMessageSender/sendGatePassWhatsapp';
 
 const GatePassApproval = () => {
     const { approverId, id } = useParams();
@@ -27,8 +26,8 @@ const GatePassApproval = () => {
         try {
             // Fetch Request
             const { data, error } = await supabase
-                .from('gate_pass') // Changed from leave_management
-                .select('*, users(full_name, emp_id)') // Join to get employee name
+                .from('gate_pass')
+                .select('*, users(full_name, emp_id)')
                 .eq('id', id)
                 .single();
 
@@ -36,14 +35,24 @@ const GatePassApproval = () => {
             if (!data) throw new Error('Request not found');
 
             // Fetch Approver Details
-            // Try fetching by emp_id first
+            // Try fetching by full_name first
             let { data: approverData, error: approverError } = await supabase
                 .from('users')
                 .select('*')
-                .eq('emp_id', approverId)
+                .eq('full_name', approverId)
                 .maybeSingle();
 
-            // If not found by emp_id, try by UUID
+            // If not found by full_name, try by emp_id
+            if (!approverData) {
+                const { data: approverEmpData } = await supabase
+                    .from('users')
+                    .select('*')
+                    .eq('emp_id', approverId)
+                    .maybeSingle();
+                approverData = approverEmpData;
+            }
+
+            // If still not found, try by UUID
             if (!approverData) {
                 const { data: approverUuidData } = await supabase
                     .from('users')
@@ -65,7 +74,7 @@ const GatePassApproval = () => {
             // Prepare request object
             setRequest({
                 ...data,
-                employee_name: data.users?.full_name || data.emp_name || 'Employee', // Handle joined data or fallback
+                employee_name: data.users?.full_name || data.emp_name || 'Employee',
                 departureTime: formatDate(data.departure_from_plant),
                 arrivalTime: data.arrival_at_plant ? formatDate(data.arrival_at_plant) : 'Not specified',
                 hr_name: hrData?.full_name || 'HR Department',
@@ -76,7 +85,7 @@ const GatePassApproval = () => {
             if (approverData) {
                 setApprover(approverData);
             } else {
-                console.warn('Approver not found for ID:', approverId);
+                console.warn('Approver not found for ID/Name:', approverId);
             }
 
         } catch (err) {
@@ -89,9 +98,8 @@ const GatePassApproval = () => {
 
     const formatDate = (dateString) => {
         if (!dateString) return '-';
-        return new Date(dateString).toLocaleString('en-GB', {
-            day: '2-digit', month: '2-digit', year: 'numeric',
-            hour: '2-digit', minute: '2-digit'
+        return new Date(dateString).toLocaleDateString('en-GB', {
+            day: '2-digit', month: '2-digit', year: 'numeric'
         });
     };
 
@@ -111,23 +119,20 @@ const GatePassApproval = () => {
             const isHodAction = request.status === 'Pending' || request.status === 'Pending HOD';
             const isHrAction = request.status === 'Pending HR';
 
-            // Validate Approver Role
+            // Validate Approver Role (Specific to skaispathrfms)
+            // Admin can approve at any stage
+            const isAdmin = approver.role === 'admin';
+
             if (isHodAction) {
-                if (!approver.is_hod && approver.department !== 'HR' && approver.role !== 'admin') {
-                    // Allow if approver name matches hod_name in request (loose check if backend logic is based on names)
-                    // or stricter check:
-                    if (!approver.is_hod) {
-                        // Double check if this user is actually the assigned HOD for this request could be done here, 
-                        // but sticking to basic permission check for now as per Duplicate request.
-                        toast.error('You do not have HOD permissions.');
-                        setActionLoading(false);
-                        return;
-                    }
+                if (!isAdmin && !approver.is_hod && approver.department !== 'HR') {
+                    toast.error('You do not have HOD permissions.');
+                    setActionLoading(false);
+                    return;
                 }
             }
 
             if (isHrAction) {
-                if (approver.department !== 'HR') {
+                if (!isAdmin && approver.department !== 'HR') {
                     toast.error('You do not have HR permissions.');
                     setActionLoading(false);
                     return;
@@ -205,28 +210,34 @@ const GatePassApproval = () => {
                 .from('logs')
                 .update(logUpdateData)
                 .eq('request_id', id)
-                .eq('request_type', 'Gate Pass'); // Changed to Gate Pass
-
-                console.log(newStatus,"newStatus");
+                .eq('request_type', 'Gate Pass');
 
             // Send WhatsApp message to HR when HOD approves (status becomes "Pending HR")
-            console.log('=== HR Notification Check ===');
-            console.log('newStatus:', newStatus);
-            console.log('Should send to HR:', newStatus === 'Pending HR');
-            console.log('HR ID (hr_id_val):', request.hr_id_val);
-            
             if (newStatus === 'Pending HR') {
-                console.log('Sending WhatsApp to HR...');
                 const formatDateTime = (dateString) => {
                     if (!dateString) return 'N/A';
-                    return new Date(dateString).toLocaleString('en-GB', {
-                        day: '2-digit', month: '2-digit', year: 'numeric',
-                        hour: '2-digit', minute: '2-digit'
+                    return new Date(dateString).toLocaleDateString('en-GB', {
+                        day: '2-digit', month: '2-digit', year: 'numeric'
                     });
                 };
 
-                const hrMessageResult = await sendWhatsappMessageToHr({
-                    employeId: request.hr_id_val, // HR ID from the request
+                const calculateDuration = (fromDate, toDate) => {
+                    if (!fromDate) return 'N/A';
+                    if (!toDate) return 'Same';
+                    const from = new Date(fromDate);
+                    const to = new Date(toDate);
+                    const fromDateStr = fromDate.toString().split('T')[0];
+                    const toDateStr = toDate.toString().split('T')[0];
+                    if (fromDateStr === toDateStr) return 'Same';
+                    const diffMs = to - from;
+                    if (diffMs < 0) return 'N/A';
+                    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+                    if (diffDays === 1) return '1';
+                    return `${diffDays}`;
+                };
+
+                const hrMessageResult = await sendGatePassMessageToHr({
+                    employeId: request.hr_id_val || approverId || 'HR',
                     tableid: id,
                     employeeName: request.employee_name,
                     empId: request.users?.emp_id || 'N/A',
@@ -234,14 +245,12 @@ const GatePassApproval = () => {
                     leaveType: 'Gate Pass',
                     fromDate: formatDateTime(request.departure_from_plant),
                     toDate: formatDateTime(request.arrival_at_plant),
-                    totalDays: 'N/A',
+                    totalDays: calculateDuration(request.departure_from_plant, request.arrival_at_plant),
                     reason: request.place_reason_to_visit || 'No reason specified',
                 });
 
                 if (!hrMessageResult.success) {
-                    console.warn('Failed to send WhatsApp to HR:',  hrMessageResult.error);
-                    
-                    // Not throwing error as the main action already succeeded
+                    console.warn('Failed to send WhatsApp to HR:', hrMessageResult.error);
                 }
             }
 
@@ -252,40 +261,76 @@ const GatePassApproval = () => {
             if (isFinalAction && employeePhone) {
                 const formatDateTime = (dateString) => {
                     if (!dateString) return 'N/A';
-                    return new Date(dateString).toLocaleString('en-GB', {
-                        day: '2-digit', month: '2-digit', year: 'numeric',
-                        hour: '2-digit', minute: '2-digit'
+                    return new Date(dateString).toLocaleDateString('en-GB', {
+                        day: '2-digit', month: '2-digit', year: 'numeric'
                     });
                 };
 
+                const calculateDuration = (fromDate, toDate) => {
+                    if (!fromDate) return 'N/A';
+                    if (!toDate) return 'Same';
+                    const from = new Date(fromDate);
+                    const to = new Date(toDate);
+                    const fromDateStr = fromDate.toString().split('T')[0];
+                    const toDateStr = toDate.toString().split('T')[0];
+                    if (fromDateStr === toDateStr) return 'Same';
+                    const diffMs = to - from;
+                    if (diffMs < 0) return 'N/A';
+                    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+                    if (diffDays === 1) return '1';
+                    return `${diffDays}`;
+                };
+
                 if (newStatus === 'Approved') {
-                    console.log('Sending approved message to employee...');
-                    const approvedResult = await sendApprovedMessageToEmployee({
+                    const employeeResult = await sendGatePassApprovedToEmployee({
                         employeePhone: employeePhone,
                         employeeName: request.employee_name,
                         leaveType: 'Gate Pass',
                         fromDate: formatDateTime(request.departure_from_plant),
                         toDate: formatDateTime(request.arrival_at_plant),
-                        totalDays: 'N/A',
-                        reason: request.place_reason_to_visit || 'Gate Pass Request',
+                        totalDays: calculateDuration(request.departure_from_plant, request.arrival_at_plant),
+                        reason: request.place_reason_to_visit || 'No reason specified',
                     });
-                    if (!approvedResult.success) {
-                        console.warn('Failed to send approved message to employee:', approvedResult.error);
+                    if (!employeeResult.success) {
+                        console.warn('Failed to send approved message to employee:', employeeResult.error);
                     }
-                } else if (newStatus === 'Rejected') {
-                    console.log('Sending rejected message to employee...');
-                    const rejectedResult = await sendRejectedMessageToEmployee({
+                } else if (newStatus === 'Rejected' && !isHodAction) {
+                    const employeeResult = await sendGatePassRejectedToEmployee({
                         employeePhone: employeePhone,
                         employeeName: request.employee_name,
                         leaveType: 'Gate Pass',
                         fromDate: formatDateTime(request.departure_from_plant),
                         toDate: formatDateTime(request.arrival_at_plant),
-                        totalDays: 'N/A',
+                        totalDays: calculateDuration(request.departure_from_plant, request.arrival_at_plant),
                         hrRemarks: currentRemarks || 'No remarks provided',
                     });
-                    if (!rejectedResult.success) {
-                        console.warn('Failed to send rejected message to employee:', rejectedResult.error);
+                    if (!employeeResult.success) {
+                        console.warn('Failed to send rejected message to employee:', employeeResult.error);
                     }
+                }
+            } else if (isFinalAction && !employeePhone) {
+                console.warn('Cannot send notification: Employee phone number not available');
+            }
+
+            // Send HOD-specific rejection message when HOD (not HR) rejects
+            if (newStatus === 'Rejected' && isHodAction && employeePhone) {
+                const formatDateTime = (dateString) => {
+                    if (!dateString) return 'N/A';
+                    return new Date(dateString).toLocaleDateString('en-GB', {
+                        day: '2-digit', month: '2-digit', year: 'numeric'
+                    });
+                };
+                
+                const hodRejectedResult = await sendGatePassHodRejectedToEmployee({
+                    employeePhone: employeePhone,
+                    employeeName: request.employee_name,
+                    requestType: 'gate pass request',
+                    leaveType: 'Gate Pass',
+                    fromDate: formatDateTime(request.departure_from_plant),
+                    toDate: formatDateTime(request.arrival_at_plant),
+                });
+                if (!hodRejectedResult.success) {
+                    console.warn('Failed to send HOD rejected message to employee:', hodRejectedResult.error);
                 }
             }
 
@@ -296,8 +341,6 @@ const GatePassApproval = () => {
                 role: (isHodAction && approver.department === 'HR') ? 'HR' : (isHodAction ? 'HOD' : 'HR')
             });
             setActionSuccess(true);
-
-
 
         } catch (err) {
             console.error('Action error:', err);
@@ -311,8 +354,7 @@ const GatePassApproval = () => {
     if (error) return <div className="min-h-screen flex items-center justify-center bg-gray-50 text-red-500 font-medium">{error}</div>;
     if (!request) return <div className="min-h-screen flex items-center justify-center bg-gray-50 text-slate-500">Request not found</div>;
 
-    const isActionable = ((request.status === 'Pending' || request.status === 'Pending HOD') && (approver?.is_hod || approver?.department === 'HR')) ||
-        (request.status === 'Pending HR' && approver?.department === 'HR');
+    const isActionable = request.status === 'Pending' || request.status === 'Pending HOD' || request.status === 'Pending HR';
 
     const notActionableReason = !isActionable && (request.status === 'Pending' || request.status === 'Pending HOD' || request.status === 'Pending HR')
         ? "You are not authorized to approve this request at this stage."
@@ -386,7 +428,7 @@ const GatePassApproval = () => {
                                         <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Action Required</p>
                                     </div>
                                     <h3 className="text-xl font-bold mb-1 tracking-tight leading-tight text-slate-900">
-                                        Hi, {approver?.full_name?.split(' ')[0] || 'Approver'}
+                                        Hi, {approver?.full_name || 'Approver'}
                                     </h3>
                                     <p className="text-slate-500 text-xs font-medium leading-relaxed">
                                         Review gate pass request from <span className="text-slate-900 font-bold">{request.employee_name}</span>.

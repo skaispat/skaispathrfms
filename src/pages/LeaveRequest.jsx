@@ -111,8 +111,49 @@ const LeaveRequest = () => {
 
       setLeaveHistory(historyData);
 
-      // 3. Calculate Balances & Check This Month's application
-      calculateBalancesAndStatus(historyData);
+      // 5. Fetch leave balances from employee_leave_balances view
+      const { data: balanceData, error: balanceError } = await supabase
+        .from('employee_leave_balances')
+        .select('*')
+        .eq('emp_id', user.emp_id)
+        .maybeSingle();
+
+      // DEBUG: Log what we got from the view
+      console.log('=== Leave Balance Debug ===');
+      console.log('User emp_id:', user.emp_id);
+      console.log('Balance Data from view:', balanceData);
+      console.log('Balance Error:', balanceError);
+
+      if (balanceError) {
+        console.error('Error fetching from employee_leave_balances view:', balanceError);
+      }
+
+      if (balanceData && !balanceError) {
+        // Use data from the view
+        console.log('Setting balances from view data:', {
+          casual_remaining: balanceData.casual_leave_remaining,
+          earned_remaining: balanceData.earned_leave_remaining,
+          unpaid_taken: balanceData.unpaid_leave_total_taken
+        });
+        setLeaveBalances({
+          casual: { 
+            total: 12, 
+            used: 12 - (balanceData.casual_leave_remaining ?? 12), 
+            remaining: balanceData.casual_leave_remaining ?? 12 
+          },
+          earned: { 
+            total: 24, 
+            used: 24 - (balanceData.earned_leave_remaining ?? 24), 
+            remaining: balanceData.earned_leave_remaining ?? 24 
+          },
+          unpaid: { used: balanceData.unpaid_leave_total_taken ?? 0 }
+        });
+      } else {
+        console.log('No balance data from view, will use fallback calculation');
+      }
+
+      // 6. Calculate monthly count and status from history
+      calculateBalancesAndStatus(historyData, !!balanceData);
 
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -122,7 +163,7 @@ const LeaveRequest = () => {
     }
   };
 
-  const calculateBalancesAndStatus = (history) => {
+  const calculateBalancesAndStatus = (history, hasViewData = false) => {
     const currentYear = new Date().getFullYear();
     const currentMonth = new Date().getMonth();
 
@@ -147,8 +188,8 @@ const LeaveRequest = () => {
         }
       }
 
-      // Calculate Usage for Approved leaves in current year
-      if (leave.status === 'Approved' && leaveYear === currentYear) {
+      // Calculate Usage for Approved leaves in current year (only if view data not available)
+      if (!hasViewData && leave.status === 'Approved' && leaveYear === currentYear) {
         const days = calculateDays(leave.leave_date_start, leave.leave_date_end);
 
         switch (leave.leave_type) {
@@ -167,13 +208,14 @@ const LeaveRequest = () => {
       }
     });
 
-
-
-    setLeaveBalances({
-      casual: { total: 12, used: casualUsed, remaining: 12 - casualUsed },
-      earned: { total: 24, used: earnedUsed, remaining: 24 - earnedUsed },
-      unpaid: { used: unpaidUsed }
-    });
+    // Only set balances if view data was not available
+    if (!hasViewData) {
+      setLeaveBalances({
+        casual: { total: 12, used: casualUsed, remaining: 12 - casualUsed },
+        earned: { total: 24, used: earnedUsed, remaining: 24 - earnedUsed },
+        unpaid: { used: unpaidUsed }
+      });
+    }
 
     setCurrentMonthlyCount(monthlyCount);
     setIsMonthlyLimitReached(monthlyCount >= 3);
@@ -732,14 +774,37 @@ const LeaveRequest = () => {
                       required
                     >
                       <option value="">Select Type...</option>
-                      <option value="Casual Leave">Casual Leave</option>
-                      <option value="Earned Leave">Earned Leave</option>
-                      <option value="UnPaid Leave">UnPaid Leave</option>
+                      <option 
+                        value="Casual Leave" 
+                        disabled={leaveBalances.casual.remaining <= 0}
+                      >
+                        Casual Leave {leaveBalances.casual.remaining <= 0 ? '(Quota Exhausted)' : `(${leaveBalances.casual.remaining} remaining)`}
+                      </option>
+                      <option 
+                        value="Earned Leave" 
+                        disabled={leaveBalances.earned.remaining <= 0}
+                      >
+                        Earned Leave {leaveBalances.earned.remaining <= 0 ? '(Quota Exhausted)' : `(${leaveBalances.earned.remaining} remaining)`}
+                      </option>
+                      <option value="UnPaid Leave">UnPaid Leave (No Limit)</option>
                     </select>
                     <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
                       <ChevronDown size={16} className="text-slate-400" />
                     </div>
                   </div>
+                  {/* Show warning if selected leave type has low balance */}
+                  {formData.leaveType === 'Casual Leave' && leaveBalances.casual.remaining > 0 && leaveBalances.casual.remaining <= 2 && (
+                    <p className="text-xs text-orange-600 flex items-center gap-1">
+                      <AlertCircle size={12} />
+                      Low balance: Only {leaveBalances.casual.remaining} casual leave(s) remaining
+                    </p>
+                  )}
+                  {formData.leaveType === 'Earned Leave' && leaveBalances.earned.remaining > 0 && leaveBalances.earned.remaining <= 4 && (
+                    <p className="text-xs text-orange-600 flex items-center gap-1">
+                      <AlertCircle size={12} />
+                      Low balance: Only {leaveBalances.earned.remaining} earned leave(s) remaining
+                    </p>
+                  )}
                 </div>
 
                 {/* Date Grid */}
