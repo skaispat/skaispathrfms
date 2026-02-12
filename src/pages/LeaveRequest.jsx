@@ -6,6 +6,12 @@ import { supabase } from '../supabaseClient';
 import useAuthStore from '../store/authStore';
 import { sendWhatsappMessageToHod } from "../whatsappMessageSender/whatsappMessageSender.js";
 
+// Fiscal year helper: April–March
+// Apr 2025 – Mar 2026 → returns 2025
+const getFiscalYear = (date = new Date()) => {
+  return date.getMonth() >= 3 ? date.getFullYear() : date.getFullYear() - 1;
+};
+
 const LeaveRequest = () => {
   const { user } = useAuthStore();
 
@@ -164,7 +170,7 @@ const LeaveRequest = () => {
   };
 
   const calculateBalancesAndStatus = (history, hasViewData = false) => {
-    const currentYear = new Date().getFullYear();
+    const currentYear = getFiscalYear();
     const currentMonth = new Date().getMonth();
 
     const currentDate = new Date().getDate();
@@ -177,7 +183,7 @@ const LeaveRequest = () => {
 
     history.forEach(leave => {
       const leaveDate = new Date(leave.timestamp); // Use submission date for "monthly count" check
-      const leaveYear = new Date(leave.leave_date_start).getFullYear();
+      const leaveYear = getFiscalYear(new Date(leave.leave_date_start));
 
       // Check if applied in current month (based on submission timestamp)
       if (leaveDate.getMonth() === currentMonth && leaveDate.getFullYear() === currentYear) {
@@ -189,7 +195,7 @@ const LeaveRequest = () => {
       }
 
       // Calculate Usage for Approved leaves in current year (only if view data not available)
-      if (!hasViewData && leave.status === 'Approved' && leaveYear === currentYear) {
+      if (!hasViewData && leave.status?.toLowerCase().includes('approved') && leaveYear === currentYear) {
         const days = calculateDays(leave.leave_date_start, leave.leave_date_end);
 
         switch (leave.leave_type) {
@@ -448,7 +454,7 @@ const LeaveRequest = () => {
 
     if (activeTab === 'all') return matchesSearch;
     if (activeTab === 'pending') return matchesSearch && (item.status === 'Pending' || item.status === 'Pending HOD' || item.status === 'Pending HR');
-    if (activeTab === 'approved') return matchesSearch && item.status?.toLowerCase() === 'approved';
+    if (activeTab === 'approved') return matchesSearch && item.status?.toLowerCase().includes('approved');
     if (activeTab === 'rejected') return matchesSearch && item.status?.toLowerCase().includes('rejected');
     return matchesSearch;
   });
@@ -642,7 +648,7 @@ const LeaveRequest = () => {
                     const s = status?.toLowerCase() || '';
                     if (s === 'pending' || s === 'pending hod') return { label: 'Pending HOD', classes: 'bg-yellow-100 text-yellow-800' };
                     if (s === 'pending hr') return { label: 'Pending HR', classes: 'bg-blue-100 text-blue-800' };
-                    if (s === 'approved') return { label: 'Approved', classes: 'bg-green-100 text-green-800' };
+                    if (s.includes('approved')) return { label: 'Approved', classes: 'bg-green-100 text-green-800' };
                     if (s.includes('rejected')) return { label: 'Rejected', classes: 'bg-red-100 text-red-800' };
                     return { label: status, classes: 'bg-slate-100 text-slate-800' };
                   };

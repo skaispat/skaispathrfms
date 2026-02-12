@@ -20,6 +20,12 @@ import {
 import toast from "react-hot-toast";
 import { supabase } from "../supabaseClient";
 import useAuthStore from "../store/authStore";
+
+// Fiscal year helper: April–March
+// Apr 2025 – Mar 2026 → returns 2025
+const getFiscalYear = (date = new Date()) => {
+  return date.getMonth() >= 3 ? date.getFullYear() : date.getFullYear() - 1;
+};
 import { sendWhatsappMessageToHod } from "../whatsappMessageSender/whatsappMessageSender";
 
 const LeaveManagement = () => {
@@ -771,7 +777,7 @@ const LeaveManagement = () => {
           editableDates.from || selectedRow.startDate,
           editableDates.to || selectedRow.endDate
         );
-        const currentYear = new Date().getFullYear();
+        const currentYear = getFiscalYear();
         const employeeId = selectedRow.employeeId;
         const leaveType = selectedRow.leaveType;
 
