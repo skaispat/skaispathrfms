@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInView } from "react-intersection-observer";
 import {
   Search,
   X,
@@ -33,17 +35,22 @@ const LeaveManagement = () => {
   const showHodColumn = (isHod && !isHr) || (!isHod && !isHr);
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [pendingLeaves, setPendingLeaves] = useState([]);
-  const [approvedLeaves, setApprovedLeaves] = useState([]);
-  const [rejectedLeaves, setRejectedLeaves] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [tableLoading, setTableLoading] = useState(false);
-  const [error, setError] = useState(null);
+  // State removed (replaced by React Query)
+  // pendingLeaves, approvedLeaves, rejectedLeaves are now derived from useInfiniteQuery
+  // tableLoading is now derived from query status
+  // error is now derived from queryError
+  const [loading, setLoading] = useState(false); // kept for action button loading
   const [selectedRow, setSelectedRow] = useState(null);
   const [activeTab, setActiveTab] = useState("pending");
   const [actionInProgress, setActionInProgress] = useState(null);
   const [editableDates, setEditableDates] = useState({ from: "", to: "" });
   const [remarksInputs, setRemarksInputs] = useState({});
+
+  // Pagination state removed in favor of infinite scroll
+  // const [currentPage, setCurrentPage] = useState(1);
+  // const [itemsPerPage, setItemsPerPage] = useState(10);
+  
+  const { ref, inView } = useInView();
 
   const handleRemarkChange = (id, field, value) => {
     setRemarksInputs((prev) => ({
@@ -91,9 +98,9 @@ const LeaveManagement = () => {
   });
 
   useEffect(() => {
-    fetchLeaveData();
     fetchEmployees();
-  }, [user]); // Re-fetch when user matches
+    // fetchLeaveData is now handled by useInfiniteQuery
+  }, [user]);
 
   const handleCheckboxChange = (leaveId, rowData) => {
     if (selectedRow?.id === leaveId) {
@@ -161,9 +168,6 @@ const LeaveManagement = () => {
     earned: { total: 24, used: 0, remaining: 24 },
     unpaid: { used: 0 }
   });
-
-  // Calculate days helper (moved up or ensuring access) - it is defined later in the file, 
-  // so we might need to rely on the view mostly. 
 
   // Fetch leave balance for a specific employee
   const fetchEmployeeBalance = async (employeeId) => {
@@ -367,6 +371,124 @@ const LeaveManagement = () => {
     return `${day}/${month}/${year}`;
   };
 
+  // Transform data helper
+  const transformLeaveData = (data) => {
+    return data.map((leave) => ({
+      id: leave.id,
+      employeeId: leave.emp_id,
+      employeeName: leave.employee_name,
+      days: calculateDays(leave.leave_date_start, leave.leave_date_end),
+      startDate: leave.leave_date_start,
+      endDate: leave.leave_date_end,
+      reason: leave.remarks,
+      leaveType: leave.leave_type,
+      status: leave.status,
+      hodId: leave.hod_id,
+      hodName: leave.hod_name,
+      hodRemarks: leave.hod_remarks,
+      hrId: leave.hr_id,
+      hrName: leave.hr_name,
+      hrRemarks: leave.hr_remarks,
+      timestamp: leave.timestamp,
+    }));
+  };
+
+  const fetchLeaves = async ({ pageParam = 0 }) => {
+    if (!user) return { data: [], nextPage: undefined };
+
+    const ITEMS_PER_PAGE = 10;
+    
+    let query = supabase
+      .from("leave_management")
+      .select("*", { count: "exact" });
+
+    // 1. Role-based filtering
+    if (isHr) {
+      // HR/Admin sees all
+    } else if (isHod) {
+      // HOD sees their own requests AND requests where they are the HOD
+      query = query.or(`hod_id.eq.${user.emp_id},emp_id.eq.${user.emp_id}`);
+    } else {
+      // Regular user sees only their own
+      query = query.eq("emp_id", user.emp_id);
+    }
+
+    // 2. Tab-based filtering
+    if (activeTab === "pending") {
+      query = query.in("status", ["Pending", "Pending HOD", "Pending HR"]);
+    } else if (activeTab === "approved") {
+      query = query.ilike("status", "%Approved%");
+    } else if (activeTab === "rejected") {
+      query = query.ilike("status", "%Rejected%");
+    }
+
+    // 3. Search
+    if (searchTerm) {
+      query = query.or(`employee_name.ilike.%${searchTerm}%,emp_id.ilike.%${searchTerm}%`);
+    }
+
+    // 4. Sorting & Pagination
+    const from = pageParam * ITEMS_PER_PAGE;
+    const to = from + ITEMS_PER_PAGE - 1;
+
+    const { data, error } = await query
+      .order("timestamp", { ascending: false })
+      .range(from, to);
+
+    if (error) throw new Error(error.message);
+
+    return {
+      data: transformLeaveData(data),
+      nextPage: data.length === ITEMS_PER_PAGE ? pageParam + 1 : undefined,
+    };
+  };
+
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    status,
+    error: queryError,
+    refetch
+  } = useInfiniteQuery({
+    queryKey: ["leaves", user?.emp_id, activeTab, searchTerm],
+    queryFn: fetchLeaves,
+    getNextPageParam: (lastPage) => lastPage.nextPage,
+    enabled: !!user,
+  });
+
+  // Trigger fetch next page when scrolling to bottom
+  useEffect(() => {
+    if (inView && hasNextPage) {
+      fetchNextPage();
+    }
+  }, [inView, fetchNextPage, hasNextPage]);
+
+  // Refetch when row selection changes (if needed for updates, etc)
+  useEffect(() => {
+    if (!selectedRow) {
+       refetch();
+    }
+  }, [selectedRow, refetch]);
+
+  // Helper function to manually trigger fetchLeaveData (kept for compatibility with submit/update handlers)
+  const fetchLeaveData = () => {
+    refetch();
+  };
+
+  const leaves = data?.pages.flatMap((page) => page.data) || [];
+  
+  // No need for separate state variables anymore, but keeping render logic intact
+  // We can derive "filtered" lists directly from `leaves` 
+  // (though strict server filtering means `leaves` ONLY contains current tab data)
+  const filteredPendingLeaves = activeTab === "pending" ? leaves : [];
+  const filteredApprovedLeaves = activeTab === "approved" ? leaves : [];
+  const filteredRejectedLeaves = activeTab === "rejected" ? leaves : [];
+
+  const tableLoading = status === "pending";
+  const errorMessage = queryError?.message;
+
   const handleSubmit = async (e) => {
     console.log("the trigger has been run ");
     e.preventDefault();
@@ -399,6 +521,8 @@ const LeaveManagement = () => {
         .lte("created_at", `${today}T23:59:59`)
         .limit(1);
 
+
+
       if (checkError) {
         console.error(checkError);
         toast.error("Unable to verify previous leave requests");
@@ -426,7 +550,6 @@ const LeaveManagement = () => {
         leave_type: formData.leaveType,
         hod_name: formData.hodName,
         designation: formData.designation,
-        hod_id: formData.hodId,
         hod_id: formData.hodId,
         hr_id: formData.hrId,
         hr_name: formData.hrName,
@@ -700,7 +823,6 @@ const LeaveManagement = () => {
                 .from("yearly_quota")
                 .update({
                   [quotaColumn]: newUsed,
-                  updated_at: new Date().toISOString(),
                 })
                 .eq("id", existingQuota.id)
                 .select();
@@ -767,105 +889,7 @@ const LeaveManagement = () => {
     }
   };
 
-  const fetchLeaveData = async () => {
-    setLoading(true);
-    setTableLoading(true);
-    setError(null);
 
-    try {
-      // Fetch data from Supabase leave_management table
-      const { data, error } = await supabase
-        .from("leave_management")
-        .select("*")
-        .order("timestamp", { ascending: false });
-
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      const processedData = data.map((row) => ({
-        id: row.id,
-        timestamp: row.timestamp || "",
-        serialNo: row.serial_no || "",
-        employeeId: row.emp_id || "",
-        employeeName: row.employee_name || "",
-        startDate: row.leave_date_start || "",
-        endDate: row.leave_date_end || "",
-        remark: row.remarks || "",
-        days: calculateDays(row.leave_date_start, row.leave_date_end),
-        status: row.status,
-        leaveType: row.leave_type,
-        hodName: row.hod_name || "",
-        designation: row.designation || "",
-        hodRemarks: row.hod_remarks || "",
-        hrRemarks: row.hr_remarks || "",
-      }));
-
-      // Filter based on user role
-      const isHr =
-        user?.role === "hr" ||
-        user?.role === "HR" ||
-        user?.role === "admin" ||
-        user?.role === "Admin" ||
-        user?.Admin === "Yes";
-      const isHod = user?.is_hod;
-      const userName = user?.full_name || user?.Name;
-
-      const filteredData = processedData.filter((item) => {
-        if (isHr) return true; // HR/Admin sees all
-        if (isHod) {
-          // HOD sees their own requests + requests where they are HOD
-          return (
-            (item.hodName &&
-              userName &&
-              item.hodName.toLowerCase() === userName.toLowerCase()) ||
-            item.employeeId === user?.emp_id
-          );
-        }
-        // Regular user sees only their own
-        return item.employeeId === user?.emp_id;
-      });
-
-      // Pending: 'Pending' (for HOD) or 'Pending HR' (for HR)
-      // We show them in the Pending tab but maybe distinguish visuals
-      setPendingLeaves(
-        filteredData.filter(
-          (leave) =>
-            leave.status?.toString() === "Pending" ||
-            leave.status?.toString() === "Pending HOD" ||
-            leave.status?.toString() === "Pending HR",
-        ),
-      );
-
-      setApprovedLeaves(
-        filteredData.filter(
-          (leave) => leave.status?.toString().toLowerCase() === "approved",
-        ),
-      );
-
-      setRejectedLeaves(
-        filteredData.filter(
-          (leave) =>
-            leave.status?.toString().includes("Rejected") ||
-            leave.status?.toString().toLowerCase() === "rejected",
-        ),
-      );
-    } catch (error) {
-      console.error("Error fetching leave data:", error);
-      setError(error.message);
-      toast.error(`Failed to load leave data: ${error.message}`);
-    } finally {
-      setLoading(false);
-      setTableLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (user) {
-      fetchLeaveData();
-      fetchEmployees();
-    }
-  }, [user]);
 
   const formatDate = (dateString) => {
     if (!dateString) return "-";
@@ -879,30 +903,11 @@ const LeaveManagement = () => {
       });
   };
 
-  const filteredPendingLeaves = pendingLeaves.filter((item) => {
-    const matchesSearch =
-      item.employeeName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.employeeId?.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesSearch;
-  });
 
-  const filteredApprovedLeaves = approvedLeaves.filter((item) => {
-    const matchesSearch =
-      item.employeeName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.employeeId?.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesSearch;
-  });
-
-  const filteredRejectedLeaves = rejectedLeaves.filter((item) => {
-    const matchesSearch =
-      item.employeeName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.employeeId?.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesSearch;
-  });
 
   const leaveTypes = ["Casual Leave", "Earned Leave", "UnPaid Leave"];
 
-  const renderPendingLeavesTable = () => (
+  const renderPendingLeavesTable = (data = []) => (
     <table className="min-w-full divide-y divide-slate-100">
       <thead className="sticky top-0 z-10 border-b bg-slate-50 border-slate-200">
         <tr>
@@ -952,8 +957,8 @@ const LeaveManagement = () => {
         </tr>
       </thead>
       <tbody className="bg-white divide-y divide-slate-100">
-        {filteredPendingLeaves.length > 0 ? (
-          filteredPendingLeaves.map((item, index) => (
+        {data.length > 0 ? (
+          data.map((item, index) => (
             <tr key={index} className="transition-colors hover:bg-slate-50">
               <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
                 {((user?.is_hod &&
@@ -979,7 +984,12 @@ const LeaveManagement = () => {
               </td>
               <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
                 <span
-                  className={`px-2 py-1 text-xs font-semibold rounded-full ${item.status === "Pending" || item.status === "Pending HOD"
+                  className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                    item.status?.toString().toLowerCase().includes("approved")
+                      ? "bg-green-100 text-green-800"
+                      : item.status?.toString().toLowerCase().includes("rejected")
+                      ? "bg-red-100 text-red-800"
+                      : item.status === "Pending" || item.status === "Pending HOD"
                       ? "bg-yellow-100 text-yellow-800"
                       : "bg-blue-100 text-blue-800"
                     }`}
@@ -1204,10 +1214,13 @@ const LeaveManagement = () => {
     </table>
   );
 
-  const renderApprovedLeavesTable = () => (
+  const renderApprovedLeavesTable = (data = []) => (
     <table className="min-w-full divide-y divide-slate-100">
       <thead className="sticky top-0 z-10 border-b bg-slate-50 border-slate-200">
         <tr>
+          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+            Status
+          </th>
           <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
             Employee ID
           </th>
@@ -1245,9 +1258,14 @@ const LeaveManagement = () => {
         </tr>
       </thead>
       <tbody className="bg-white divide-y divide-slate-100">
-        {filteredApprovedLeaves.length > 0 ? (
-          filteredApprovedLeaves.map((item, index) => (
+        {data.length > 0 ? (
+          data.map((item, index) => (
             <tr key={index} className="transition-colors hover:bg-slate-50">
+              <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
+                <span className="px-2 py-1 text-xs font-semibold text-green-800 bg-green-100 rounded-full">
+                  {item.status}
+                </span>
+              </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
                 {item.employeeId}
               </td>
@@ -1295,10 +1313,13 @@ const LeaveManagement = () => {
     </table>
   );
 
-  const renderRejectedLeavesTable = () => (
+  const renderRejectedLeavesTable = (data = []) => (
     <table className="min-w-full divide-y divide-slate-100">
       <thead className="sticky top-0 z-10 border-b bg-slate-50 border-slate-200">
         <tr>
+          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+            Status
+          </th>
           <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
             Employee ID
           </th>
@@ -1336,9 +1357,14 @@ const LeaveManagement = () => {
         </tr>
       </thead>
       <tbody className="bg-white divide-y divide-slate-100">
-        {filteredRejectedLeaves.length > 0 ? (
-          filteredRejectedLeaves.map((item, index) => (
+        {data.length > 0 ? (
+          data.map((item, index) => (
             <tr key={index} className="transition-colors hover:bg-slate-50">
+              <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
+                <span className="px-2 py-1 text-xs font-semibold text-red-800 bg-red-100 rounded-full">
+                  {item.status}
+                </span>
+              </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
                 {item.employeeId}
               </td>
@@ -1386,17 +1412,39 @@ const LeaveManagement = () => {
     </table>
   );
 
+  const renderPagination = () => {
+    if (!hasNextPage && !isFetchingNextPage) return null;
+    
+    return (
+      <div ref={ref} className="flex justify-center p-4">
+        {isFetchingNextPage ? (
+          <div className="w-8 h-8 border-b-2 border-indigo-600 rounded-full animate-spin"></div>
+        ) : (
+          <span className="text-sm text-slate-500">
+             {hasNextPage ? "Loading more..." : "No more data"}
+          </span>
+        )}
+      </div>
+    );
+  };
+    
   const renderTable = () => {
-    switch (activeTab) {
-      case "pending":
-        return renderPendingLeavesTable();
-      case "approved":
-        return renderApprovedLeavesTable();
-      case "rejected":
-        return renderRejectedLeavesTable();
-      default:
-        return renderPendingLeavesTable();
-    }
+    // Determine which data to show based on active tab
+    // Since we filter on server, `leaves` is sufficient
+    // passing `leaves` to all render functions is correct
+    
+    return (
+      <div className="flex flex-col h-full">
+        <div className="flex-1 overflow-auto custom-scrollbar">
+          {activeTab === "pending" && renderPendingLeavesTable(leaves)}
+          {activeTab === "approved" && renderApprovedLeavesTable(leaves)}
+          {activeTab === "rejected" && renderRejectedLeavesTable(leaves)}
+          
+          {/* Sentinel for infinite scroll */}
+          {renderPagination()}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -1405,7 +1453,7 @@ const LeaveManagement = () => {
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center shrink-0">
         <div>
           <h1 className="text-2xl font-bold tracking-tight sm:text-3xl text-slate-900">
-            Leave Management
+            Leave Management 
           </h1>
           <p className="mt-1 text-sm text-slate-500">
             Manage employee leave requests and history
@@ -1427,12 +1475,7 @@ const LeaveManagement = () => {
           <div className="flex items-center gap-2 p-1 overflow-x-auto border rounded-lg bg-slate-100/50 border-slate-200/50">
             {["pending", "approved", "rejected"].map((tab) => {
               const isActive = activeTab === tab;
-              const count =
-                tab === "pending"
-                  ? pendingLeaves.length
-                  : tab === "approved"
-                    ? approvedLeaves.length
-                    : rejectedLeaves.length;
+              const count = activeTab === tab ? leaves.length : 0;
               return (
                 <button
                   key={tab}
@@ -1472,15 +1515,15 @@ const LeaveManagement = () => {
         </div>
 
         {/* Table Content */}
-        <div className="flex-1 overflow-auto custom-scrollbar">
+        <div className="flex-1 overflow-auto custom-scrollbar flex flex-col">
           {tableLoading ? (
             <div className="flex items-center justify-center flex-1 h-64 text-center">
               <div className="w-10 h-10 border-b-2 border-indigo-600 rounded-full animate-spin"></div>
             </div>
-          ) : error ? (
+          ) : errorMessage ? (
             <div className="px-6 py-20 text-center">
               <div className="inline-block p-4 mb-4 text-red-600 bg-red-50 rounded-xl">
-                <p>{error}</p>
+                <p>{errorMessage}</p>
               </div>
               <br />
               <button
