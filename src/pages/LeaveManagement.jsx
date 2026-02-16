@@ -1009,9 +1009,9 @@ const LeaveManagement = () => {
       <tbody className="bg-white divide-y divide-slate-100">
         {data.length > 0 ? (
           data.map((item, index) => (
-            <tr key={index} className={`transition-colors ${item.isActive ? 'bg-green-50 hover:bg-green-100' : 'bg-red-50 hover:bg-red-100'}`}>
+            <tr key={index} className="transition-colors bg-yellow-50 hover:bg-yellow-100">
               <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
-                <div className={`h-2.5 w-2.5 rounded-full ${item.isActive ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                <div className="h-2.5 w-2.5 rounded-full bg-yellow-500"></div>
               </td>
               <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
                 {((user?.is_hod &&
@@ -1314,9 +1314,9 @@ const LeaveManagement = () => {
       <tbody className="bg-white divide-y divide-slate-100">
         {data.length > 0 ? (
           data.map((item, index) => (
-            <tr key={index} className={`transition-colors ${item.isActive ? 'bg-green-50 hover:bg-green-100' : 'bg-red-50 hover:bg-red-100'}`}>
+            <tr key={index} className={`transition-colors ${item.isActive ? 'bg-green-50 hover:bg-green-100' : 'bg-slate-50 hover:bg-slate-100'}`}>
               <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
-                <div className={`h-2.5 w-2.5 rounded-full ${item.isActive ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                <div className={`h-2.5 w-2.5 rounded-full ${item.isActive ? 'bg-green-500' : 'bg-slate-400'}`}></div>
               </td>
               <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
                 <span className="px-2 py-1 text-xs font-semibold text-green-800 bg-green-100 rounded-full">
@@ -1424,9 +1424,9 @@ const LeaveManagement = () => {
       <tbody className="bg-white divide-y divide-slate-100">
         {data.length > 0 ? (
           data.map((item, index) => (
-            <tr key={index} className={`transition-colors ${item.isActive ? 'bg-green-50 hover:bg-green-100' : 'bg-red-50 hover:bg-red-100'}`}>
+            <tr key={index} className="transition-colors bg-red-50 hover:bg-red-100">
               <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
-                <div className={`h-2.5 w-2.5 rounded-full ${item.isActive ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                <div className="h-2.5 w-2.5 rounded-full bg-red-500"></div>
               </td>
               <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
                 <span className="px-2 py-1 text-xs font-semibold text-red-800 bg-red-100 rounded-full">
@@ -1582,7 +1582,15 @@ const LeaveManagement = () => {
                  <span className="text-xs font-medium text-slate-600">Active</span>
                </div>
                <div className="flex items-center gap-1.5">
+                 <div className="w-2.5 h-2.5 rounded-full bg-yellow-500"></div>
+                 <span className="text-xs font-medium text-slate-600">Pending</span>
+               </div>
+               <div className="flex items-center gap-1.5">
                  <div className="w-2.5 h-2.5 rounded-full bg-red-500"></div>
+                 <span className="text-xs font-medium text-slate-600">Rejected</span>
+               </div>
+               <div className="flex items-center gap-1.5">
+                 <div className="w-2.5 h-2.5 rounded-full bg-slate-400"></div>
                  <span className="text-xs font-medium text-slate-600">Expired</span>
                </div>
             </div>
