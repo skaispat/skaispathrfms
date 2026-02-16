@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import dayjs from "dayjs";
 import { createPortal } from "react-dom";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useInView } from "react-intersection-observer";
@@ -377,27 +378,69 @@ const LeaveManagement = () => {
     return `${day}/${month}/${year}`;
   };
 
+  // Helper for month split calculation
+  const calculateMonthSplit = (startStr, endStr) => {
+    const start = dayjs(startStr);
+    const end = dayjs(endStr);
+    const split = [];
+
+    let current = start.clone().startOf('month');
+    const endMonth = end.clone().startOf('month');
+
+    while (current.isBefore(endMonth) || current.isSame(endMonth, 'month')) {
+      const monthStart = current;
+      const monthEnd = current.clone().endOf('month');
+
+      const overlapStart = start.isAfter(monthStart) ? start : monthStart;
+      const overlapEnd = end.isBefore(monthEnd) ? end : monthEnd;
+
+      if (!overlapStart.isAfter(overlapEnd)) {
+        const days = overlapEnd.diff(overlapStart, 'day') + 1;
+        if (days > 0) {
+          split.push(`${days} days in ${current.format('MMM')}`);
+        }
+      }
+      current = current.add(1, 'month');
+    }
+    return split.join(" | ");
+  };
+
   // Transform data helper
   const transformLeaveData = (data) => {
-    return data.map((leave) => ({
-      id: leave.id,
-      employeeId: leave.emp_id,
-      employeeName: leave.employee_name,
-      days: calculateDays(leave.leave_date_start, leave.leave_date_end),
-      startDate: leave.leave_date_start,
-      endDate: leave.leave_date_end,
-      reason: leave.remarks,
-      leaveType: leave.leave_type,
-      status: leave.status,
-      hodId: leave.hod_id,
-      hodName: leave.hod_name,
-      hodRemarks: leave.hod_remarks,
-      hrId: leave.hr_id,
-      hrName: leave.hr_name,
-      hrRemarks: leave.hr_remarks,
-      timestamp: leave.timestamp,
-    }));
+    const today = dayjs();
+    return data.map((leave) => {
+      const start = dayjs(leave.leave_date_start);
+      const end = dayjs(leave.leave_date_end);
+      const totalDays = calculateDays(leave.leave_date_start, leave.leave_date_end);
+      const monthSplit = calculateMonthSplit(leave.leave_date_start, leave.leave_date_end);
+
+      const isExpired = end.isBefore(today, "day");
+      const isActive = !isExpired;
+
+      return {
+        id: leave.id,
+        employeeId: leave.emp_id,
+        employeeName: leave.employee_name,
+        days: totalDays,
+        monthSplit,
+        isActive,
+        isExpired,
+        startDate: leave.leave_date_start,
+        endDate: leave.leave_date_end,
+        reason: leave.remarks,
+        leaveType: leave.leave_type,
+        status: leave.status,
+        hodId: leave.hod_id,
+        hodName: leave.hod_name,
+        hodRemarks: leave.hod_remarks,
+        hrId: leave.hr_id,
+        hrName: leave.hr_name,
+        hrRemarks: leave.hr_remarks,
+        timestamp: leave.timestamp,
+      };
+    });
   };
+
 
   const fetchLeaves = async ({ pageParam = 0 }) => {
     if (!user) return { data: [], nextPage: undefined };
@@ -917,6 +960,7 @@ const LeaveManagement = () => {
     <table className="min-w-full divide-y divide-slate-100">
       <thead className="sticky top-0 z-10 border-b bg-slate-50 border-slate-200">
         <tr>
+          <th className="w-4 px-4 py-3 sm:px-6 sm:py-4"></th>
           <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
             Select
           </th>
@@ -965,7 +1009,10 @@ const LeaveManagement = () => {
       <tbody className="bg-white divide-y divide-slate-100">
         {data.length > 0 ? (
           data.map((item, index) => (
-            <tr key={index} className="transition-colors hover:bg-slate-50">
+            <tr key={index} className={`transition-colors ${item.isActive ? 'bg-green-50 hover:bg-green-100' : 'bg-red-50 hover:bg-red-100'}`}>
+              <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
+                <div className={`h-2.5 w-2.5 rounded-full ${item.isActive ? 'bg-green-500' : 'bg-red-500'}`}></div>
+              </td>
               <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
                 {((user?.is_hod &&
                   (item.status === "Pending" ||
@@ -1043,7 +1090,7 @@ const LeaveManagement = () => {
                   : item.days}
               </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                {item.remark}
+                {item.reason}
               </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
                 {item.leaveType}
@@ -1224,6 +1271,7 @@ const LeaveManagement = () => {
     <table className="min-w-full divide-y divide-slate-100">
       <thead className="sticky top-0 z-10 border-b bg-slate-50 border-slate-200">
         <tr>
+          <th className="w-4 px-4 py-3 sm:px-6 sm:py-4"></th>
           <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
             Status
           </th>
@@ -1266,7 +1314,10 @@ const LeaveManagement = () => {
       <tbody className="bg-white divide-y divide-slate-100">
         {data.length > 0 ? (
           data.map((item, index) => (
-            <tr key={index} className="transition-colors hover:bg-slate-50">
+            <tr key={index} className={`transition-colors ${item.isActive ? 'bg-green-50 hover:bg-green-100' : 'bg-red-50 hover:bg-red-100'}`}>
+              <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
+                <div className={`h-2.5 w-2.5 rounded-full ${item.isActive ? 'bg-green-500' : 'bg-red-500'}`}></div>
+              </td>
               <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
                 <span className="px-2 py-1 text-xs font-semibold text-green-800 bg-green-100 rounded-full">
                   {item.status}
@@ -1285,10 +1336,17 @@ const LeaveManagement = () => {
                 {formatDate(item.endDate)}
               </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                {item.days}
+                <div className="flex flex-col">
+                  <span className="text-slate-700">{item.days} days</span>
+                  {item.monthSplit && (
+                    <span className="text-xs text-slate-500 flex items-center gap-1">
+                      <span className="text-slate-400">↳</span> {item.monthSplit}
+                    </span>
+                  )}
+                </div>
               </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                {item.remark}
+                {item.reason}
               </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
                 {item.leaveType}
@@ -1323,6 +1381,7 @@ const LeaveManagement = () => {
     <table className="min-w-full divide-y divide-slate-100">
       <thead className="sticky top-0 z-10 border-b bg-slate-50 border-slate-200">
         <tr>
+          <th className="w-4 px-4 py-3 sm:px-6 sm:py-4"></th>
           <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
             Status
           </th>
@@ -1365,7 +1424,10 @@ const LeaveManagement = () => {
       <tbody className="bg-white divide-y divide-slate-100">
         {data.length > 0 ? (
           data.map((item, index) => (
-            <tr key={index} className="transition-colors hover:bg-slate-50">
+            <tr key={index} className={`transition-colors ${item.isActive ? 'bg-green-50 hover:bg-green-100' : 'bg-red-50 hover:bg-red-100'}`}>
+              <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
+                <div className={`h-2.5 w-2.5 rounded-full ${item.isActive ? 'bg-green-500' : 'bg-red-500'}`}></div>
+              </td>
               <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
                 <span className="px-2 py-1 text-xs font-semibold text-red-800 bg-red-100 rounded-full">
                   {item.status}
@@ -1384,10 +1446,17 @@ const LeaveManagement = () => {
                 {formatDate(item.endDate)}
               </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                {item.days}
+                <div className="flex flex-col">
+                  <span className="font-bold text-slate-700">{item.days} days</span>
+                  {item.monthSplit && (
+                    <span className="text-xs text-slate-500 flex items-center gap-1">
+                      <span className="text-slate-400">↳</span> {item.monthSplit}
+                    </span>
+                  )}
+                </div>
               </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                {item.remark}
+                {item.reason}
               </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
                 {item.leaveType}
@@ -1505,18 +1574,33 @@ const LeaveManagement = () => {
             })}
           </div>
 
-          <div className="relative w-full max-w-full md:max-w-xs">
-            <input
-              type="text"
-              placeholder="Search employees..."
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-900 placeholder-slate-400 transition-all text-sm"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-            <Search
-              size={16}
-              className="absolute transform -translate-y-1/2 left-3 top-1/2 text-slate-400"
-            />
+          <div className="flex flex-col gap-3 w-full md:w-auto md:flex-row md:items-center">
+            {/* Status Legend */}
+            <div className="flex items-center gap-3 px-1">
+               <div className="flex items-center gap-1.5">
+                 <div className="w-2.5 h-2.5 rounded-full bg-green-500"></div>
+                 <span className="text-xs font-medium text-slate-600">Active</span>
+               </div>
+               <div className="flex items-center gap-1.5">
+                 <div className="w-2.5 h-2.5 rounded-full bg-red-500"></div>
+                 <span className="text-xs font-medium text-slate-600">Expired</span>
+               </div>
+            </div>
+
+            {/* Search Input */}
+            <div className="relative w-full md:w-64">
+              <input
+                type="text"
+                placeholder="Search employees..."
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-900 placeholder-slate-400 transition-all text-sm"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+              <Search
+                size={16}
+                className="absolute transform -translate-y-1/2 left-3 top-1/2 text-slate-400"
+              />
+            </div>
           </div>
         </div>
 
