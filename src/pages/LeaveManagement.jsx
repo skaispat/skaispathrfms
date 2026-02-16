@@ -468,7 +468,7 @@ const LeaveManagement = () => {
     } else if (activeTab === "approved") {
       query = query.ilike("status", "%Approved%");
     } else if (activeTab === "rejected") {
-      query = query.ilike("status", "%Rejected%");
+      query = query.ilike("status", "%Reject%");
     }
 
     // 3. Search
