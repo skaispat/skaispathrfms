@@ -1085,9 +1085,18 @@ const LeaveManagement = () => {
                 )}
               </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                {selectedRow?.id === item.id
-                  ? calculateDays(editableDates.from, editableDates.to)
-                  : item.days}
+                <div className="flex flex-col">
+                  <span className="text-slate-700">
+                    {selectedRow?.id === item.id
+                      ? calculateDays(editableDates.from, editableDates.to)
+                      : item.days} days
+                  </span>
+                  {item.monthSplit && (
+                    <span className="text-xs text-slate-500 flex items-center gap-1">
+                      <span className="text-slate-400">↳</span> {item.monthSplit}
+                    </span>
+                  )}
+                </div>
               </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
                 {item.reason}
@@ -1447,7 +1456,7 @@ const LeaveManagement = () => {
               </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
                 <div className="flex flex-col">
-                  <span className="font-bold text-slate-700">{item.days} days</span>
+                  <span className="text-slate-700">{item.days} days</span>
                   {item.monthSplit && (
                     <span className="text-xs text-slate-500 flex items-center gap-1">
                       <span className="text-slate-400">↳</span> {item.monthSplit}
