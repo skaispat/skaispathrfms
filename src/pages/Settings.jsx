@@ -230,7 +230,7 @@ const Settings = () => {
                 emp_id: user.emp_id,
                 full_name: user.full_name,
                 email: user.email,
-                password: '', // Don't show existing password
+                password: user.password || '', // Show existing password
                 role: user.role || 'employee',
                 designation: user.designation || '',
                 department: user.department || '',
@@ -1459,8 +1459,7 @@ const Settings = () => {
 
                                         <div>
                                             <label className="block text-sm font-medium text-slate-700 mb-1">
-                                                Password {editingUser && <span className="text-xs text-slate-400 font-normal">(Leave blank to keep unchanged)</span>}
-                                                {!editingUser && <span className="text-red-500">*</span>}
+                                                Password {!editingUser && <span className="text-red-500">*</span>}
                                             </label>
                                             <div className="relative">
                                                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
