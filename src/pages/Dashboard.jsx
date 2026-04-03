@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import useAuthStore from '../store/authStore';
 import { supabase } from '../supabaseClient';
 import {
   BarChart,
@@ -32,7 +33,16 @@ import {
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const user = useAuthStore((state) => state.user);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Admin check
+    if (user && user.Admin !== 'Yes') {
+      navigate('/my-profile');
+    }
+  }, [user, navigate]);
+
   const [totalEmployee, setTotalEmployee] = useState(0);
   const [activeEmployee, setActiveEmployee] = useState(0);
   const [resignedEmployee, setResignedEmployee] = useState(0);
@@ -43,13 +53,17 @@ const Dashboard = () => {
   const [leaveStatusData, setLeaveStatusData] = useState([]);
   const [departmentData, setDepartmentData] = useState([]);
   const [vacancies, setVacancies] = useState([]);
-  const [upcomingEvents, setUpcomingEvents] = useState([]);
 
   // Helper to process distribution data
   const getDistribution = (data, key) => {
     const counts = {};
     data.forEach(item => {
-      const val = item[key] ? item[key].trim() : 'Unknown';
+      let val = item[key] ? item[key].trim() : 'Unknown';
+      // Grouping logic
+      if (val.toLowerCase().includes('approve')) val = 'Approved';
+      else if (val.toLowerCase().includes('reject')) val = 'Rejected';
+      else if (val.toLowerCase().includes('pending')) val = 'Pending HOD';
+
       counts[val] = (counts[val] || 0) + 1;
     });
     return Object.keys(counts).map(k => ({ name: k, value: counts[k] }));
@@ -146,16 +160,7 @@ const Dashboard = () => {
         const leaveStats = getDistribution(leaveData, 'status');
         setLeaveStatusData(leaveStats);
 
-        // 5. Fetch Upcoming Events
-        const todayStr = today.toISOString().split('T')[0];
-        const { data: events, error: eventsError } = await supabase
-          .from('company_calender')
-          .select('*')
-          .gte('date', todayStr)
-          .order('date', { ascending: true })
-          .limit(3);
 
-        if (!eventsError && events) setUpcomingEvents(events);
 
         // 6. Fetch Recent Job Vacancies
         const { data: jobs, error: jobsError } = await supabase
@@ -180,8 +185,11 @@ const Dashboard = () => {
   const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#10b981', '#3b82f6', '#f59e0b', '#06b6d4'];
   const STATUS_COLORS = {
     'Approved': '#10B981',
-    'Pending': '#F59E0B',
+    'Pending': '#FACC15',
+    'Pending HOD': '#FACC15',
+    'Pending HR': '#FACC15',
     'Rejected': '#EF4444',
+    'Reject': '#EF4444',
     'Cancelled': '#6B7280',
     'Unknown': '#9CA3AF'
   };
@@ -195,23 +203,23 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="p-8 max-w-[1600px] mx-auto space-y-8 min-h-screen font-sans">
+    <div className="p-1 sm:p-8 max-w-[1600px] mx-auto space-y-4 sm:space-y-8 min-h-screen font-sans">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-2">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Dashboard Overview</h1>
-          <p className="text-slate-500 text-sm mt-1">Welcome back! Here's what's happening today.</p>
+      <div className="flex items-center justify-between gap-1.5 mb-1 sm:mb-4 px-1 sm:px-0">
+        <div className="text-left">
+          <h1 className="text-lg sm:text-2xl font-bold text-slate-800 tracking-tight">Dashboard Overview</h1>
+          <p className="text-slate-600 text-xs sm:text-base mt-0.5 font-semibold">Welcome back! SKA HR System</p>
         </div>
-        <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-full shadow-sm border border-slate-200/60">
-          <Calendar size={16} className="text-slate-400" />
-          <span className="text-sm font-medium text-slate-600">
-            {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+        <div className="flex items-center gap-1 px-2 py-1 sm:px-4 sm:py-2 bg-white rounded-full shadow-sm border border-slate-200/60 flex-shrink-0">
+          <Calendar size={12} className="text-slate-400 sm:w-4 sm:h-4" />
+          <span className="text-[10px] sm:text-sm font-bold text-slate-700">
+            {new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: '2-digit' })}
           </span>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-1.5 sm:gap-6">
         <StatCard
           title="Total Employees"
           value={totalEmployee}
@@ -247,18 +255,18 @@ const Dashboard = () => {
       </div>
 
       {/* Main Grid: Hiring Trend, Leave Status */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-1.5 sm:gap-6">
 
         {/* Hiring Trend - 2 Cols */}
-        <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hover:shadow-md transition-shadow duration-300">
+        <div className="bg-white p-3 sm:p-8 rounded-2xl sm:rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hover:shadow-md transition-shadow duration-300">
           <div className="flex items-center justify-between mb-8">
             <div>
-              <h3 className="text-xl font-bold text-slate-800 tracking-tight">Recruitment Analytics</h3>
-              <p className="text-sm text-slate-500 font-medium mt-1">Hiring vs Attrition trends over the last 6 months</p>
+              <h3 className="text-base sm:text-lg font-bold text-slate-800 tracking-tight">Recruitment Analytics</h3>
+              <p className="text-xs sm:text-sm text-slate-600 font-semibold mt-1">Hiring vs Attrition</p>
             </div>
             <div className="flex items-center gap-6 bg-slate-50 px-4 py-2 rounded-xl border border-slate-100">
               <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-indigo-500 shadow shadow-indigo-200"></span>
+                <span className="w-3 h-3 rounded-full bg-emerald-500 shadow shadow-emerald-200"></span>
                 <span className="text-xs font-semibold text-slate-600">Hired</span>
               </div>
               <div className="flex items-center gap-2">
@@ -272,8 +280,8 @@ const Dashboard = () => {
               <AreaChart data={monthlyHiringData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorHired" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="colorLeft" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.3} />
@@ -308,7 +316,7 @@ const Dashboard = () => {
                 <Area
                   type="monotone"
                   dataKey="hired"
-                  stroke="#6366f1"
+                  stroke="#10b981"
                   strokeWidth={4}
                   fillOpacity={1}
                   fill="url(#colorHired)"
@@ -327,20 +335,20 @@ const Dashboard = () => {
         </div>
 
         {/* Leave Status - 1 Col */}
-        <div className="bg-white p-6 rounded-3xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-slate-100 flex flex-col">
+        <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-slate-100 flex flex-col">
           <div className="mb-2">
-            <h3 className="text-lg font-bold text-slate-800">Leave Requests</h3>
-            <p className="text-xs text-slate-500 font-medium">Current status distribution</p>
+            <h3 className="text-base sm:text-lg font-bold text-slate-800">Leave Requests</h3>
+            <p className="text-xs sm:text-sm text-slate-600 font-semibold">Current status distribution</p>
           </div>
-          <div className="flex-1 min-h-[220px] relative">
+          <div className="flex-1 min-h-[200px] sm:min-h-[220px] relative">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
                   data={leaveStatusData}
                   cx="50%"
                   cy="50%"
-                  innerRadius={65}
-                  outerRadius={85}
+                  innerRadius={55}
+                  outerRadius={75}
                   paddingAngle={5}
                   dataKey="value"
                   stroke="none"
@@ -356,14 +364,14 @@ const Dashboard = () => {
               </PieChart>
             </ResponsiveContainer>
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-3xl font-bold text-slate-800">{leaveStatusData.reduce((a, b) => a + b.value, 0)}</span>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Requests</p>
+              <span className="text-2xl sm:text-3xl font-bold text-slate-800">{leaveStatusData.reduce((a, b) => a + b.value, 0)}</span>
+              <p className="text-[10px] sm:text-xs font-semibold text-slate-400 uppercase tracking-wider">Requests</p>
             </div>
           </div>
           <div className="flex flex-wrap justify-center gap-2 mt-2">
             {leaveStatusData.map((entry, index) => (
-              <div key={index} className="flex items-center gap-1.5 text-xs font-medium text-slate-600 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-100">
-                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: STATUS_COLORS[entry.name] || '#CBD5E1' }}></span>
+              <div key={index} className="flex items-center gap-1.5 text-[10px] sm:text-xs font-medium text-slate-600 bg-slate-50 px-2 sm:px-2.5 py-1 rounded-md border border-slate-100">
+                <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full" style={{ backgroundColor: STATUS_COLORS[entry.name] || '#CBD5E1' }}></span>
                 {entry.name}
               </div>
             ))}
@@ -372,14 +380,14 @@ const Dashboard = () => {
       </div>
 
       {/* Department Chart - Full Width */}
-      <div className="bg-white p-6 rounded-3xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-slate-100">
+      <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-slate-100">
         <div className="mb-6 flex items-center gap-2">
           <div className="p-2 bg-purple-50 rounded-lg">
             <Layers size={18} className="text-purple-600" />
           </div>
           <div>
-            <h3 className="text-lg font-bold text-slate-800">Department Overview</h3>
-            <p className="text-xs text-slate-500 font-medium">Employee distribution by department</p>
+            <h3 className="text-base sm:text-lg font-bold text-slate-800">Department Overview</h3>
+            <p className="text-xs sm:text-sm text-slate-600 font-semibold">Employee distribution by department</p>
           </div>
         </div>
         <div className="h-[280px] w-full">
@@ -412,18 +420,18 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Secondary Grid: Top Designations, Upcoming Events, Job Vacancies */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Secondary Grid: Top Designations, Job Vacancies */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-1.5 sm:gap-6">
 
         {/* Designations Chart - Converted to Pie */}
-        <div className="bg-white p-6 rounded-3xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-slate-100 flex flex-col">
+        <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-slate-100 flex flex-col">
           <div className="mb-4 flex items-center gap-2">
-            <div className="p-2 bg-teal-50 rounded-lg">
-              <Briefcase size={18} className="text-teal-600" />
+            <div className="p-1.5 sm:p-2 bg-teal-50 rounded-lg">
+              <Briefcase size={16} className="text-teal-600" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-slate-800">Top Designations</h3>
-              <p className="text-xs text-slate-500 font-medium">Headcount by role</p>
+              <h3 className="text-base sm:text-lg font-bold text-slate-800">Top Designations</h3>
+              <p className="text-xs sm:text-sm text-slate-600 font-semibold">Headcount by role</p>
             </div>
           </div>
           <div className="flex-1 w-full min-h-[250px]">
@@ -461,68 +469,18 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Upcoming Events Widget */}
-        <div className="bg-white p-6 rounded-3xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-slate-100">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-2">
-              <div className="p-2 bg-amber-50 rounded-lg">
-                <Calendar size={18} className="text-amber-600" />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-slate-800">Events</h3>
-                <p className="text-xs text-slate-500 font-medium">Upcoming schedules</p>
-              </div>
-            </div>
-          </div>
 
-          <div className="space-y-4">
-            {upcomingEvents.length > 0 ? (
-              upcomingEvents.map((event, index) => (
-                <div key={index} className="flex gap-4 p-3 rounded-2xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100 group">
-                  <div className="flex-shrink-0 flex flex-col items-center justify-center bg-amber-50/50 rounded-2xl w-14 h-14 border border-amber-100 group-hover:bg-white group-hover:border-amber-200 shadow-sm transition-all">
-                    <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wide">
-                      {new Date(event.date).toLocaleString('default', { month: 'short' })}
-                    </span>
-                    <span className="text-xl font-bold text-slate-800 leading-none">
-                      {new Date(event.date).getDate()}
-                    </span>
-                  </div>
-                  <div className="flex flex-col justify-center">
-                    <h4 className="text-sm font-bold text-slate-800 line-clamp-1 group-hover:text-amber-700 transition-colors">{event.title}</h4>
-                    <div className="flex items-center text-xs text-slate-400 mt-1 font-medium">
-                      <Clock3 size={12} className="mr-1" />
-                      {event.time || 'All Day'}
-                    </div>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="flex flex-col items-center justify-center h-48 text-slate-300">
-                <Calendar size={40} className="mb-2 opacity-50" />
-                <p className="text-sm font-medium">No upcoming events</p>
-              </div>
-            )}
-          </div>
-          {upcomingEvents.length > 0 && (
-            <button
-              onClick={() => navigate('/company-calendar')}
-              className="w-full mt-4 py-2 text-xs font-semibold text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-xl transition-colors"
-            >
-              View Calendar
-            </button>
-          )}
-        </div>
 
         {/* Job Vacancies Widget */}
-        <div className="bg-white p-6 rounded-3xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-slate-100">
+        <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-slate-100">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-2">
-              <div className="p-2 bg-blue-50 rounded-lg">
+              <div className="p-1.5 sm:p-2 bg-blue-50 rounded-lg">
                 <Briefcase size={18} className="text-blue-600" />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-slate-800">Job Openings</h3>
-                <p className="text-xs text-slate-500 font-medium">Recent vacancies</p>
+                <h3 className="text-base sm:text-lg font-bold text-slate-800">Job Openings</h3>
+                <p className="text-xs sm:text-sm text-slate-600 font-semibold">Recent vacancies</p>
               </div>
             </div>
           </div>
@@ -575,21 +533,21 @@ const StatCard = ({ title, value, icon: Icon, trend, trendUp, color }) => {
   const scheme = colorMap[color] || colorMap.indigo;
 
   return (
-    <div className="bg-white p-6 rounded-3xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] border border-slate-100/60 hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
-      <div className="flex justify-between items-start mb-4">
-        <div className={`p-3.5 rounded-2xl ${scheme.bg} ${scheme.text} shadow-sm`}>
-          <Icon size={22} className="stroke-[2.5px]" />
+    <div className="bg-white p-2.5 sm:p-6 rounded-2xl sm:rounded-3xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] border border-slate-100/60 hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
+      <div className="flex justify-between items-start mb-3 sm:mb-4">
+        <div className={`p-2 sm:p-3.5 rounded-xl sm:rounded-2xl ${scheme.bg} ${scheme.text} shadow-sm`}>
+          <Icon size={18} className="sm:w-[22px] sm:h-[22px] stroke-[2.5px]" />
         </div>
         {trend && (
-          <span className={`text-[11px] font-bold px-2 py-1 rounded-full flex items-center gap-1 ${trendUp ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
-            {trendUp ? <TrendingUp size={10} /> : <TrendingUp size={10} className="rotate-180" />}
+          <span className={`text-[10px] sm:text-[11px] font-bold px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full flex items-center gap-0.5 sm:gap-1 ${trendUp ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+            {trendUp ? <TrendingUp size={10} className="sm:w-[10px] sm:h-[10px]" /> : <TrendingUp size={10} className="sm:w-[10px] sm:h-[10px] rotate-180" />}
             {trend}
           </span>
         )}
       </div>
       <div>
-        <h3 className="text-3xl font-bold text-slate-800 tracking-tight">{value}</h3>
-        <p className="text-sm font-medium text-slate-400 mt-1">{title}</p>
+        <h3 className="text-xl sm:text-3xl font-bold text-slate-800 tracking-tight">{value}</h3>
+        <p className="text-xs sm:text-sm font-semibold text-slate-600 mt-0.5 sm:mt-1">{title}</p>
       </div>
     </div>
   );

@@ -150,7 +150,6 @@ const AfterLeavingWork = () => {
       const allConditionsMet =
         formData.resignationLetterReceived &&
         formData.resignationAcceptance &&
-        formData.handoverAssetsIdVisitingCard &&
         formData.cancellationEmailBiometric &&
         formData.removeBenefitEnrollment &&
         formData.finalReleaseDate;
@@ -316,95 +315,110 @@ const AfterLeavingWork = () => {
                 <X size={20} />
               </button>
             </div>
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Employee ID</label>
-                  <input
-                    type="text"
-                    value={selectedItem.employeeId}
-                    disabled
-                    className="block w-full rounded-xl border-slate-200 bg-slate-50 text-slate-500 px-3 py-2.5 sm:text-sm font-medium"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Name (नाम)</label>
-                  <input
-                    type="text"
-                    value={selectedItem.name}
-                    disabled
-                    className="block w-full rounded-xl border-slate-200 bg-slate-50 text-slate-500 px-3 py-2.5 sm:text-sm font-medium"
-                  />
-                </div>
-              </div>
+            {(() => {
+              const isFormValid =
+                formData.resignationLetterReceived &&
+                formData.resignationAcceptance &&
+                formData.cancellationEmailBiometric &&
+                formData.removeBenefitEnrollment &&
+                formData.finalReleaseDate;
 
-              <div className="space-y-3 pt-2">
-                <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wide border-b border-slate-100 pb-2">Checklist Items (चेकलिस्ट आइटम)</h4>
-
-                {[
-                  { key: 'resignationLetterReceived', label: 'Resignation Letter Received (त्याग पत्र प्राप्त हुआ)' },
-                  { key: 'resignationAcceptance', label: 'Resignation Acceptance (इस्तीफा स्वीकार)' },
-                  { key: 'handoverAssetsIdVisitingCard', label: 'Handover Of Assets, ID Card & Visiting Card (संपत्ति, आईडी कार्ड और विजिटिंग कार्ड सौंपना)' },
-                  { key: 'cancellationEmailBiometric', label: 'Cancellation Of Email ID & Biometric Access (ईमेल आईडी और बायोमेट्रिक एक्सेस रद्द करना)' },
-                  { key: 'removeBenefitEnrollment', label: 'Remove Benefit Enrollment (लाभ नामांकन हटाएँ)' }
-                ].map((item) => (
-                  <div key={item.key} className="flex items-center p-2 hover:bg-slate-50 rounded-lg transition-colors">
-                    <input
-                      type="checkbox"
-                      id={item.key}
-                      checked={formData[item.key]}
-                      onChange={() => handleCheckboxChange(item.key)}
-                      className="h-5 w-5 text-indigo-600 focus:ring-indigo-500 border-slate-300 rounded cursor-pointer"
-                    />
-                    <label htmlFor={item.key} className="ml-3 text-sm text-slate-700 cursor-pointer font-medium">
-                      {item.label}
-                    </label>
-                  </div>
-                ))}
-              </div>
-
-              <div className="pt-2">
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Final Release Date (अंतिम रिलीज की तारीख)</label>
-                <input
-                  type="date"
-                  name="finalReleaseDate"
-                  value={formData.finalReleaseDate}
-                  onChange={handleInputChange}
-                  className="block w-full rounded-xl border-slate-200 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2.5 px-3 bg-white text-slate-800 font-medium"
-                />
-              </div>
-
-              <div className="flex justify-end space-x-3 pt-6 border-t border-slate-100 mt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="px-4 py-2 rounded-xl text-sm font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 hover:text-slate-800 transition-all"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className={`px-6 py-2 text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-200 text-sm font-medium transition-all transform hover:-translate-y-0.5 ${submitting ? 'opacity-70 cursor-not-allowed transform-none' : ''
-                    }`}
-                  disabled={submitting}
-                >
-                  {submitting ? (
-                    <div className="flex items-center">
-                      <svg
-                        className="animate-spin h-4 w-4 text-white mr-2"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                      >
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      <span>Submitting...</span>
+              return (
+                <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Employee ID</label>
+                      <input
+                        type="text"
+                        value={selectedItem.employeeId}
+                        disabled
+                        className="block w-full rounded-xl border-slate-200 bg-slate-50 text-slate-500 px-3 py-2.5 sm:text-sm font-medium"
+                      />
                     </div>
-                  ) : 'Submit'}
-                </button>
-              </div>
-            </form>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Name (नाम)</label>
+                      <input
+                        type="text"
+                        value={selectedItem.name}
+                        disabled
+                        className="block w-full rounded-xl border-slate-200 bg-slate-50 text-slate-500 px-3 py-2.5 sm:text-sm font-medium"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 pt-2">
+                    <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wide border-b border-slate-100 pb-2">Checklist Items (चेकलिस्ट आइटम)</h4>
+
+                    {[
+                      { key: 'resignationLetterReceived', label: 'Resignation Letter Received (त्याग पत्र प्राप्त हुआ)', required: true },
+                      { key: 'resignationAcceptance', label: 'Resignation Acceptance (इस्तीफा स्वीकार)', required: true },
+                      { key: 'handoverAssetsIdVisitingCard', label: 'Handover Of Assets, ID Card & Visiting Card (संपत्ति, आईडी कार्ड और विजिटिंग कार्ड सौंपना)', required: false },
+                      { key: 'cancellationEmailBiometric', label: 'Cancellation Of Email ID & Biometric Access (ईमेल आईडी और बायोमेट्रिक एक्सेस रद्द करना)', required: true },
+                      { key: 'removeBenefitEnrollment', label: 'Remove Benefit Enrollment (लाभ नामांकन हटाएँ)', required: true }
+                    ].map((item) => (
+                      <div key={item.key} className="flex items-center p-2 hover:bg-slate-50 rounded-lg transition-colors">
+                        <input
+                          type="checkbox"
+                          id={item.key}
+                          checked={formData[item.key]}
+                          onChange={() => handleCheckboxChange(item.key)}
+                          className="h-5 w-5 text-indigo-600 focus:ring-indigo-500 border-slate-300 rounded cursor-pointer"
+                        />
+                        <label htmlFor={item.key} className="ml-3 text-sm text-slate-700 cursor-pointer font-medium">
+                          {item.label} {item.required && <span className="text-red-500 font-bold">*</span>}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="pt-2">
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">
+                      Final Release Date (अंतिम रिलीज की तारीख) <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      name="finalReleaseDate"
+                      value={formData.finalReleaseDate}
+                      onChange={handleInputChange}
+                      className="block w-full rounded-xl border-slate-200 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2.5 px-3 bg-white text-slate-800 font-medium"
+                    />
+                  </div>
+
+                  <div className="flex justify-end space-x-3 pt-6 border-t border-slate-100 mt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowModal(false)}
+                      className="px-4 py-2 rounded-xl text-sm font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 hover:text-slate-800 transition-all"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className={`px-6 py-2 text-white rounded-xl text-sm font-medium transition-all transform ${!isFormValid || submitting
+                        ? 'bg-slate-300 cursor-not-allowed shadow-none'
+                        : 'bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200 hover:-translate-y-0.5'
+                        }`}
+                      disabled={!isFormValid || submitting}
+                    >
+                      {submitting ? (
+                        <div className="flex items-center">
+                          <svg
+                            className="animate-spin h-4 w-4 text-white mr-2"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                          >
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          <span>Submitting...</span>
+                        </div>
+                      ) : 'Submit'}
+                    </button>
+                  </div>
+                </form>
+              );
+            })()}
           </div>
         </div>,
         document.body

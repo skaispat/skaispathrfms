@@ -35,7 +35,7 @@ import Settings from './pages/Settings';
 function App() {
   return (
     <div className="gradient-bg min-h-screen">
-      <Router>
+      <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Toaster position="top-right" containerStyle={{ zIndex: 99999 }} />
         <Routes>
           <Route path="/login" element={<Login />} />

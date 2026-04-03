@@ -211,49 +211,48 @@ const JobVacancy = () => {
   };
 
   return (
-    <div className="h-full flex flex-col gap-4 sm:gap-6 overflow-hidden">
+    <div className="p-1 sm:p-8 max-w-[1600px] mx-auto space-y-4 sm:space-y-6 min-h-screen font-sans">
       {/* Header */}
-      <div className="shrink-0 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-800">Job Vacancy</h1>
+      <div className="shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 px-1 sm:px-0">
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">Job Vacancy</h1>
         <button
           onClick={() => setShowModal(true)}
-          className="inline-flex items-center px-4 py-2 border border-transparent rounded-xl shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-all duration-200"
+          className="inline-flex items-center justify-center px-4 py-2.5 sm:py-2 border border-transparent rounded-xl shadow-md text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-all duration-200"
           disabled={loading}
         >
           {loading ? (
-            <>
+            <div className="flex items-center">
               <div className="animate-spin -ml-1 mr-2 h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
               Loading...
-            </>
+            </div>
           ) : (
-            <>
-              <Plus size={16} className="mr-2" />
+            <div className="flex items-center">
+              <Plus size={18} className="mr-2" />
               Create Job
-            </>
+            </div>
           )}
         </button>
       </div>
 
       {/* Filter and Search */}
-      <div className="shrink-0 bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div className="flex flex-1 max-w-md">
+      <div className="shrink-0 bg-white p-3 sm:p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div className="flex flex-1 w-full max-w-md">
           <div className="relative w-full">
             <input
               type="text"
               placeholder="Search jobs..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white text-slate-600 transition-all font-medium"
+              className="w-full pl-10 pr-4 py-2 sm:py-2.5 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white text-slate-600 transition-all font-medium text-sm"
             />
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={18} />
           </div>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
-        {/* Table Area */}
-        <div className="flex-1 overflow-auto custom-scrollbar relative">
+      <div className="flex-1 bg-white rounded-xl sm:rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]">
+        {/* Table Area (Desktop) */}
+        <div className="flex-1 overflow-auto custom-scrollbar relative hidden md:block">
           <table className="min-w-full divide-y divide-slate-200">
             <thead className="bg-slate-50 sticky top-0 z-10">
               <tr>
@@ -370,43 +369,102 @@ const JobVacancy = () => {
           </table>
         </div>
 
+        {/* Card Area (Mobile) */}
+        <div className="flex-1 overflow-auto p-4 space-y-4 md:hidden bg-slate-50/50">
+          {tableLoading ? (
+            <div className="flex justify-center flex-col items-center py-12">
+              <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-2"></div>
+              <span className="text-slate-500 text-sm">Loading jobs...</span>
+            </div>
+          ) : currentItems.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-slate-500">No jobs found.</p>
+            </div>
+          ) : (
+            currentItems.map((item, index) => (
+              <div key={index} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 space-y-3">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 uppercase tracking-wider mb-1">
+                      {item.indentNumber}
+                    </span>
+                    <h4 className="text-base font-bold text-slate-800">{item.post}</h4>
+                    <p className="text-xs font-semibold text-slate-500">{item.department}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => handleEdit(item)} className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+                      <Edit size={16} />
+                    </button>
+                    <button onClick={() => handleDelete(item.id)} className="p-2 bg-red-50 text-red-600 rounded-lg">
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-y-3 gap-x-4 pt-2 border-t border-slate-50">
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Gender</p>
+                    <p className="text-xs font-semibold text-slate-700">{item.gender}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">No. of Posts</p>
+                    <p className="text-xs font-semibold text-slate-700">{item.noOfPost}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Experience</p>
+                    <p className="text-xs font-semibold text-slate-700">{item.experience || "Any"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Target Date</p>
+                    <p className="text-xs font-semibold text-slate-700">
+                      {item.completionDate ? new Date(item.completionDate).toLocaleDateString('en-GB') : '-'}
+                    </p>
+                  </div>
+                </div>
+
+                {item.socialSite === 'Yes' && (
+                  <div className="pt-2">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Social Channels</p>
+                    <div className="flex flex-wrap gap-1">
+                      {item.socialSiteTypes?.split(',').map((type, i) => (
+                        <span key={i} className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px] font-bold">
+                          {type.trim()}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+
         {/* Pagination */}
         <div className="bg-slate-50 border-t border-slate-200 p-4 flex items-center justify-between shrink-0">
-          <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm text-slate-700">
-                Showing <span className="font-medium">{filteredAndSortedData.length > 0 ? indexOfFirstItem + 1 : 0}</span> to <span className="font-medium">{Math.min(indexOfLastItem, filteredAndSortedData.length)}</span> of{' '}
-                <span className="font-medium">{filteredAndSortedData.length}</span> results
+          <div className="flex-1 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="text-center sm:text-left">
+              <p className="text-xs sm:text-sm text-slate-600 font-medium">
+                Showing <span className="font-bold text-slate-800">{filteredAndSortedData.length > 0 ? indexOfFirstItem + 1 : 0}</span> to <span className="font-bold text-slate-800">{Math.min(indexOfLastItem, filteredAndSortedData.length)}</span> of{' '}
+                <span className="font-bold text-slate-800">{filteredAndSortedData.length}</span>
               </p>
             </div>
             <div>
-              <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+              <nav className="relative z-0 inline-flex rounded-xl shadow-sm -space-x-px" aria-label="Pagination">
                 <button
                   onClick={() => paginate(currentPage - 1)}
                   disabled={currentPage === 1}
-                  className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-slate-300 bg-white text-sm font-medium text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+                  className="relative inline-flex items-center px-3 py-2 rounded-l-xl border border-slate-300 bg-white text-sm font-medium text-slate-500 hover:bg-slate-50 disabled:opacity-50"
                 >
-                  <span className="sr-only">Previous</span>
                   <ChevronLeft size={16} />
                 </button>
-                {Array.from({ length: totalPages }, (_, i) => (
-                  <button
-                    key={i + 1}
-                    onClick={() => paginate(i + 1)}
-                    className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${currentPage === i + 1
-                      ? 'z-10 bg-indigo-50 border-indigo-500 text-indigo-600'
-                      : 'bg-white border-slate-300 text-slate-500 hover:bg-slate-50'
-                      }`}
-                  >
-                    {i + 1}
-                  </button>
-                ))}
+                <div className="flex items-center bg-white border-t border-b border-slate-300 px-4 text-sm font-bold text-indigo-600">
+                  {currentPage} <span className="text-slate-300 mx-1">/</span> {totalPages || 1}
+                </div>
                 <button
                   onClick={() => paginate(currentPage + 1)}
-                  disabled={currentPage === totalPages}
-                  className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-slate-300 bg-white text-sm font-medium text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+                  disabled={currentPage === totalPages || totalPages === 0}
+                  className="relative inline-flex items-center px-3 py-2 rounded-r-xl border border-slate-300 bg-white text-sm font-medium text-slate-500 hover:bg-slate-50 disabled:opacity-50"
                 >
-                  <span className="sr-only">Next</span>
                   <ChevronRight size={16} />
                 </button>
               </nav>
@@ -425,23 +483,23 @@ const JobVacancy = () => {
             }
           }}
         >
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl overflow-hidden transform transition-all flex flex-col max-h-[90vh]">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl overflow-hidden transform transition-all flex flex-col max-h-[95vh] sm:max-h-[90vh]">
             <div className="flex justify-between items-center px-4 py-3 sm:px-6 sm:py-4 border-b border-slate-100 bg-white shrink-0">
-              <h3 className="text-xl font-bold text-slate-800 tracking-tight">
+              <h3 className="text-lg sm:text-xl font-bold text-slate-800 tracking-tight">
                 {editingId ? 'Edit Job Vacancy' : 'Create New Job'}
               </h3>
               <button
                 onClick={handleCancel}
-                className="p-2 bg-slate-50 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors"
+                className="p-1.5 sm:p-2 bg-slate-50 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors"
               >
-                <X size={20} />
+                <X size={18} />
               </button>
             </div>
 
-            <div className="overflow-y-auto p-4 sm:p-6 flex-1">
-              <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
+            <div className="overflow-y-auto p-4 sm:p-6 flex-1 custom-scrollbar">
+              <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                  <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1.5">
                     Post (पद) <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -449,21 +507,21 @@ const JobVacancy = () => {
                     name="post"
                     value={formData.post}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium text-slate-800"
+                    className="w-full px-3 py-2 sm:px-4 sm:py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium text-slate-800 text-sm"
                     placeholder="Enter post title"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                  <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1.5">
                     Department (विभाग)
                   </label>
                   <select
                     name="department"
                     value={formData.department}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium text-slate-800"
+                    className="w-full px-3 py-2 sm:px-4 sm:py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium text-slate-800 text-sm"
                   >
                     <option value="">Select Department</option>
                     <option value="Hr">Hr</option>
@@ -485,14 +543,14 @@ const JobVacancy = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                  <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1.5">
                     Gender (लिंग) <span className="text-red-500">*</span>
                   </label>
                   <select
                     name="gender"
                     value={formData.gender}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium text-slate-800"
+                    className="w-full px-3 py-2 sm:px-4 sm:py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium text-slate-800 text-sm"
                     required
                   >
                     <option value="">Select Gender</option>
@@ -503,7 +561,7 @@ const JobVacancy = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                  <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1.5">
                     Number Of Post (पद की संख्या) <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -511,7 +569,7 @@ const JobVacancy = () => {
                     name="numberOfPost"
                     value={formData.numberOfPost}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium text-slate-800"
+                    className="w-full px-3 py-2 sm:px-4 sm:py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium text-slate-800 text-sm"
                     placeholder="Enter number of posts"
                     min="1"
                     required
@@ -519,14 +577,14 @@ const JobVacancy = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                  <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1.5">
                     Prefer (प्राथमिकता)
                   </label>
                   <select
                     name="prefer"
                     value={formData.prefer}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium text-slate-800"
+                    className="w-full px-3 py-2 sm:px-4 sm:py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium text-slate-800 text-sm"
                   >
                     <option value="">Any</option>
                     <option value="Experience">Experience</option>
@@ -535,7 +593,7 @@ const JobVacancy = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                  <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1.5">
                     Competition Date (समापन तिथि) <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -543,7 +601,7 @@ const JobVacancy = () => {
                     name="competitionDate"
                     value={formData.competitionDate}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium text-slate-800"
+                    className="w-full px-3 py-2 sm:px-4 sm:py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium text-slate-800 text-sm"
                     required
                   />
                 </div>
@@ -551,7 +609,7 @@ const JobVacancy = () => {
                 {/* Experience input field */}
                 {formData.prefer === "Experience" && (
                   <div className="md:col-span-2 animate-fade-in-up">
-                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                    <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1.5">
                       Experience (अनुभव) <span className="text-red-500">*</span>
                     </label>
                     <input
@@ -559,7 +617,7 @@ const JobVacancy = () => {
                       name="experience"
                       value={formData.experience}
                       onChange={handleInputChange}
-                      className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium text-slate-800"
+                      className="w-full px-3 py-2 sm:px-4 sm:py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium text-slate-800 text-sm"
                       placeholder="Enter experience details"
                       required={formData.prefer === "Experience"}
                     />
@@ -567,14 +625,14 @@ const JobVacancy = () => {
                 )}
 
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                  <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1.5">
                     Social Site (सोशल साइट) <span className="text-red-500">*</span>
                   </label>
                   <select
                     name="socialSite"
                     value={formData.socialSite}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium text-slate-800"
+                    className="w-full px-3 py-2 sm:px-4 sm:py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium text-slate-800 text-sm"
                     required
                   >
                     <option value="">Select</option>
@@ -586,7 +644,7 @@ const JobVacancy = () => {
                 {/* Social Site Types checklist */}
                 {formData.socialSite === "Yes" && (
                   <div className="md:col-span-2 animate-fade-in-up">
-                    <label className="block text-sm font-semibold text-slate-700 mb-2">
+                    <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-2">
                       Social Site Types (सोशल साइट प्रकार) <span className="text-red-500">*</span>
                     </label>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 border border-slate-200 rounded-xl p-4 bg-slate-50">
@@ -614,12 +672,12 @@ const JobVacancy = () => {
               </form>
             </div>
 
-            <div className="border-t border-slate-100 p-4 sm:p-6 bg-white shrink-0">
-              <div className="flex justify-end space-x-3">
+            <div className="border-t border-slate-100 p-4 sm:p-6 bg-slate-50 shrink-0">
+              <div className="flex flex-col sm:flex-row justify-end gap-3">
                 <button
                   type="button"
                   onClick={handleCancel}
-                  className="px-5 py-2.5 border border-slate-300 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-200 transition-all duration-200"
+                  className="w-full sm:w-auto px-5 py-2.5 border border-slate-300 rounded-xl text-sm font-bold text-slate-600 bg-white hover:bg-slate-50 transition-all duration-200"
                   disabled={submitting}
                 >
                   Cancel
@@ -627,16 +685,16 @@ const JobVacancy = () => {
                 <button
                   type="submit"
                   onClick={handleSubmit}
-                  className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 shadow-md hover:shadow-lg flex items-center justify-center min-w-[100px]"
+                  className="w-full sm:w-auto px-8 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 shadow-md hover:shadow-lg flex items-center justify-center min-w-[120px] transition-all"
                   disabled={submitting}
                 >
                   {submitting ? (
-                    <>
+                    <div className="flex items-center">
                       <div className="animate-spin -ml-1 mr-2 h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
-                      Wait...
-                    </>
+                      Processing...
+                    </div>
                   ) : (
-                    editingId ? "Update" : "Submit"
+                    editingId ? "Update Job" : "Submit Vacancy"
                   )}
                 </button>
               </div>

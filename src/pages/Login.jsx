@@ -111,11 +111,11 @@ const Login = () => {
           {/* Header & Logo Placeholder */}
           <div className="text-center">
             {/* Logo */}
-            <div className="mx-auto mb-6 flex justify-center animate-fade-in-up">
+            <div className="mx-auto flex justify-center animate-fade-in-up">
               <img
                 src={loginImage}
                 alt="Logo"
-                className="h-20 w-auto object-contain"
+                className="h-32 w-auto object-contain"
               />
             </div>
 

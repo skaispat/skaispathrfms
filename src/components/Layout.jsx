@@ -13,7 +13,7 @@ const Layout = () => {
         <Header />
 
         {/* Scrollable content area */}
-        <main className="flex-1 overflow-y-auto flex flex-col p-4 sm:p-6 lg:p-8 custom-scrollbar">
+        <main className="flex-1 overflow-y-auto flex flex-col p-3 sm:p-6 lg:p-8 custom-scrollbar">
           <div className="flex-1 w-full max-w-7xl mx-auto flex flex-col">
             <Outlet />
           </div>
@@ -23,7 +23,7 @@ const Layout = () => {
           <div className="max-w-7xl mx-auto w-full grid grid-cols-1 md:grid-cols-3 items-center gap-2 md:gap-0">
             <div className="hidden md:block"></div>
 
-            <div className="flex items-center justify-center gap-1.5 text-sm font-medium text-slate-500">
+            <div className="flex items-center justify-center gap-1.5 text-[10px] sm:text-sm font-medium text-slate-500">
               <span>Powered by</span>
               <a
                 href="https://www.botivate.in"
@@ -35,8 +35,8 @@ const Layout = () => {
               </a>
             </div>
 
-            <div className="text-center md:text-right text-xs text-slate-400 font-medium opacity-80">
-              &copy; 2025 Botivate Services LLP. All rights reserved.
+            <div className="hidden sm:block text-center md:text-right text-xs text-slate-400 font-medium opacity-80">
+              &copy; 2026 Botivate Services LLP. All rights reserved.
             </div>
           </div>
         </footer>
