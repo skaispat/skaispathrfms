@@ -4,7 +4,7 @@ import { Clock, Calendar, Plus, User, FileText, CheckCircle, AlertCircle, X, Map
 import toast from 'react-hot-toast';
 import { supabase } from '../supabaseClient';
 import useAuthStore from '../store/authStore';
-import { sendGatePassMessageToHod, sendGatePassMessageToHr } from '../whatsappMessageSender/sendGatePassWhatsapp';
+import { sendGatePassMessageToHr } from '../whatsappMessageSender/sendGatePassWhatsapp';
 
 const GatePassRequest = () => {
   const { user } = useAuthStore();
@@ -247,7 +247,7 @@ const GatePassRequest = () => {
         employee_whatsapp_number: formData.whatsappNumber,
         image_gate_pass: imageUrl,
         emp_name: user?.full_name || user?.Name,
-        status: (hodDetails.id === null || hodDetails.name === 'HR' || hodDetails.department === 'HR' || isUserHod || hodDetails.id === 1 || hodDetails.name === 'Pawan Tiwari') ? 'Pending HR' : 'Pending HOD', // Initial status
+        status: 'Pending HR', // Gate Pass now goes directly to HR
         hod_name: isUserHod ? 'HR' : hodDetails.name,
         hod_id: isUserHod ? null : hodDetails.id, // Insert HOD ID if not user
         hr_id: hrDetails.id, // Insert HR ID
@@ -287,7 +287,7 @@ const GatePassRequest = () => {
         console.log('hrDetails:', hrDetails);
         console.log('Condition Pending HOD:', insertData.status === 'Pending HOD');
         console.log('Condition has phone:', !!hodDetails.phone);
-        
+
         const formatDateTime = (dateString) => {
           if (!dateString) return 'N/A';
           return new Date(dateString).toLocaleString('en-GB', {
@@ -303,12 +303,12 @@ const GatePassRequest = () => {
           if (!toDate) return 'Same'; // If no arrival time specified, assume same day
           const from = new Date(fromDate);
           const to = new Date(toDate);
-          
+
           // Check if the dates are the same (ignoring time)
           const fromDateStr = fromDate.toString().split('T')[0];
           const toDateStr = toDate.toString().split('T')[0];
           if (fromDateStr === toDateStr) return 'Same';
-          
+
           // Calculate difference in days for multi-day gate passes
           const diffMs = to - from;
           if (diffMs < 0) return 'N/A';
@@ -317,42 +317,22 @@ const GatePassRequest = () => {
           return `${diffDays}`;
         };
 
-        if (insertData.status === 'Pending HOD' && hodDetails.phone) {
-          // Send to HOD
-          console.log('Sending WhatsApp to HOD...');
-          const hodResult = await sendGatePassMessageToHod({
-            employeId: hodDetails.id,
-            tableid: data[0].id,
-            whomtoSend: hodDetails.phone,
-            employeeName: user?.full_name || user?.Name || 'Employee',
-            department: user?.department || 'N/A',
-            leaveType: 'Gate Pass',
-            fromDate: formatDateTime(formData.departureTime),
-            toDate: formatDateTime(formData.arrivalTime),
-            totalDays: calculateDuration(formData.departureTime, formData.arrivalTime),
-            reason: `${formData.visitPlace} - ${formData.visitReason}`,
-          });
-          if (!hodResult.success) {
-            console.warn('Failed to send WhatsApp to HOD:', hodResult.error);
-          }
-        } else if (insertData.status === 'Pending HR') {
-          // Send directly to HR (skipping HOD)
-          console.log('Sending WhatsApp to HR (direct)...');
-          const hrResult = await sendGatePassMessageToHr({
-            employeId: hrDetails.id,
-            tableid: data[0].id,
-            employeeName: user?.full_name || user?.Name || 'Employee',
-            empId: user.emp_id,
-            department: user?.department || 'N/A',
-            leaveType: 'Gate Pass',
-            fromDate: formatDateTime(formData.departureTime),
-            toDate: formatDateTime(formData.arrivalTime),
-            totalDays: calculateDuration(formData.departureTime, formData.arrivalTime),
-            reason: `${formData.visitPlace} - ${formData.visitReason}`,
-          });
-          if (!hrResult.success) {
-            console.warn('Failed to send WhatsApp to HR:', hrResult.error);
-          }
+        // Send directly to HR (bypassing HOD for Gate Pass)
+        console.log('Sending WhatsApp to HR...');
+        const hrResult = await sendGatePassMessageToHr({
+          employeId: hrDetails.id,
+          tableid: data[0].id,
+          employeeName: user?.full_name || user?.Name || 'Employee',
+          empId: user.emp_id,
+          department: user?.department || 'N/A',
+          leaveType: 'Gate Pass',
+          fromDate: formatDateTime(formData.departureTime),
+          toDate: formatDateTime(formData.arrivalTime),
+          totalDays: calculateDuration(formData.departureTime, formData.arrivalTime),
+          reason: `${formData.visitPlace} - ${formData.visitReason}`,
+        });
+        if (!hrResult.success) {
+          console.warn('Failed to send WhatsApp to HR:', hrResult.error);
         }
       }
 

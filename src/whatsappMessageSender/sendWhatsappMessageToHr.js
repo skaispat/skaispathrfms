@@ -35,7 +35,7 @@ export const sendWhatsappMessageToHr = async ({
             ? backendUrl.slice(0, -1)
             : backendUrl;
 
-            console.log(baseUrl,"base url ")
+        console.log(baseUrl, "base url ")
 
         const url = `${baseUrl}/api/send-whatsappMessage-hr?employeId=${employeId}&tableid=${tableid}`;
         console.log("Sending WhatsApp request to HR:", url);

@@ -922,11 +922,10 @@ const Attendancedaily = () => {
                     </td>
                     <td className="px-6 py-4">
                       <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          item.status === "P"
-                            ? "bg-green-100 text-green-800"
-                            : "bg-red-100 text-red-800"
-                        }`}
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${item.status === "P"
+                          ? "bg-green-100 text-green-800"
+                          : "bg-red-100 text-red-800"
+                          }`}
                       >
                         {item.status}
                       </span>
@@ -1024,11 +1023,10 @@ const Attendancedaily = () => {
                     <button
                       key={pageNum}
                       onClick={() => handlePageChange(pageNum)}
-                      className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${
-                        currentPage === pageNum
-                          ? "bg-indigo-600 text-white border border-indigo-600"
-                          : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
-                      }`}
+                      className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${currentPage === pageNum
+                        ? "bg-indigo-600 text-white border border-indigo-600"
+                        : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+                        }`}
                     >
                       {pageNum}
                     </button>

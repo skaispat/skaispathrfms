@@ -752,8 +752,6 @@ const Settings = () => {
             leaveType: '',
             fromDate: '',
             toDate: '',
-            fromDate: '',
-            toDate: '',
             reason: '',
             hodId: ''
         });

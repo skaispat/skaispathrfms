@@ -28,6 +28,8 @@ const getFiscalYear = (date = new Date()) => {
   return date.getMonth() >= 3 ? date.getFullYear() : date.getFullYear() - 1;
 };
 import { sendWhatsappMessageToHod } from "../whatsappMessageSender/whatsappMessageSender";
+import { sendWhatsappMessageToHr } from "../whatsappMessageSender/sendWhatsappMessageToHr";
+import { sendApprovedMessageToEmployee, sendRejectedMessageToEmployee } from "../whatsappMessageSender/sendWhatsappMessageToEmployee";
 
 const LeaveManagement = () => {
   const { user } = useAuthStore();
@@ -56,7 +58,7 @@ const LeaveManagement = () => {
   // Pagination state removed in favor of infinite scroll
   // const [currentPage, setCurrentPage] = useState(1);
   // const [itemsPerPage, setItemsPerPage] = useState(10);
-  
+
   const { ref, inView } = useInView();
 
   const handleRemarkChange = (id, field, value) => {
@@ -179,7 +181,7 @@ const LeaveManagement = () => {
   // Fetch leave balance for a specific employee
   const fetchEmployeeBalance = async (employeeId) => {
     if (!employeeId) return;
-    
+
     try {
       console.log('Fetching balance for employee:', employeeId);
       const { data: balanceData, error: balanceError } = await supabase
@@ -196,15 +198,15 @@ const LeaveManagement = () => {
       if (balanceData) {
         console.log('Balance data found:', balanceData);
         setLeaveBalances({
-          casual: { 
-            total: 12, 
-            used: 12 - (balanceData.casual_leave_remaining ?? 12), 
-            remaining: balanceData.casual_leave_remaining ?? 12 
+          casual: {
+            total: 12,
+            used: 12 - (balanceData.casual_leave_remaining ?? 12),
+            remaining: balanceData.casual_leave_remaining ?? 12
           },
-          earned: { 
-            total: 24, 
-            used: 24 - (balanceData.earned_leave_remaining ?? 24), 
-            remaining: balanceData.earned_leave_remaining ?? 24 
+          earned: {
+            total: 24,
+            used: 24 - (balanceData.earned_leave_remaining ?? 24),
+            remaining: balanceData.earned_leave_remaining ?? 24
           },
           unpaid: { used: balanceData.unpaid_leave_total_taken ?? 0 }
         });
@@ -240,8 +242,8 @@ const LeaveManagement = () => {
     if (selectedEmployee && selectedEmployee.id) {
       fetchEmployeeBalance(selectedEmployee.id);
     } else {
-       // Reset balances if no employee selected
-       setLeaveBalances({
+      // Reset balances if no employee selected
+      setLeaveBalances({
         casual: { total: 12, used: 0, remaining: 12 },
         earned: { total: 24, used: 0, remaining: 24 },
         unpaid: { used: 0 }
@@ -437,6 +439,7 @@ const LeaveManagement = () => {
         hrName: leave.hr_name,
         hrRemarks: leave.hr_remarks,
         timestamp: leave.timestamp,
+        employeePhone: leave.employee?.phone_number,
       };
     });
   };
@@ -446,10 +449,13 @@ const LeaveManagement = () => {
     if (!user) return { data: [], nextPage: undefined };
 
     const ITEMS_PER_PAGE = 10;
-    
+
     let query = supabase
       .from("leave_management")
-      .select("*", { count: "exact" });
+      .select(`
+        *,
+        employee:users!leave_management_emp_id_fkey(phone_number)
+      `, { count: "exact" });
 
     // 1. Role-based filtering
     if (isHr) {
@@ -517,7 +523,7 @@ const LeaveManagement = () => {
   // Refetch when row selection changes (if needed for updates, etc)
   useEffect(() => {
     if (!selectedRow) {
-       refetch();
+      refetch();
     }
   }, [selectedRow, refetch]);
 
@@ -527,7 +533,7 @@ const LeaveManagement = () => {
   };
 
   const leaves = data?.pages.flatMap((page) => page.data) || [];
-  
+
   // No need for separate state variables anymore, but keeping render logic intact
   // We can derive "filtered" lists directly from `leaves` 
   // (though strict server filtering means `leaves` ONLY contains current tab data)
@@ -815,7 +821,7 @@ const LeaveManagement = () => {
       // Update yearly_quota when leave is approved
       if (newStatus === "Approved") {
         console.log("=== LEAVE APPROVED - Starting quota update ===");
-        
+
         const leaveDays = calculateDays(
           editableDates.from || selectedRow.startDate,
           editableDates.to || selectedRow.endDate
@@ -867,7 +873,7 @@ const LeaveManagement = () => {
               const currentUsed = existingQuota[quotaColumn] || 0;
               const newUsed = currentUsed + leaveDays;
               console.log(`Updating yearly_quota: ${quotaColumn} from ${currentUsed} to ${newUsed}`);
-              
+
               const { data: updateData, error: quotaUpdateError } = await supabase
                 .from("yearly_quota")
                 .update({
@@ -919,13 +925,97 @@ const LeaveManagement = () => {
         } else {
           console.warn("Unknown leave type, skipping quota update:", leaveType);
         }
-        
+
         console.log("=== LEAVE QUOTA UPDATE COMPLETE ===");
       }
 
       toast.success(
         `Leave ${notificationMessage} for ${selectedRow.employeeName || "employee"}`,
       );
+
+      // Trigger WhatsApp Notifications (Non-blocking)
+      (async () => {
+        try {
+          const leaveDays = calculateDays(
+            editableDates.from || selectedRow.startDate,
+            editableDates.to || selectedRow.endDate
+          );
+
+          const mdNumber = import.meta.env.VITE_MD_MOBILE_NUMBER || "9407916514";
+          const specialEmpIds = ["1", "175", "53", "219", "3", "233", "245", "341", "16", "294", "217", "152", "527", "501", "235", "504", "180", "321", "519", "242", "246", "518"]; // Target Employee IDs for MD notification
+
+          if (newStatus === "Pending HR") {
+            // HOD Approved -> Notify HR
+            console.log("📤 Sending WhatsApp notification to HR...");
+            await sendWhatsappMessageToHr({
+              employeId: selectedRow.employeeId,
+              empId: selectedRow.employeeId,
+              tableid: selectedRow.id,
+              employeeName: selectedRow.employeeName,
+              leaveType: selectedRow.leaveType,
+              fromDate: formatDate(editableDates.from || selectedRow.startDate),
+              toDate: formatDate(editableDates.to || selectedRow.endDate),
+              totalDays: leaveDays,
+              reason: selectedRow.reason,
+            });
+          } else if (newStatus === "Approved") {
+            // HR Approved -> Notify Employee
+            console.log("📤 Sending Approval WhatsApp to Employee...");
+            await sendApprovedMessageToEmployee({
+              employeePhone: selectedRow.employeePhone,
+              employeeName: selectedRow.employeeName,
+              leaveType: selectedRow.leaveType,
+              fromDate: formatDate(editableDates.from || selectedRow.startDate),
+              toDate: formatDate(editableDates.to || selectedRow.endDate),
+              totalDays: leaveDays,
+              reason: selectedRow.reason,
+            });
+
+            // Also notify MD for special employees
+            if (specialEmpIds.includes(String(selectedRow.employeeId))) {
+              console.log("👑 Sending Approval WhatsApp to MD Sir...");
+              await sendApprovedMessageToEmployee({
+                employeePhone: mdNumber,
+                employeeName: `${selectedRow.employeeName} (Employee ID: ${selectedRow.employeeId})`,
+                leaveType: selectedRow.leaveType,
+                fromDate: formatDate(editableDates.from || selectedRow.startDate),
+                toDate: formatDate(editableDates.to || selectedRow.endDate),
+                totalDays: leaveDays,
+                reason: selectedRow.reason,
+              });
+            }
+          } else if (newStatus === "Rejected") {
+            // Rejected -> Notify Employee
+            console.log("📤 Sending Rejection WhatsApp to Employee...");
+            await sendRejectedMessageToEmployee({
+              employeePhone: selectedRow.employeePhone,
+              employeeName: selectedRow.employeeName,
+              leaveType: selectedRow.leaveType,
+              fromDate: formatDate(editableDates.from || selectedRow.startDate),
+              toDate: formatDate(editableDates.to || selectedRow.endDate),
+              totalDays: leaveDays,
+              hrRemarks: currentRowRemarks.hr || currentRowRemarks.hod || "Decision by management",
+            });
+
+            // Also notify MD for special employees
+            if (specialEmpIds.includes(String(selectedRow.employeeId))) {
+              console.log("👑 Sending Rejection WhatsApp to MD Sir...");
+              await sendRejectedMessageToEmployee({
+                employeePhone: mdNumber,
+                employeeName: `${selectedRow.employeeName} (Employee ID: ${selectedRow.employeeId})`,
+                leaveType: selectedRow.leaveType,
+                fromDate: formatDate(editableDates.from || selectedRow.startDate),
+                toDate: formatDate(editableDates.to || selectedRow.endDate),
+                totalDays: leaveDays,
+                hrRemarks: currentRowRemarks.hr || currentRowRemarks.hod || "Decision by management",
+              });
+            }
+          }
+        } catch (waError) {
+          console.error("⚠️ WhatsApp notification failed:", waError);
+        }
+      })();
+
       fetchLeaveData();
       setSelectedRow(null);
       setEditableDates({ from: "", to: "" });
@@ -1037,14 +1127,13 @@ const LeaveManagement = () => {
               </td>
               <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
                 <span
-                  className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                    item.status?.toString().toLowerCase().includes("approved")
-                      ? "bg-green-100 text-green-800"
-                      : item.status?.toString().toLowerCase().includes("rejected")
+                  className={`px-2 py-1 text-xs font-semibold rounded-full ${item.status?.toString().toLowerCase().includes("approved")
+                    ? "bg-green-100 text-green-800"
+                    : item.status?.toString().toLowerCase().includes("rejected")
                       ? "bg-red-100 text-red-800"
                       : item.status === "Pending" || item.status === "Pending HOD"
-                      ? "bg-yellow-100 text-yellow-800"
-                      : "bg-blue-100 text-blue-800"
+                        ? "bg-yellow-100 text-yellow-800"
+                        : "bg-blue-100 text-blue-800"
                     }`}
                 >
                   {item.status === "Pending" || item.status === "Pending HOD"
@@ -1170,8 +1259,8 @@ const LeaveManagement = () => {
                           !selectedRow || selectedRow.id !== item.id || loading
                         }
                         className={`px-3 py-1.5 text-xs font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-sm ${!selectedRow || selectedRow.id !== item.id || loading
-                            ? "opacity-75 cursor-not-allowed"
-                            : ""
+                          ? "opacity-75 cursor-not-allowed"
+                          : ""
                           }`}
                       >
                         {loading &&
@@ -1206,9 +1295,9 @@ const LeaveManagement = () => {
                         onClick={() => handleLeaveAction("rejected")}
                         disabled={selectedRow?.id !== item.id || loading}
                         className={`px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors shadow-sm ${selectedRow?.id !== item.id ||
-                            (loading && actionInProgress === "accept")
-                            ? "opacity-75 cursor-not-allowed"
-                            : ""
+                          (loading && actionInProgress === "accept")
+                          ? "opacity-75 cursor-not-allowed"
+                          : ""
                           }`}
                       >
                         {loading &&
@@ -1498,32 +1587,32 @@ const LeaveManagement = () => {
 
   const renderPagination = () => {
     if (!hasNextPage && !isFetchingNextPage) return null;
-    
+
     return (
       <div ref={ref} className="flex justify-center p-4">
         {isFetchingNextPage ? (
           <div className="w-8 h-8 border-b-2 border-indigo-600 rounded-full animate-spin"></div>
         ) : (
           <span className="text-sm text-slate-500">
-             {hasNextPage ? "Loading more..." : "No more data"}
+            {hasNextPage ? "Loading more..." : "No more data"}
           </span>
         )}
       </div>
     );
   };
-    
+
   const renderTable = () => {
     // Determine which data to show based on active tab
     // Since we filter on server, `leaves` is sufficient
     // passing `leaves` to all render functions is correct
-    
+
     return (
       <div className="flex flex-col h-full">
         <div className="flex-1 overflow-auto custom-scrollbar">
           {activeTab === "pending" && renderPendingLeavesTable(leaves)}
           {activeTab === "approved" && renderApprovedLeavesTable(leaves)}
           {activeTab === "rejected" && renderRejectedLeavesTable(leaves)}
-          
+
           {/* Sentinel for infinite scroll */}
           {renderPagination()}
         </div>
@@ -1537,7 +1626,7 @@ const LeaveManagement = () => {
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center shrink-0">
         <div>
           <h1 className="text-2xl font-bold tracking-tight sm:text-3xl text-slate-900">
-            Leave Management 
+            Leave Management
           </h1>
           <p className="mt-1 text-sm text-slate-500">
             Manage employee leave requests and history
@@ -1565,15 +1654,15 @@ const LeaveManagement = () => {
                   key={tab}
                   onClick={() => setActiveTab(tab)}
                   className={`px-3 sm:px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 whitespace-nowrap ${isActive
-                      ? "bg-white text-indigo-600 shadow-sm border border-slate-100"
-                      : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
+                    ? "bg-white text-indigo-600 shadow-sm border border-slate-100"
+                    : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
                     }`}
                 >
                   {tab.charAt(0).toUpperCase() + tab.slice(1)}
                   <span
                     className={`ml-2 py-0.5 px-2 rounded-full text-xs ${isActive
-                        ? "bg-indigo-50 text-indigo-700"
-                        : "bg-slate-200 text-slate-600"
+                      ? "bg-indigo-50 text-indigo-700"
+                      : "bg-slate-200 text-slate-600"
                       }`}
                   >
                     {count}
@@ -1586,22 +1675,22 @@ const LeaveManagement = () => {
           <div className="flex flex-col gap-3 w-full md:w-auto md:flex-row md:items-center">
             {/* Status Legend */}
             <div className="flex items-center gap-3 px-1">
-               <div className="flex items-center gap-1.5">
-                 <div className="w-2.5 h-2.5 rounded-full bg-green-500"></div>
-                 <span className="text-xs font-medium text-slate-600">Active</span>
-               </div>
-               <div className="flex items-center gap-1.5">
-                 <div className="w-2.5 h-2.5 rounded-full bg-yellow-500"></div>
-                 <span className="text-xs font-medium text-slate-600">Pending</span>
-               </div>
-               <div className="flex items-center gap-1.5">
-                 <div className="w-2.5 h-2.5 rounded-full bg-red-500"></div>
-                 <span className="text-xs font-medium text-slate-600">Rejected</span>
-               </div>
-               <div className="flex items-center gap-1.5">
-                 <div className="w-2.5 h-2.5 rounded-full bg-slate-400"></div>
-                 <span className="text-xs font-medium text-slate-600">Expired</span>
-               </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full bg-green-500"></div>
+                <span className="text-xs font-medium text-slate-600">Active</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full bg-yellow-500"></div>
+                <span className="text-xs font-medium text-slate-600">Pending</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full bg-red-500"></div>
+                <span className="text-xs font-medium text-slate-600">Rejected</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full bg-slate-400"></div>
+                <span className="text-xs font-medium text-slate-600">Expired</span>
+              </div>
             </div>
 
             {/* Search Input */}
@@ -1837,14 +1926,14 @@ const LeaveManagement = () => {
                         required
                       >
                         <option value="">Select Leave Type</option>
-                        <option 
-                          value="Casual Leave" 
+                        <option
+                          value="Casual Leave"
                           disabled={leaveBalances.casual.remaining <= 0}
                         >
                           Casual Leave {leaveBalances.casual.remaining <= 0 ? '(Quota Exhausted)' : `(${leaveBalances.casual.remaining} remaining)`}
                         </option>
-                        <option 
-                          value="Earned Leave" 
+                        <option
+                          value="Earned Leave"
                           disabled={leaveBalances.earned.remaining <= 0}
                         >
                           Earned Leave {leaveBalances.earned.remaining <= 0 ? '(Quota Exhausted)' : `(${leaveBalances.earned.remaining} remaining)`}
@@ -1855,7 +1944,7 @@ const LeaveManagement = () => {
                         <ChevronDown size={16} className="text-slate-400" />
                       </div>
                     </div>
-                     {/* Show warning if selected leave type has low balance */}
+                    {/* Show warning if selected leave type has low balance */}
                     {formData.leaveType === 'Casual Leave' && leaveBalances.casual.remaining > 0 && leaveBalances.casual.remaining <= 2 && (
                       <p className="mt-1 text-xs text-orange-600 flex items-center gap-1">
                         <AlertCircle size={12} />

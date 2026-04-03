@@ -4,6 +4,12 @@ import { Search, X, Check, Clock, Calendar, Plus, User, Briefcase, FileText, Use
 import toast from 'react-hot-toast';
 import { supabase } from '../supabaseClient';
 import useAuthStore from '../store/authStore';
+import {
+  sendGatePassMessageToHr,
+  sendGatePassApprovedToEmployee,
+  sendGatePassRejectedToEmployee,
+  sendGatePassHodRejectedToEmployee
+} from '../whatsappMessageSender/sendGatePassWhatsapp';
 
 const GatePass = () => {
   const { user } = useAuthStore();
@@ -168,7 +174,7 @@ const GatePass = () => {
     try {
       const { data, error } = await supabase
         .from('gate_pass')
-        .select('*, users(full_name)')
+        .select('*, users(full_name, phone_number, emp_id)')
         .order('timestamp', { ascending: false });
 
       if (error) throw error;
@@ -278,6 +284,121 @@ const GatePass = () => {
       await supabase.from('logs').update(logUpdates).eq('request_id', request.id).eq('request_type', 'Gate Pass');
 
       toast.success(`Request ${action === 'approve' ? 'Approved' : 'Rejected'}`);
+
+      // WhatsApp Notifications
+      (async () => {
+        try {
+          const employeePhone = request.employee_whatsapp_number || request.users?.phone_number;
+          const mdNumber = import.meta.env.VITE_MD_MOBILE_NUMBER || "9407916514";
+          const specialEmpIds = ["1", "175", "53", "219", "3", "233", "245", "341", "16", "294", "217", "152", "527", "501", "235", "504", "180", "321", "519", "242", "246", "518"];
+          const currentEmpId = String(request.emp_id || request.users?.emp_id);
+
+          const formatDateTime = (dateStr) => {
+            if (!dateStr) return 'N/A';
+            return new Date(dateStr).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+          };
+
+          const calculateDuration = (fromDate, toDate) => {
+            if (!fromDate) return 'N/A';
+            if (!toDate) return 'Same';
+            const from = new Date(fromDate);
+            const to = new Date(toDate);
+            const fromDateStr = new Date(fromDate).toISOString().split('T')[0];
+            const toDateStr = new Date(toDate).toISOString().split('T')[0];
+            if (fromDateStr === toDateStr) return 'Same';
+            const diffMs = to - from;
+            if (diffMs < 0) return 'N/A';
+            const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+            return String(diffDays);
+          };
+
+          if (newStatus === 'Pending HR') {
+            // HOD Approved -> Notify HR
+            console.log("📤 Sending Gate Pass WhatsApp to HR...");
+            await sendGatePassMessageToHr({
+              employeId: request.hr_id || 'HR',
+              tableid: request.id,
+              employeeName: request.employee_name,
+              empId: request.emp_id,
+              department: 'N/A',
+              leaveType: 'Gate Pass',
+              fromDate: formatDateTime(request.departure_from_plant),
+              toDate: formatDateTime(request.arrival_at_plant),
+              totalDays: calculateDuration(request.departure_from_plant, request.arrival_at_plant),
+              reason: request.place_reason_to_visit,
+            });
+          } else if (newStatus === 'Approved') {
+            // HR Approved -> Notify Employee
+            if (employeePhone) {
+              console.log("📤 Sending Gate Pass Approval to Employee...");
+              await sendGatePassApprovedToEmployee({
+                employeePhone,
+                employeeName: request.employee_name,
+                fromDate: formatDateTime(request.departure_from_plant),
+                toDate: formatDateTime(request.arrival_at_plant),
+                totalDays: calculateDuration(request.departure_from_plant, request.arrival_at_plant),
+                reason: request.place_reason_to_visit,
+              });
+            }
+
+            // MD Notification
+            if (specialEmpIds.includes(currentEmpId)) {
+              console.log("👑 Sending Gate Pass Approval to MD Sir...");
+              await sendGatePassApprovedToEmployee({
+                employeePhone: mdNumber,
+                employeeName: `${request.employee_name} (ID: ${currentEmpId})`,
+                fromDate: formatDateTime(request.departure_from_plant),
+                toDate: formatDateTime(request.arrival_at_plant),
+                totalDays: calculateDuration(request.departure_from_plant, request.arrival_at_plant),
+                reason: request.place_reason_to_visit,
+              });
+            }
+          } else if (newStatus === 'Rejected') {
+            // Final Rejection (HR Action or HOD Action)
+            if (isHr) {
+              if (employeePhone) {
+                console.log("📤 Sending Gate Pass Rejection to Employee...");
+                await sendGatePassRejectedToEmployee({
+                  employeePhone,
+                  employeeName: request.employee_name,
+                  fromDate: formatDateTime(request.departure_from_plant),
+                  toDate: formatDateTime(request.arrival_at_plant),
+                  totalDays: calculateDuration(request.departure_from_plant, request.arrival_at_plant),
+                  hrRemarks: currentRowRemarks.hr || 'Decision by management',
+                });
+              }
+
+              // MD Notification
+              if (specialEmpIds.includes(currentEmpId)) {
+                console.log("👑 Sending Gate Pass Rejection to MD Sir...");
+                await sendGatePassRejectedToEmployee({
+                  employeePhone: mdNumber,
+                  employeeName: `${request.employee_name} (ID: ${currentEmpId})`,
+                  fromDate: formatDateTime(request.departure_from_plant),
+                  toDate: formatDateTime(request.arrival_at_plant),
+                  totalDays: calculateDuration(request.departure_from_plant, request.arrival_at_plant),
+                  hrRemarks: currentRowRemarks.hr || 'Decision by management',
+                });
+              }
+            } else if (isHod) {
+              // HOD Rejection
+              if (employeePhone) {
+                console.log("📤 Sending HOD Rejection WhatsApp...");
+                await sendGatePassHodRejectedToEmployee({
+                  employeePhone,
+                  employeeName: request.employee_name,
+                  requestType: 'gate pass request',
+                  fromDate: formatDateTime(request.departure_from_plant),
+                  toDate: formatDateTime(request.arrival_at_plant),
+                });
+              }
+            }
+          }
+        } catch (err) {
+          console.error("⚠️ WhatsApp Gate Pass notification failed:", err);
+        }
+      })();
+
       fetchGatePassData();
     } catch (error) {
       toast.error(`Error: ${error.message}`);
@@ -346,9 +467,8 @@ const GatePass = () => {
         departure_from_plant: formData.departureTime,
         arrival_at_plant: formData.arrivalTime || null,
         employee_whatsapp_number: formData.whatsappNumber,
-        status: (formData.hodName === 'HR' || formData.hodId === null || formData.hodId === 1 || formData.hodName === 'Pawan Tiwari') ? 'Pending HR' : 'Pending HOD',
+        status: 'Pending HR',
         hod_name: formData.hodName,
-        hod_id: formData.hodId,
         hod_id: formData.hodId,
         hr_id: formData.hrId,
         hr_name: formData.hrName,
@@ -422,6 +542,48 @@ const GatePass = () => {
           hr_id: formData.hrId,
           hr_name: formData.hrName
         });
+
+        // WhatsApp Notification for New Gate Pass
+        (async () => {
+          try {
+            const formatDateTime = (dateStr) => {
+              if (!dateStr) return 'N/A';
+              return new Date(dateStr).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+            };
+
+            const calculateDuration = (fromDate, toDate) => {
+              if (!fromDate) return 'N/A';
+              if (!toDate) return 'Same';
+              const fromStr = new Date(fromDate).toISOString().split('T')[0];
+              const toStr = new Date(toDate).toISOString().split('T')[0];
+              if (fromStr === toStr) return 'Same';
+              const diffMs = new Date(toDate) - new Date(fromDate);
+              if (diffMs < 0) return 'N/A';
+              const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+              return String(diffDays);
+            };
+
+            const statusLabel = insertData.status;
+
+            if (statusLabel === 'Pending HR') {
+              console.log("📤 Sending Gate Pass WhatsApp to HR...");
+              await sendGatePassMessageToHr({
+                employeId: formData.hrId || 'HR',
+                tableid: data[0].id,
+                employeeName: formData.employeeName,
+                empId: formData.employeeId,
+                department: 'N/A',
+                leaveType: 'Gate Pass',
+                fromDate: formatDateTime(formData.departureTime),
+                toDate: formatDateTime(formData.arrivalTime),
+                totalDays: calculateDuration(formData.departureTime, formData.arrivalTime),
+                reason: `${formData.visitPlace} - ${formData.visitReason}`,
+              });
+            }
+          } catch (waError) {
+            console.error("⚠️ WhatsApp creation notification failed:", waError);
+          }
+        })();
       }
 
       toast.success('Gate Pass Created');
@@ -573,10 +735,7 @@ const GatePass = () => {
                         </div>
                       )
                     )}
-                    {/* Visual feedback for HR when waiting for HOD - Only show if they can't act (which they now can, so this might be redundant or changed to indicate 'HOD Pending') */}
-                    {(item.status === 'Pending' || item.status === 'Pending HOD') && (user?.role === 'hr' || user?.role === 'HR' || user?.role === 'admin' || user?.role === 'Admin') && (
-                      <span className="text-[10px] text-orange-400 font-medium italic block mb-1">Current: Waiting for HOD</span>
-                    )}
+                    {/* Visual feedback removed as HOD is bypassed */}
                   </td>
                 )}
               </tr>

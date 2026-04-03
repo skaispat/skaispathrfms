@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { FileText, User, Briefcase, Calendar, Clock, MessageSquare, Check, X, Shield, ChevronRight, Quote, MapPin, Phone, Image as ImageIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { sendGatePassMessageToHr, sendGatePassApprovedToEmployee, sendGatePassRejectedToEmployee, sendGatePassHodRejectedToEmployee } from '../whatsappMessageSender/sendGatePassWhatsapp';
+import { sendGatePassMessageToHr, sendGatePassApprovedToEmployee, sendGatePassRejectedToEmployee } from '../whatsappMessageSender/sendGatePassWhatsapp';
 
 const GatePassApproval = () => {
     const { approverId, id } = useParams();
@@ -27,7 +27,7 @@ const GatePassApproval = () => {
             // Fetch Request
             const { data, error } = await supabase
                 .from('gate_pass')
-                .select('*, users(full_name, emp_id)')
+                .select('*, users(full_name, emp_id, phone_number)')
                 .eq('id', id)
                 .single();
 
@@ -256,7 +256,9 @@ const GatePassApproval = () => {
 
             // Send WhatsApp message to Employee when HR approves or rejects (final action)
             const isFinalAction = newStatus === 'Approved' || newStatus === 'Rejected';
-            const employeePhone = request.employee_whatsapp_number;
+            const employeePhone = request.employee_whatsapp_number || request.users?.phone_number;
+
+            console.log("📱 Notification Debug - Status:", newStatus, "FinalAction:", isFinalAction, "Phone:", employeePhone);
 
             if (isFinalAction && employeePhone) {
                 const formatDateTime = (dateString) => {
@@ -281,6 +283,10 @@ const GatePassApproval = () => {
                     return `${diffDays}`;
                 };
 
+                const mdNumber = import.meta.env.VITE_MD_MOBILE_NUMBER || "9407916514";
+                const specialEmpIds = ["1", "175", "53", "219", "3", "233", "245", "341", "16", "294", "217", "152", "527", "501", "235", "504", "180", "321", "519", "242", "246", "518"];
+                const currentEmpId = String(request.users?.emp_id || request.emp_id);
+
                 if (newStatus === 'Approved') {
                     const employeeResult = await sendGatePassApprovedToEmployee({
                         employeePhone: employeePhone,
@@ -293,6 +299,20 @@ const GatePassApproval = () => {
                     });
                     if (!employeeResult.success) {
                         console.warn('Failed to send approved message to employee:', employeeResult.error);
+                    }
+
+                    // Notify MD for special employees
+                    if (specialEmpIds.includes(currentEmpId)) {
+                        console.log("👑 Sending Gate Pass Approval WhatsApp to MD Sir...");
+                        await sendGatePassApprovedToEmployee({
+                            employeePhone: mdNumber,
+                            employeeName: `${request.employee_name} (ID: ${currentEmpId})`,
+                            leaveType: 'Gate Pass',
+                            fromDate: formatDateTime(request.departure_from_plant),
+                            toDate: formatDateTime(request.arrival_at_plant),
+                            totalDays: calculateDuration(request.departure_from_plant, request.arrival_at_plant),
+                            reason: request.place_reason_to_visit || 'No reason specified',
+                        });
                     }
                 } else if (newStatus === 'Rejected' && !isHodAction) {
                     const employeeResult = await sendGatePassRejectedToEmployee({
@@ -307,32 +327,26 @@ const GatePassApproval = () => {
                     if (!employeeResult.success) {
                         console.warn('Failed to send rejected message to employee:', employeeResult.error);
                     }
+
+                    // Notify MD for special employees
+                    if (specialEmpIds.includes(currentEmpId)) {
+                        console.log("👑 Sending Gate Pass Rejection WhatsApp to MD Sir...");
+                        await sendGatePassRejectedToEmployee({
+                            employeePhone: mdNumber,
+                            employeeName: `${request.employee_name} (ID: ${currentEmpId})`,
+                            leaveType: 'Gate Pass',
+                            fromDate: formatDateTime(request.departure_from_plant),
+                            toDate: formatDateTime(request.arrival_at_plant),
+                            totalDays: calculateDuration(request.departure_from_plant, request.arrival_at_plant),
+                            hrRemarks: currentRemarks || 'No remarks provided',
+                        });
+                    }
                 }
             } else if (isFinalAction && !employeePhone) {
                 console.warn('Cannot send notification: Employee phone number not available');
             }
 
-            // Send HOD-specific rejection message when HOD (not HR) rejects
-            if (newStatus === 'Rejected' && isHodAction && employeePhone) {
-                const formatDateTime = (dateString) => {
-                    if (!dateString) return 'N/A';
-                    return new Date(dateString).toLocaleDateString('en-GB', {
-                        day: '2-digit', month: '2-digit', year: 'numeric'
-                    });
-                };
-                
-                const hodRejectedResult = await sendGatePassHodRejectedToEmployee({
-                    employeePhone: employeePhone,
-                    employeeName: request.employee_name,
-                    requestType: 'gate pass request',
-                    leaveType: 'Gate Pass',
-                    fromDate: formatDateTime(request.departure_from_plant),
-                    toDate: formatDateTime(request.arrival_at_plant),
-                });
-                if (!hodRejectedResult.success) {
-                    console.warn('Failed to send HOD rejected message to employee:', hodRejectedResult.error);
-                }
-            }
+            // HOD rejection block removed as Gate Pass is now direct to HR
 
             toast.success(`Request ${action === 'approve' ? 'Approved' : 'Rejected'} Successfully`);
 
