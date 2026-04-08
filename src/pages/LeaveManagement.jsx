@@ -17,7 +17,10 @@ import {
   ChevronDown,
   Shield,
   AlertCircle,
+  Download,
+  FileSpreadsheet,
 } from "lucide-react";
+import * as XLSX from 'xlsx';
 import toast from "react-hot-toast";
 import { supabase } from "../supabaseClient";
 import useAuthStore from "../store/authStore";
@@ -54,6 +57,7 @@ const LeaveManagement = () => {
   const [actionInProgress, setActionInProgress] = useState(null);
   const [editableDates, setEditableDates] = useState({ from: "", to: "" });
   const [remarksInputs, setRemarksInputs] = useState({});
+  const [exportLoading, setExportLoading] = useState(false);
 
   // Pagination state removed in favor of infinite scroll
   // const [currentPage, setCurrentPage] = useState(1);
@@ -941,7 +945,7 @@ const LeaveManagement = () => {
             editableDates.to || selectedRow.endDate
           );
 
-          const mdNumber = import.meta.env.VITE_MD_MOBILE_NUMBER || "9407916514";
+          const mdNumber = import.meta.env.VITE_MD_MOBILE_NUMBER;
           const specialEmpIds = ["1", "175", "53", "219", "3", "233", "245", "341", "16", "294", "217", "152", "527", "501", "235", "504", "180", "321", "519", "242", "246", "518"]; // Target Employee IDs for MD notification
 
           if (newStatus === "Pending HR") {
@@ -1025,6 +1029,83 @@ const LeaveManagement = () => {
     } finally {
       setLoading(false);
       setActionInProgress(null);
+    }
+  };
+
+  const handleExportToExcel = async () => {
+    try {
+      setExportLoading(true);
+
+      const startOfCurrentMonth = dayjs().startOf('month').format('YYYY-MM-DD');
+      const endOfCurrentMonth = dayjs().endOf('month').format('YYYY-MM-DD');
+
+      // Fetch all approved leaves for the current month
+      const { data, error } = await supabase
+        .from('leave_management')
+        .select('*')
+        .eq('status', 'Approved')
+        .gte('leave_date_start', startOfCurrentMonth)
+        .lte('leave_date_start', endOfCurrentMonth)
+        .order('leave_date_start', { ascending: true });
+
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
+        toast.error('No approved leaves found for the current month');
+        return;
+      }
+
+      // Format data for Excel
+      const excelData = data.map(item => ({
+        'Employee ID': item.emp_id,
+        'Employee Name': item.employee_name,
+        'Designation': item.designation || '-',
+        'Leave Type': item.leave_type,
+        'From Date': item.leave_date_start ? dayjs(item.leave_date_start).format('DD/MM/YYYY') : '-',
+        'To Date': item.leave_date_end ? dayjs(item.leave_date_end).format('DD/MM/YYYY') : '-',
+        'Total Days': calculateDays(item.leave_date_start, item.leave_date_end),
+        'Reason': item.remarks,
+        'HOD Name': item.hod_name,
+        'HOD Remarks': item.hod_remarks || '-',
+        'HR Name': item.hr_name || '-',
+        'HR Remarks': item.hr_remarks || '-',
+        'Approved At': item.timestamp ? dayjs(item.timestamp).format('DD/MM/YYYY hh:mm A') : '-'
+      }));
+
+      // Create sheet
+      const worksheet = XLSX.utils.json_to_sheet(excelData);
+
+      // Set column widths for better readability
+      const wscols = [
+        { wch: 15 }, // Emp ID
+        { wch: 25 }, // Name
+        { wch: 20 }, // Designation
+        { wch: 15 }, // Leave Type
+        { wch: 12 }, // From
+        { wch: 12 }, // To
+        { wch: 10 }, // Days
+        { wch: 30 }, // Reason
+        { wch: 20 }, // HOD Name
+        { wch: 25 }, // HOD Remarks
+        { wch: 20 }, // HR Name
+        { wch: 25 }, // HR Remarks
+        { wch: 20 }, // Approved At
+      ];
+      worksheet['!cols'] = wscols;
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Approved Leaves");
+
+      // Download
+      const fileName = `Approved_Leaves_${dayjs().format('MMM_YYYY')}.xlsx`;
+      XLSX.writeFile(workbook, fileName);
+
+      toast.success(`Exported ${data.length} records successfully!`);
+    } catch (error) {
+      console.error('Export error:', error);
+      toast.error('Failed to export to Excel: ' + error.message);
+    } finally {
+      setExportLoading(false);
     }
   };
 
@@ -1673,6 +1754,23 @@ const LeaveManagement = () => {
           </div>
 
           <div className="flex flex-col gap-3 w-full md:w-auto md:flex-row md:items-center">
+            {/* Export Button for HR/Admin on Approved Tab */}
+            {activeTab === "approved" && isHr && (
+              <button
+                onClick={handleExportToExcel}
+                disabled={exportLoading}
+                className="inline-flex items-center justify-center px-4 py-2 border border-green-200 rounded-lg shadow-sm text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100 hover:text-green-800 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 w-full md:w-auto disabled:opacity-50 disabled:cursor-not-allowed group"
+                title="Export current month's approved leaves to Excel"
+              >
+                {exportLoading ? (
+                  <Clock size={18} className="mr-2 animate-spin" />
+                ) : (
+                  <FileSpreadsheet size={18} className="mr-2 text-green-600 group-hover:scale-110 transition-transform" />
+                )}
+                {exportLoading ? "Exporting..." : "Export Current Month"}
+              </button>
+            )}
+
             {/* Status Legend */}
             <div className="flex items-center gap-3 px-1">
               <div className="flex items-center gap-1.5">

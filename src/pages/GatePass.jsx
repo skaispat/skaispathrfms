@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
+import dayjs from 'dayjs';
+import * as XLSX from 'xlsx';
 import { createPortal } from 'react-dom';
-import { Search, X, Check, Clock, Calendar, Plus, User, Briefcase, FileText, Users, ChevronDown, MapPin, Phone, Image as ImageIcon, Shield, CheckCircle } from 'lucide-react';
+import { Search, X, Check, Clock, Calendar, Plus, User, Briefcase, FileText, Users, ChevronDown, MapPin, Phone, Image as ImageIcon, Shield, CheckCircle, Download, FileSpreadsheet } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../supabaseClient';
 import useAuthStore from '../store/authStore';
@@ -29,6 +31,7 @@ const GatePass = () => {
   const [actionInProgress, setActionInProgress] = useState(null);
   const [selectedRow, setSelectedRow] = useState(null);
   const [remarksInputs, setRemarksInputs] = useState({});
+  const [exportLoading, setExportLoading] = useState(false);
 
   const handleRemarkChange = (id, field, value) => {
     setRemarksInputs(prev => ({
@@ -289,7 +292,7 @@ const GatePass = () => {
       (async () => {
         try {
           const employeePhone = request.employee_whatsapp_number || request.users?.phone_number;
-          const mdNumber = import.meta.env.VITE_MD_MOBILE_NUMBER || "9407916514";
+          const mdNumber = import.meta.env.VITE_MD_MOBILE_NUMBER;
           const specialEmpIds = ["1", "175", "53", "219", "3", "233", "245", "341", "16", "294", "217", "152", "527", "501", "235", "504", "180", "321", "519", "242", "246", "518"];
           const currentEmpId = String(request.emp_id || request.users?.emp_id);
 
@@ -404,6 +407,82 @@ const GatePass = () => {
       toast.error(`Error: ${error.message}`);
     } finally {
       setActionInProgress(null);
+    }
+  };
+
+  const handleExportToExcel = async () => {
+    try {
+      setExportLoading(true);
+
+      const startOfCurrentMonth = dayjs().startOf('month').format('YYYY-MM-DDTHH:mm:ss');
+      const endOfCurrentMonth = dayjs().endOf('month').format('YYYY-MM-DDTHH:mm:ss');
+
+      // Fetch all approved gate passes for the current month
+      const { data, error } = await supabase
+        .from('gate_pass')
+        .select(`
+          *,
+          users(full_name, emp_id)
+        `)
+        .eq('status', 'Approved')
+        .gte('departure_from_plant', startOfCurrentMonth)
+        .lte('departure_from_plant', endOfCurrentMonth)
+        .order('departure_from_plant', { ascending: true });
+
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
+        toast.error('No approved gate passes found for the current month');
+        return;
+      }
+
+      // Format data for Excel
+      const excelData = data.map(item => ({
+        'Employee ID': item.emp_id || item.users?.emp_id,
+        'Employee Name': item.emp_name || item.users?.full_name,
+        'Destination & Reason': item.place_reason_to_visit,
+        'Departure': item.departure_from_plant ? dayjs(item.departure_from_plant).format('DD/MM/YYYY hh:mm A') : '-',
+        'Arrival': item.arrival_at_plant ? dayjs(item.arrival_at_plant).format('DD/MM/YYYY hh:mm A') : '-',
+        'WhatsApp Number': item.employee_whatsapp_number,
+        'HOD Name': item.hod_name,
+        'HOD Remarks': item.hod_remarks || '-',
+        'HR Name': item.hr_name || '-',
+        'HR Remarks': item.hr_remarks || '-',
+        'Approved At': item.timestamp ? dayjs(item.timestamp).format('DD/MM/YYYY hh:mm A') : '-'
+      }));
+
+      // Create sheet
+      const worksheet = XLSX.utils.json_to_sheet(excelData);
+
+      // Set column widths for better readability
+      const wscols = [
+        { wch: 15 }, // Emp ID
+        { wch: 25 }, // Name
+        { wch: 40 }, // Destination & Reason
+        { wch: 20 }, // Departure
+        { wch: 20 }, // Arrival
+        { wch: 15 }, // WhatsApp
+        { wch: 20 }, // HOD Name
+        { wch: 25 }, // HOD Remarks
+        { wch: 20 }, // HR Name
+        { wch: 25 }, // HR Remarks
+        { wch: 20 }, // Approved At
+      ];
+      worksheet['!cols'] = wscols;
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Approved Gate Passes");
+
+      // Download
+      const fileName = `Approved_Gate_Passes_${dayjs().format('MMM_YYYY')}.xlsx`;
+      XLSX.writeFile(workbook, fileName);
+
+      toast.success(`Exported ${data.length} records successfully!`);
+    } catch (error) {
+      console.error('Export error:', error);
+      toast.error('Failed to export to Excel: ' + error.message);
+    } finally {
+      setExportLoading(false);
     }
   };
 
@@ -792,6 +871,25 @@ const GatePass = () => {
                 </button>
               )
             })}
+          </div>
+
+          <div className="flex flex-col gap-3 w-full md:w-auto md:flex-row md:items-center">
+            {/* Export Button for HR/Admin on Approved Tab */}
+            {activeTab === "approved" && isHr && (
+              <button
+                onClick={handleExportToExcel}
+                disabled={exportLoading}
+                className="inline-flex items-center justify-center px-4 py-2 border border-green-200 rounded-lg shadow-sm text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100 hover:text-green-800 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 w-full md:w-auto disabled:opacity-50 disabled:cursor-not-allowed group"
+                title="Export current month's approved gate passes to Excel"
+              >
+                {exportLoading ? (
+                  <Clock size={18} className="mr-2 animate-spin" />
+                ) : (
+                  <FileSpreadsheet size={18} className="mr-2 text-green-600 group-hover:scale-110 transition-transform" />
+                )}
+                {exportLoading ? "Exporting..." : "Export Current Month"}
+              </button>
+            )}
           </div>
 
           {/* Search */}

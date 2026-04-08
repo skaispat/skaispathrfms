@@ -283,7 +283,7 @@ const GatePassApproval = () => {
                     return `${diffDays}`;
                 };
 
-                const mdNumber = import.meta.env.VITE_MD_MOBILE_NUMBER || "9407916514";
+                const mdNumber = import.meta.env.VITE_MD_MOBILE_NUMBER;
                 const specialEmpIds = ["1", "175", "53", "219", "3", "233", "245", "341", "16", "294", "217", "152", "527", "501", "235", "504", "180", "321", "519", "242", "246", "518"];
                 const currentEmpId = String(request.users?.emp_id || request.emp_id);
 

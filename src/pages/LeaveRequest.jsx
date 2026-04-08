@@ -142,15 +142,15 @@ const LeaveRequest = () => {
           unpaid_taken: balanceData.unpaid_leave_total_taken
         });
         setLeaveBalances({
-          casual: { 
-            total: 12, 
-            used: 12 - (balanceData.casual_leave_remaining ?? 12), 
-            remaining: balanceData.casual_leave_remaining ?? 12 
+          casual: {
+            total: 12,
+            used: 12 - (balanceData.casual_leave_remaining ?? 12),
+            remaining: balanceData.casual_leave_remaining ?? 12
           },
-          earned: { 
-            total: 24, 
-            used: 24 - (balanceData.earned_leave_remaining ?? 24), 
-            remaining: balanceData.earned_leave_remaining ?? 24 
+          earned: {
+            total: 24,
+            used: 24 - (balanceData.earned_leave_remaining ?? 24),
+            remaining: balanceData.earned_leave_remaining ?? 24
           },
           unpaid: { used: balanceData.unpaid_leave_total_taken ?? 0 }
         });
@@ -334,35 +334,35 @@ const LeaveRequest = () => {
         );
 
         if (hodDetails.id && hodDetails.phone_number) {
-                  console.log("Sending WhatsApp message to HOD...");
-                  const totalDays = calculateDays(formData.fromDate, formData.toDate);
-                  const whatsappResult = await sendWhatsappMessageToHod({
-                    employeId: hodDetails.id,
-                    tableid: data[0].id,
-                    hodPhoneNumber: hodDetails.phone_number,
-                    employeeName: user.full_name || user.Name,
-                    empId: user.emp_id,
-                    department: user.department || user.designation || user.role,
-                    leaveType: formData.leaveType,
-                    fromDate: formData.fromDate,
-                    toDate: formData.toDate,
-                    totalDays: totalDays,
-                    reason: formData.reason,
-                    who: "hod",
-                  });
-        
-                  console.log(whatsappResult, "whatsapp result");
-        
-                  if (whatsappResult.success) {
-                    toast.success("WhatsApp notification sent to HOD!");
-                  } else {
-                    console.error(
-                      "WhatsApp notification failed:",
-                      whatsappResult.error,
-                    );
-                    // Don't show error toast as leave request was successful
-                  }
-                }
+          console.log("Sending WhatsApp message to HOD...");
+          const totalDays = calculateDays(formData.fromDate, formData.toDate);
+          const whatsappResult = await sendWhatsappMessageToHod({
+            employeId: hodDetails.id,
+            tableid: data[0].id,
+            hodPhoneNumber: hodDetails.phone_number,
+            employeeName: user.full_name || user.Name,
+            empId: user.emp_id,
+            department: user.department || user.designation || user.role,
+            leaveType: formData.leaveType,
+            fromDate: formData.fromDate,
+            toDate: formData.toDate,
+            totalDays: totalDays,
+            reason: formData.reason,
+            who: "hod",
+          });
+
+          console.log(whatsappResult, "whatsapp result");
+
+          if (whatsappResult.success) {
+            toast.success("WhatsApp notification sent to HOD!");
+          } else {
+            console.error(
+              "WhatsApp notification failed:",
+              whatsappResult.error,
+            );
+            // Don't show error toast as leave request was successful
+          }
+        }
       }
 
       if (error) throw error;
@@ -780,14 +780,14 @@ const LeaveRequest = () => {
                       required
                     >
                       <option value="">Select Type...</option>
-                      <option 
-                        value="Casual Leave" 
+                      <option
+                        value="Casual Leave"
                         disabled={leaveBalances.casual.remaining <= 0}
                       >
                         Casual Leave {leaveBalances.casual.remaining <= 0 ? '(Quota Exhausted)' : `(${leaveBalances.casual.remaining} remaining)`}
                       </option>
-                      <option 
-                        value="Earned Leave" 
+                      <option
+                        value="Earned Leave"
                         disabled={leaveBalances.earned.remaining <= 0}
                       >
                         Earned Leave {leaveBalances.earned.remaining <= 0 ? '(Quota Exhausted)' : `(${leaveBalances.earned.remaining} remaining)`}
