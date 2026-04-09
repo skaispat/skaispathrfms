@@ -56,6 +56,7 @@ const LeaveManagement = () => {
   const [activeTab, setActiveTab] = useState("pending");
   const [actionInProgress, setActionInProgress] = useState(null);
   const [editableDates, setEditableDates] = useState({ from: "", to: "" });
+  const [leaveCounts, setLeaveCounts] = useState({ casual: 0, earned: 0, unpaid: 0 });
   const [remarksInputs, setRemarksInputs] = useState({});
   const [exportLoading, setExportLoading] = useState(false);
 
@@ -119,6 +120,7 @@ const LeaveManagement = () => {
     if (selectedRow?.id === leaveId) {
       setSelectedRow(null);
       setEditableDates({ from: "", to: "" });
+      setLeaveCounts({ casual: 0, earned: 0, unpaid: 0 });
     } else {
       // Convert DD/MM/YYYY to YYYY-MM-DD for date input
       const formatForInput = (dateStr) => {
@@ -131,17 +133,48 @@ const LeaveManagement = () => {
       };
 
       setSelectedRow(rowData);
+      const from = formatForInput(rowData.startDate);
+      const to = formatForInput(rowData.endDate);
       setEditableDates({
-        from: formatForInput(rowData.startDate),
-        to: formatForInput(rowData.endDate),
+        from: from,
+        to: to,
       });
+
+      // Initialize counts based on current leaveType and days
+      const days = calculateDays(from, to);
+      const initialCounts = { casual: 0, earned: 0, unpaid: 0 };
+      if (rowData.leaveType === "Casual Leave") initialCounts.casual = days;
+      else if (rowData.leaveType === "Earned Leave") initialCounts.earned = days;
+      else if (rowData.leaveType === "UnPaid Leave") initialCounts.unpaid = days;
+
+      setLeaveCounts(initialCounts);
     }
   };
 
   const handleDateChange = (field, value) => {
-    setEditableDates((prev) => ({
+    setEditableDates((prev) => {
+      const newDates = {
+        ...prev,
+        [field]: value,
+      };
+
+      // Recalculate and reset counts when dates change
+      const days = calculateDays(newDates.from, newDates.to);
+      const initialCounts = { casual: 0, earned: 0, unpaid: 0 };
+      if (selectedRow?.leaveType === "Casual Leave") initialCounts.casual = days;
+      else if (selectedRow?.leaveType === "Earned Leave") initialCounts.earned = days;
+      else if (selectedRow?.leaveType === "UnPaid Leave") initialCounts.unpaid = days;
+
+      setLeaveCounts(initialCounts);
+      return newDates;
+    });
+  };
+
+  const handleCountChange = (field, value) => {
+    const numValue = parseFloat(value) || 0;
+    setLeaveCounts((prev) => ({
       ...prev,
-      [field]: value,
+      [field]: numValue,
     }));
   };
 
@@ -444,6 +477,9 @@ const LeaveManagement = () => {
         hrRemarks: leave.hr_remarks,
         timestamp: leave.timestamp,
         employeePhone: leave.employee?.phone_number,
+        casual: leave.casual || 0,
+        earned: leave.earned || 0,
+        unpaid: leave.unpaid || 0,
       };
     });
   };
@@ -776,6 +812,9 @@ const LeaveManagement = () => {
             ? editableDates.to
             : selectedRow.endDate,
         status: newStatus,
+        casual: leaveCounts.casual,
+        earned: leaveCounts.earned,
+        unpaid: leaveCounts.unpaid,
         ...(isHod && {
           hod_remarks: currentRowRemarks.hod || "",
           hod_id: user.emp_id,
@@ -826,40 +865,21 @@ const LeaveManagement = () => {
       if (newStatus === "Approved") {
         console.log("=== LEAVE APPROVED - Starting quota update ===");
 
-        const leaveDays = calculateDays(
-          editableDates.from || selectedRow.startDate,
-          editableDates.to || selectedRow.endDate
-        );
         const currentYear = getFiscalYear();
         const employeeId = selectedRow.employeeId;
-        const leaveType = selectedRow.leaveType;
 
-        console.log("Leave Details:", {
-          leaveDays,
-          currentYear,
-          employeeId,
-          leaveType,
-          startDate: editableDates.from || selectedRow.startDate,
-          endDate: editableDates.to || selectedRow.endDate
-        });
+        // Update quota for each leave type that has a balance used
+        const updates = [
+          { type: "Casual", count: leaveCounts.casual, column: "casual_leave_used" },
+          { type: "Earned", count: leaveCounts.earned, column: "earned_leave_used" },
+          { type: "UnPaid", count: leaveCounts.unpaid, column: "unpaid_leave_used" }
+        ].filter(u => u.count > 0);
 
-        // Determine which leave type column to update
-        let quotaColumn = "";
+        for (const update of updates) {
+          const { count, column } = update;
+          console.log(`Processing ${update.type} quota update: ${count} days`);
 
-        if (leaveType === "Casual Leave") {
-          quotaColumn = "casual_leave_used";
-        } else if (leaveType === "Earned Leave") {
-          quotaColumn = "earned_leave_used";
-        } else if (leaveType === "UnPaid Leave") {
-          quotaColumn = "unpaid_leave_used";
-        }
-
-        console.log("Column to update:", quotaColumn);
-
-        if (quotaColumn) {
           try {
-            // Check if yearly_quota record exists
-            console.log("Checking for existing yearly_quota record...");
             const { data: existingQuota, error: quotaCheckError } = await supabase
               .from("yearly_quota")
               .select("*")
@@ -867,69 +887,37 @@ const LeaveManagement = () => {
               .eq("year", currentYear)
               .maybeSingle();
 
-            console.log("Existing quota check result:", { existingQuota, quotaCheckError });
-
             if (quotaCheckError) {
               console.error("Error checking yearly quota:", quotaCheckError);
-              toast.error("Failed to check leave quota: " + quotaCheckError.message);
-            } else if (existingQuota) {
-              // Update existing record
-              const currentUsed = existingQuota[quotaColumn] || 0;
-              const newUsed = currentUsed + leaveDays;
-              console.log(`Updating yearly_quota: ${quotaColumn} from ${currentUsed} to ${newUsed}`);
+              toast.error(`Failed to check ${update.type} quota: ` + quotaCheckError.message);
+              continue;
+            }
 
-              const { data: updateData, error: quotaUpdateError } = await supabase
+            if (existingQuota) {
+              const currentUsed = existingQuota[column] || 0;
+              const newUsed = currentUsed + count;
+              await supabase
                 .from("yearly_quota")
-                .update({
-                  [quotaColumn]: newUsed,
-                })
-                .eq("id", existingQuota.id)
-                .select();
-
-              console.log("Yearly quota update result:", { updateData, quotaUpdateError });
-
-              if (quotaUpdateError) {
-                console.error("Error updating yearly quota:", quotaUpdateError);
-                toast.error("Failed to update leave quota: " + quotaUpdateError.message);
-              } else {
-                console.log("Successfully updated yearly_quota");
-              }
+                .update({ [column]: newUsed })
+                .eq("id", existingQuota.id);
+              console.log(`Updated existing yearly_quota: ${column} to ${newUsed}`);
             } else {
-              // Create new record for this year
-              console.log("No existing record, creating new yearly_quota entry...");
               const insertPayload = {
                 emp_id: employeeId,
                 year: currentYear,
-                casual_leave_used: leaveType === "Casual Leave" ? leaveDays : 0,
-                earned_leave_used: leaveType === "Earned Leave" ? leaveDays : 0,
-                unpaid_leave_used: leaveType === "UnPaid Leave" ? leaveDays : 0,
+                casual_leave_used: update.type === "Casual" ? count : 0,
+                earned_leave_used: update.type === "Earned" ? count : 0,
+                unpaid_leave_used: update.type === "UnPaid" ? count : 0,
                 casual_leave_limit: 12,
                 earned_leave_limit: 24,
               };
-              console.log("Insert payload:", insertPayload);
-
-              const { data: insertData, error: quotaInsertError } = await supabase
-                .from("yearly_quota")
-                .insert(insertPayload)
-                .select();
-
-              console.log("Yearly quota insert result:", { insertData, quotaInsertError });
-
-              if (quotaInsertError) {
-                console.error("Error inserting yearly quota:", quotaInsertError);
-                toast.error("Failed to create leave quota: " + quotaInsertError.message);
-              } else {
-                console.log("Successfully created yearly_quota record");
-              }
+              await supabase.from("yearly_quota").insert(insertPayload);
+              console.log("Created new yearly_quota record");
             }
-          } catch (quotaError) {
-            console.error("Quota update error:", quotaError);
-            toast.error("Error updating leave balances: " + quotaError.message);
+          } catch (err) {
+            console.error(`Quota update error for ${update.type}:`, err);
           }
-        } else {
-          console.warn("Unknown leave type, skipping quota update:", leaveType);
         }
-
         console.log("=== LEAVE QUOTA UPDATE COMPLETE ===");
       }
 
@@ -1272,7 +1260,61 @@ const LeaveManagement = () => {
                 {item.reason}
               </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                {item.leaveType}
+                {isHr && (item.status === "Pending HR" || item.status === "Pending" || item.status === "Pending HOD") && selectedRow?.id === item.id ? (
+                  <div className="flex flex-col gap-1.5 p-2 bg-slate-50 rounded-lg border border-slate-200 min-w-[140px]">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase">CL:</span>
+                      <input
+                        type="number"
+                        value={leaveCounts.casual}
+                        onChange={(e) => handleCountChange("casual", e.target.value)}
+                        className="w-14 px-1.5 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-mono"
+                        min="0"
+                        step="1"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase">EL:</span>
+                      <input
+                        type="number"
+                        value={leaveCounts.earned}
+                        onChange={(e) => handleCountChange("earned", e.target.value)}
+                        className="w-14 px-1.5 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-mono"
+                        min="0"
+                        step="1"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase">LOP:</span>
+                      <input
+                        type="number"
+                        value={leaveCounts.unpaid}
+                        onChange={(e) => handleCountChange("unpaid", e.target.value)}
+                        className="w-14 px-1.5 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-mono"
+                        min="0"
+                        step="1"
+                      />
+                    </div>
+                    <div className={`border-t border-slate-200 pt-1 mt-1 text-[10px] font-bold flex justify-between ${Math.abs((leaveCounts.casual + leaveCounts.earned + leaveCounts.unpaid) - calculateDays(editableDates.from, editableDates.to)) > 0.01
+                      ? "text-red-500"
+                      : "text-green-600"
+                      }`}>
+                      <span>Total:</span>
+                      <span>{(leaveCounts.casual + leaveCounts.earned + leaveCounts.unpaid).toFixed(0)} / {calculateDays(editableDates.from, editableDates.to)}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col">
+                    <span className="font-medium text-slate-700">{item.leaveType}</span>
+                    {(item.casual > 0 || item.earned > 0 || item.unpaid > 0) && (
+                      <div className="flex gap-1.5 mt-1">
+                        {item.casual > 0 && <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[10px] font-bold">CL: {item.casual}</span>}
+                        {item.earned > 0 && <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold">EL: {item.earned}</span>}
+                        {item.unpaid > 0 && <span className="px-1.5 py-0.5 bg-rose-50 text-rose-600 rounded text-[10px] font-bold">LOP: {item.unpaid}</span>}
+                      </div>
+                    )}
+                  </div>
+                )}
               </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
                 {item.hodName}
@@ -1528,7 +1570,16 @@ const LeaveManagement = () => {
                 {item.reason}
               </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                {item.leaveType}
+                <div className="flex flex-col">
+                  <span className="font-medium text-slate-700">{item.leaveType}</span>
+                  {(item.casual > 0 || item.earned > 0 || item.unpaid > 0) && (
+                    <div className="flex gap-1.5 mt-1">
+                      {item.casual > 0 && <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[10px] font-bold">CL: {item.casual}</span>}
+                      {item.earned > 0 && <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold">EL: {item.earned}</span>}
+                      {item.unpaid > 0 && <span className="px-1.5 py-0.5 bg-rose-50 text-rose-600 rounded text-[10px] font-bold">LOP: {item.unpaid}</span>}
+                    </div>
+                  )}
+                </div>
               </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
                 {item.hodName}
@@ -1638,7 +1689,16 @@ const LeaveManagement = () => {
                 {item.reason}
               </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                {item.leaveType}
+                <div className="flex flex-col">
+                  <span className="font-medium text-slate-700">{item.leaveType}</span>
+                  {(item.casual > 0 || item.earned > 0 || item.unpaid > 0) && (
+                    <div className="flex gap-1.5 mt-1">
+                      {item.casual > 0 && <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[10px] font-bold">CL: {item.casual}</span>}
+                      {item.earned > 0 && <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold">EL: {item.earned}</span>}
+                      {item.unpaid > 0 && <span className="px-1.5 py-0.5 bg-rose-50 text-rose-600 rounded text-[10px] font-bold">LOP: {item.unpaid}</span>}
+                    </div>
+                  )}
+                </div>
               </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
                 {item.hodName}

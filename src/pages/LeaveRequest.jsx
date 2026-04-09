@@ -630,7 +630,73 @@ const LeaveRequest = () => {
         </div>
 
         <div className="overflow-auto flex-1 custom-scrollbar">
-          <table className="min-w-full divide-y divide-slate-100">
+          {/* Mobile Card View */}
+          <div className="md:hidden divide-y divide-slate-100">
+            {filteredHistory.length > 0 ? (
+              filteredHistory.map((item) => {
+                const getCombinedStatus = (status) => {
+                  const s = status?.toLowerCase() || '';
+                  if (s === 'pending' || s === 'pending hod') return { label: 'Pending HOD', classes: 'bg-yellow-100 text-yellow-800' };
+                  if (s === 'pending hr') return { label: 'Pending HR', classes: 'bg-blue-100 text-blue-800' };
+                  if (s.includes('approved')) return { label: 'Approved', classes: 'bg-green-100 text-green-800' };
+                  if (s.includes('rejected')) return { label: 'Rejected', classes: 'bg-red-100 text-red-800' };
+                  return { label: status, classes: 'bg-slate-100 text-slate-800' };
+                };
+                const statusObj = getCombinedStatus(item.status);
+                const totalDays = calculateDays(item.leave_date_start, item.leave_date_end);
+
+                return (
+                  <div key={item.id} className="p-4 bg-white space-y-3">
+                    <div className="flex justify-between items-start">
+                      <div className="flex flex-col">
+                        <span className="font-bold text-slate-900">{item.leave_type}</span>
+                        <span className="text-[10px] text-slate-400">{formatDate(item.timestamp)}</span>
+                      </div>
+                      <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${statusObj.classes}`}>
+                        {statusObj.label}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-4 py-2 border-y border-slate-50">
+                      <div className="flex flex-col">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">From</span>
+                        <span className="text-sm font-medium text-slate-700">{formatDate(item.leave_date_start)}</span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">To</span>
+                        <span className="text-sm font-medium text-slate-700">{formatDate(item.leave_date_end)}</span>
+                      </div>
+                      <div className="flex flex-col ml-auto text-right">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Days</span>
+                        <span className="text-sm font-bold text-indigo-600">{totalDays}</span>
+                      </div>
+                    </div>
+
+                    {(item.casual > 0 || item.earned > 0 || item.unpaid > 0) && (
+                      <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+                        {item.casual > 0 && <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[10px] font-bold shrink-0">CL: {item.casual}</span>}
+                        {item.earned > 0 && <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold shrink-0">EL: {item.earned}</span>}
+                        {item.unpaid > 0 && <span className="px-1.5 py-0.5 bg-rose-50 text-rose-600 rounded text-[10px] font-bold shrink-0">LOP: {item.unpaid}</span>}
+                      </div>
+                    )}
+
+                    <div className="bg-slate-50 rounded-lg p-2.5">
+                      <p className="text-xs text-slate-500 leading-relaxed italic">
+                        "{item.remarks}"
+                      </p>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="px-6 py-12 text-center text-slate-500">
+                <p className="text-sm">No requests found</p>
+              </div>
+            )}
+          </div>
+
+          {/* Desktop Table */}
+          <table className="hidden md:table min-w-full divide-y divide-slate-100">
             <thead className="bg-slate-50 sticky top-0 z-10 border-b border-slate-200">
               <tr>
                 <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Type & Date</th>
@@ -660,7 +726,14 @@ const LeaveRequest = () => {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex flex-col">
                           <span className="font-semibold text-slate-900 text-sm">{item.leave_type}</span>
-                          <span className="text-xs text-slate-400 mt-0.5">{formatDate(item.timestamp)}</span>
+                          {(item.casual > 0 || item.earned > 0 || item.unpaid > 0) && (
+                            <div className="flex gap-1.5 mt-1">
+                              {item.casual > 0 && <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[10px] font-bold">CL: {item.casual}</span>}
+                              {item.earned > 0 && <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold">EL: {item.earned}</span>}
+                              {item.unpaid > 0 && <span className="px-1.5 py-0.5 bg-rose-50 text-rose-600 rounded text-[10px] font-bold">LOP: {item.unpaid}</span>}
+                            </div>
+                          )}
+                          <span className="text-xs text-slate-400 mt-1">{formatDate(item.timestamp)}</span>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">

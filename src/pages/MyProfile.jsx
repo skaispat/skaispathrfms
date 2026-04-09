@@ -367,6 +367,7 @@ const MyProfile = () => {
                     isEditing={isEditing}
                   />
                   <InfoField label="Joining Date" name="joining_date" type="date" value={formData.joining_date} onChange={handleInputChange} icon={Calendar} isEditing={isEditing} />
+                  <InfoField label="Week Off" value={formData.week_off} icon={Calendar} disabled={true} isEditing={isEditing} />
                 </div>
               </SectionCard>
 

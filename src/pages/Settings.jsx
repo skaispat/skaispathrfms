@@ -121,7 +121,8 @@ const Settings = () => {
         current_address: '',
         username: '',
         is_active: true,
-        profile_picture: ''
+        profile_picture: '',
+        week_off: ''
     });
 
     const [showPassword, setShowPassword] = useState(false);
@@ -214,7 +215,8 @@ const Settings = () => {
             is_active: true,
             is_hod: false,
             page_access: DEFAULT_USER_PAGES,
-            profile_picture: ''
+            profile_picture: '',
+            week_off: ''
         });
         setSelectedTeam([]);
         setEditingUser(null);
@@ -245,7 +247,8 @@ const Settings = () => {
                 is_active: user.is_active,
                 is_hod: user.is_hod || false,
                 page_access: user.page_access || DEFAULT_USER_PAGES,
-                profile_picture: user.profile_picture || ''
+                profile_picture: user.profile_picture || '',
+                week_off: user.week_off || ''
             });
 
             // If editing, find current team members
@@ -1407,7 +1410,7 @@ const Settings = () => {
                                                 <input
                                                     type="text"
                                                     name="emp_id"
-                                                    value={formData.emp_id}
+                                                    value={formData.emp_id || ''}
                                                     onChange={handleInputChange}
                                                     required
                                                     disabled={!!editingUser && !(currentUser?.role === 'admin' || currentUser?.role === 'Admin')}
@@ -1427,7 +1430,7 @@ const Settings = () => {
                                                 <input
                                                     type="text"
                                                     name="username"
-                                                    value={formData.username}
+                                                    value={formData.username || ''}
                                                     onChange={handleInputChange}
                                                     required
                                                     className={`w-full pl-10 pr-4 py-2 rounded-lg border ${errors.username ? 'border-red-500 focus:border-red-500 focus:ring-red-200' : 'border-slate-300 focus:border-[#991B1B] focus:ring-[#991B1B]'} focus:ring-1 outline-none`}
@@ -1446,7 +1449,7 @@ const Settings = () => {
                                                 <input
                                                     type="email"
                                                     name="email"
-                                                    value={formData.email}
+                                                    value={formData.email || ''}
                                                     onChange={handleInputChange}
                                                     className={`w-full pl-10 pr-4 py-2 rounded-lg border ${errors.email ? 'border-red-500 focus:border-red-500 focus:ring-red-200' : 'border-slate-300 focus:border-[#991B1B] focus:ring-[#991B1B]'} focus:ring-1 outline-none`}
                                                     placeholder="john@example.com"
@@ -1466,7 +1469,7 @@ const Settings = () => {
                                                 <input
                                                     type={showPassword ? "text" : "password"}
                                                     name="password"
-                                                    value={formData.password}
+                                                    value={formData.password || ''}
                                                     onChange={handleInputChange}
                                                     required={!editingUser}
                                                     className={`w-full pl-10 pr-10 py-2 rounded-lg border ${errors.password ? 'border-red-500 focus:border-red-500 focus:ring-red-200' : 'border-slate-300 focus:border-[#991B1B] focus:ring-[#991B1B]'} focus:ring-1 outline-none`}
@@ -1493,7 +1496,7 @@ const Settings = () => {
                                                 </div>
                                                 <select
                                                     name="role"
-                                                    value={formData.role}
+                                                    value={formData.role || ''}
                                                     onChange={handleInputChange}
                                                     className="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-300 focus:border-[#991B1B] focus:ring-1 focus:ring-[#991B1B] outline-none appearance-none bg-white"
                                                 >
@@ -1515,7 +1518,7 @@ const Settings = () => {
                                                 </div>
                                                 <select
                                                     name="department"
-                                                    value={formData.department}
+                                                    value={formData.department || ''}
                                                     onChange={handleInputChange}
                                                     className={`w-full pl-10 pr-4 py-2 rounded-lg border ${errors.department ? 'border-red-500 focus:border-red-500 focus:ring-red-200' : 'border-slate-300 focus:border-[#991B1B] focus:ring-[#991B1B]'} focus:ring-1 outline-none appearance-none bg-white`}
                                                 >
@@ -1538,6 +1541,32 @@ const Settings = () => {
                                                 </select>
                                             </div>
                                             {errors.department && <p className="text-xs text-red-500 mt-1 ml-1">{errors.department}</p>}
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">Week Off</label>
+                                            <div className="relative">
+                                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                                    <Calendar className="h-4 w-4 text-slate-400" />
+                                                </div>
+                                                <select
+                                                    name="week_off"
+                                                    value={formData.week_off || ''}
+                                                    onChange={handleInputChange}
+                                                    className="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-300 focus:border-[#991B1B] focus:ring-1 focus:ring-[#991B1B] outline-none appearance-none bg-white"
+                                                >
+                                                    <option value="">Select Week Off</option>
+                                                    <option value="SUNDAY">SUNDAY</option>
+                                                    <option value="MONDAY">MONDAY</option>
+                                                    <option value="TUESDAY">TUESDAY</option>
+                                                    <option value="WEDNESDAY">WEDNESDAY</option>
+                                                    <option value="THURSDAY">THURSDAY</option>
+                                                    <option value="FRIDAY">FRIDAY</option>
+                                                    <option value="SATURDAY">SATURDAY</option>
+                                                </select>
+                                                <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                                    <ChevronDown className="h-4 w-4 text-slate-400" />
+                                                </div>
+                                            </div>
                                         </div>
 
                                         <div className="flex items-center gap-2 pt-8">
@@ -1660,7 +1689,7 @@ const Settings = () => {
                                                 <input
                                                     type="text"
                                                     name="full_name"
-                                                    value={formData.full_name}
+                                                    value={formData.full_name || ''}
                                                     onChange={handleInputChange}
                                                     required
                                                     className={`w-full pl-10 pr-4 py-2 rounded-lg border ${errors.full_name ? 'border-red-500 focus:border-red-500 focus:ring-red-200' : 'border-slate-300 focus:border-[#991B1B] focus:ring-[#991B1B]'} focus:ring-1 outline-none`}
@@ -1679,7 +1708,7 @@ const Settings = () => {
                                                 <input
                                                     type="date"
                                                     name="date_of_birth"
-                                                    value={formData.date_of_birth}
+                                                    value={formData.date_of_birth || ''}
                                                     onChange={handleInputChange}
                                                     className={`w-full pl-10 pr-4 py-2 rounded-lg border ${errors.date_of_birth ? 'border-red-500 focus:border-red-500 focus:ring-red-200' : 'border-slate-300 focus:border-[#991B1B] focus:ring-[#991B1B]'} focus:ring-1 outline-none`}
                                                 />
@@ -1691,7 +1720,7 @@ const Settings = () => {
                                             <label className="block text-sm font-medium text-slate-700 mb-1">Gender</label>
                                             <select
                                                 name="gender"
-                                                value={formData.gender}
+                                                value={formData.gender || ''}
                                                 onChange={handleInputChange}
                                                 className="w-full px-4 py-2 rounded-lg border border-slate-300 focus:border-[#991B1B] focus:ring-1 focus:ring-[#991B1B] outline-none bg-white"
                                             >
@@ -1715,7 +1744,7 @@ const Settings = () => {
                                                 <input
                                                     type="text"
                                                     name="designation"
-                                                    value={formData.designation}
+                                                    value={formData.designation || ''}
                                                     onChange={handleInputChange}
                                                     className="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-300 focus:border-[#991B1B] focus:ring-1 focus:ring-[#991B1B] outline-none"
                                                     placeholder="Software Engineer"
@@ -1734,7 +1763,7 @@ const Settings = () => {
                                                 <input
                                                     type="date"
                                                     name="joining_date"
-                                                    value={formData.joining_date}
+                                                    value={formData.joining_date || ''}
                                                     onChange={handleInputChange}
                                                     className={`w-full pl-10 pr-4 py-2 rounded-lg border ${errors.joining_date ? 'border-red-500 focus:border-red-500 focus:ring-red-200' : 'border-slate-300 focus:border-[#991B1B] focus:ring-[#991B1B]'} focus:ring-1 outline-none`}
                                                 />
@@ -1758,7 +1787,7 @@ const Settings = () => {
                                                 <input
                                                     type="text"
                                                     name="phone_number"
-                                                    value={formData.phone_number}
+                                                    value={formData.phone_number || ''}
                                                     onChange={handleInputChange}
                                                     className={`w-full pl-14 pr-4 py-2 rounded-lg border ${errors.phone_number ? 'border-red-500 focus:border-red-500 focus:ring-red-200' : 'border-slate-300 focus:border-[#991B1B] focus:ring-[#991B1B]'} focus:ring-1 outline-none`}
                                                     placeholder="9876543210"
@@ -1775,7 +1804,7 @@ const Settings = () => {
                                                 <input
                                                     type="text"
                                                     name="emergency_contact"
-                                                    value={formData.emergency_contact}
+                                                    value={formData.emergency_contact || ''}
                                                     onChange={handleInputChange}
                                                     className="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-300 focus:border-[#991B1B] focus:ring-1 focus:ring-[#991B1B] outline-none"
                                                     placeholder="Name - Number"
@@ -1793,7 +1822,7 @@ const Settings = () => {
                                                 </div>
                                                 <textarea
                                                     name="current_address"
-                                                    value={formData.current_address}
+                                                    value={formData.current_address || ''}
                                                     onChange={handleInputChange}
                                                     rows="3"
                                                     className="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-300 focus:border-[#991B1B] focus:ring-1 focus:ring-[#991B1B] outline-none resize-none"

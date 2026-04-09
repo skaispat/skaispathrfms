@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { supabase } from '../supabaseClient';
 import { Calendar, Clock, CheckCircle, XCircle, ChevronDown, Activity, AlertCircle } from 'lucide-react';
 
 const MyAttendance = () => {
@@ -14,6 +15,18 @@ const MyAttendance = () => {
     workingHours: 0,
     overtimeHours: 0
   });
+  const [weekOff, setWeekOff] = useState('');
+  const [userLeaves, setUserLeaves] = useState([]);
+
+  const weekDayMap = {
+    'SUNDAY': 0,
+    'MONDAY': 1,
+    'TUESDAY': 2,
+    'WEDNESDAY': 3,
+    'THURSDAY': 4,
+    'FRIDAY': 5,
+    'SATURDAY': 6
+  };
 
   // Get user from localStorage
   const getUser = () => {
@@ -37,6 +50,25 @@ const MyAttendance = () => {
     setError(null);
 
     try {
+      const { data: userData } = await supabase
+        .from('users')
+        .select('week_off')
+        .eq('emp_id', user.emp_id)
+        .single();
+
+      if (userData?.week_off) {
+        setWeekOff(userData.week_off);
+      }
+
+      // Fetch Leaves for the user
+      const { data: leavesData } = await supabase
+        .from('leave_management')
+        .select('leave_date_start, leave_date_end, status')
+        .eq('emp_id', user.emp_id)
+        .eq('status', 'Approved');
+
+      setUserLeaves(leavesData || []);
+
       const response = await fetch("https://sohcm.com/SmartApp_ess/api/SwipeDetails/GetDeviceLogs?APIKey=341813122509&AccountName=SKAISPAT&FromDate=2025-12-01&ToDate=2026-12-01");
 
       if (!response.ok) {
@@ -146,7 +178,55 @@ const MyAttendance = () => {
       effectiveDays = 0; // Future month
     }
 
-    const presentCount = currentMonthData.length;
+    let presentCount = currentMonthData.length;
+    const weekOffDayIndex = weekDayMap[weekOff];
+
+    // Helper for Sandwich Rule
+    const isDayAbsentOrOnLeave = (dateObj) => {
+      const dStr = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+
+      // Check Swipe
+      const hasSwipe = attendanceData.some(r => r.date === dStr);
+      if (hasSwipe) return false;
+
+      // Check Leaves
+      const onLeave = userLeaves.some(l => {
+        const start = l.leave_date_start;
+        const end = l.leave_date_end;
+        return dStr >= start && dStr <= end;
+      });
+      if (onLeave) return true;
+
+      // If no swipe and not a week off, it's Absent
+      if (dateObj.getDay() !== weekOffDayIndex) return true;
+
+      return false; // Default for week off
+    };
+
+    // Check for days that are week off but not swiped
+    if (weekOff) {
+      for (let d = 1; d <= effectiveDays; d++) {
+        const date = new Date(selectedYear, selectedMonth, d);
+        const dateStr = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const isSwiped = currentMonthData.some(r => r.date === dateStr);
+
+        if (!isSwiped && date.getDay() === weekOffDayIndex) {
+          // Sandwich Rule Logic: Check d-1 and d+1
+          const prevDay = new Date(selectedYear, selectedMonth, d - 1);
+          const nextDay = new Date(selectedYear, selectedMonth, d + 1);
+
+          const isPrevAbsent = isDayAbsentOrOnLeave(prevDay);
+          const isNextAbsent = isDayAbsentOrOnLeave(nextDay);
+
+          if (isPrevAbsent && isNextAbsent) {
+            // Sandwich triggered - Week Off counts as ABSENT
+          } else {
+            presentCount++;
+          }
+        }
+      }
+    }
+
     const absentCount = Math.max(0, effectiveDays - presentCount);
 
     const totalWorkHrs = currentMonthData.reduce((acc, curr) => acc + curr.workingHoursVal, 0);
@@ -160,12 +240,75 @@ const MyAttendance = () => {
       overtimeHours: totalOtHrs
     });
 
-  }, [attendanceData, selectedMonth, selectedYear]);
+  }, [attendanceData, selectedMonth, selectedYear, weekOff, userLeaves]);
 
-  const filteredRecords = attendanceData.filter(record => {
-    const d = new Date(record.date);
-    return d.getMonth() === selectedMonth && d.getFullYear() === selectedYear;
-  });
+  const filteredRecords = (() => {
+    // 1. Get real swipe records for this month
+    const swipes = attendanceData.filter(record => {
+      const d = new Date(record.date);
+      return d.getMonth() === selectedMonth && d.getFullYear() === selectedYear;
+    });
+
+    // 2. Add virtual week-off records for this month
+    const enrichedRecords = [...swipes];
+    const weekOffDayIndex = weekDayMap[weekOff];
+
+    if (weekOff) {
+      const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+      const now = new Date();
+      let limit = daysInMonth;
+      if (selectedYear === now.getFullYear() && selectedMonth === now.getMonth()) {
+        limit = now.getDate();
+      } else if (new Date(selectedYear, selectedMonth, 1) > now) {
+        limit = 0;
+      }
+
+      // Helper for Sandwich Rule in rendering
+      const isDayAbsentOrOnLeave = (dateObj) => {
+        const dStr = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+        const hasSwipe = swipes.some(r => r.date === dStr);
+        if (hasSwipe) return false;
+
+        const onLeave = userLeaves.some(l => {
+          const start = l.leave_date_start;
+          const end = l.leave_date_end;
+          return dStr >= start && dStr <= end;
+        });
+        if (onLeave) return true;
+
+        if (dateObj.getDay() !== weekOffDayIndex) return true;
+        return false;
+      };
+
+      for (let d = 1; d <= limit; d++) {
+        const date = new Date(selectedYear, selectedMonth, d);
+        const dateStr = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const isSwiped = enrichedRecords.some(r => r.date === dateStr);
+
+        if (!isSwiped && date.getDay() === weekOffDayIndex) {
+          const prevDay = new Date(selectedYear, selectedMonth, d - 1);
+          const nextDay = new Date(selectedYear, selectedMonth, d + 1);
+          const isSandwich = isDayAbsentOrOnLeave(prevDay) && isDayAbsentOrOnLeave(nextDay);
+
+          enrichedRecords.push({
+            date: dateStr,
+            day: date.toLocaleDateString('en-US', { weekday: 'long' }),
+            inTime: '-',
+            outTime: '-',
+            workingHoursDisplay: '0h 0m',
+            workingHoursVal: 0,
+            overtimeDisplay: '0h 0m',
+            overtimeVal: 0,
+            status: isSandwich ? 'Absent (Sandwich)' : 'Week Off',
+            isWeekOff: true,
+            isSandwich: isSandwich
+          });
+        }
+      }
+    }
+
+    return enrichedRecords.sort((a, b) => new Date(b.date) - new Date(a.date));
+  })();
 
   const months = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -316,10 +459,22 @@ const MyAttendance = () => {
                           )}
                         </td>
                         <td className="px-6 py-4 pr-8">
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
-                            <span className="w-1.5 h-1.5 mr-1.5 rounded-full bg-emerald-500"></span>
-                            {record.status}
-                          </span>
+                          {record.status === 'Week Off' ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
+                              <span className="w-1.5 h-1.5 mr-1.5 rounded-full bg-indigo-500"></span>
+                              {record.status}
+                            </span>
+                          ) : record.status === 'Absent (Sandwich)' ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-50 text-rose-700 border border-rose-100">
+                              <span className="w-1.5 h-1.5 mr-1.5 rounded-full bg-rose-500"></span>
+                              {record.status}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
+                              <span className="w-1.5 h-1.5 mr-1.5 rounded-full bg-emerald-500"></span>
+                              {record.status}
+                            </span>
+                          )}
                         </td>
                       </tr>
                     );
