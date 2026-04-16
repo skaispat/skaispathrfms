@@ -55,10 +55,12 @@ const LeaveManagement = () => {
   const [selectedRow, setSelectedRow] = useState(null);
   const [activeTab, setActiveTab] = useState("pending");
   const [actionInProgress, setActionInProgress] = useState(null);
-  const [editableDates, setEditableDates] = useState({ from: "", to: "" });
-  const [leaveCounts, setLeaveCounts] = useState({ casual: 0, earned: 0, unpaid: 0 });
+  const [editableDates, setEditableDates] = useState({});
+  const [leaveCounts, setLeaveCounts] = useState({});
   const [remarksInputs, setRemarksInputs] = useState({});
   const [exportLoading, setExportLoading] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkLoading, setBulkLoading] = useState(false);
 
   // Pagination state removed in favor of infinite scroll
   // const [currentPage, setCurrentPage] = useState(1);
@@ -117,64 +119,138 @@ const LeaveManagement = () => {
   }, [user]);
 
   const handleCheckboxChange = (leaveId, rowData) => {
+    // Single selection for editing (keep existing behavior)
     if (selectedRow?.id === leaveId) {
       setSelectedRow(null);
-      setEditableDates({ from: "", to: "" });
-      setLeaveCounts({ casual: 0, earned: 0, unpaid: 0 });
     } else {
       // Convert DD/MM/YYYY to YYYY-MM-DD for date input
       const formatForInput = (dateStr) => {
         if (!dateStr) return "";
-        // Check if dateStr is already in YYYY-MM-DD
         if (dateStr.includes("-")) return dateStr;
-
         const [day, month, year] = dateStr.split("/");
         return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
       };
 
       setSelectedRow(rowData);
-      const from = formatForInput(rowData.startDate);
-      const to = formatForInput(rowData.endDate);
-      setEditableDates({
-        from: from,
-        to: to,
-      });
 
-      // Initialize counts based on current leaveType and days
-      const days = calculateDays(from, to);
-      const initialCounts = { casual: 0, earned: 0, unpaid: 0 };
-      if (rowData.leaveType === "Casual Leave") initialCounts.casual = days;
-      else if (rowData.leaveType === "Earned Leave") initialCounts.earned = days;
-      else if (rowData.leaveType === "UnPaid Leave") initialCounts.unpaid = days;
+      // Initialize row state if not already present
+      if (!editableDates[leaveId]) {
+        const from = formatForInput(rowData.startDate);
+        const to = formatForInput(rowData.endDate);
+        const days = calculateDays(from, to);
+        const initialCounts = { casual: 0, earned: 0, unpaid: 0 };
+        if (rowData.leaveType === "Casual Leave") initialCounts.casual = days;
+        else if (rowData.leaveType === "Earned Leave") initialCounts.earned = days;
+        else if (rowData.leaveType === "UnPaid Leave") initialCounts.unpaid = days;
 
-      setLeaveCounts(initialCounts);
+        setEditableDates(prev => ({ ...prev, [leaveId]: { from, to } }));
+        setLeaveCounts(prev => ({ ...prev, [leaveId]: initialCounts }));
+      }
     }
-  };
 
-  const handleDateChange = (field, value) => {
-    setEditableDates((prev) => {
-      const newDates = {
-        ...prev,
-        [field]: value,
-      };
+    // Multiple selection for bulk actions
+    setSelectedIds(prev => {
+      const isSelecting = !prev.includes(leaveId);
+      if (isSelecting) {
+        // Initialize state for the row being selected if not already there
+        if (!editableDates[leaveId]) {
+          const formatForInput = (dateStr) => {
+            if (!dateStr) return "";
+            if (dateStr.includes("-")) return dateStr;
+            const [day, month, year] = dateStr.split("/");
+            return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+          };
+          const from = formatForInput(rowData.startDate);
+          const to = formatForInput(rowData.endDate);
+          const days = calculateDays(from, to);
+          const initialCounts = { casual: 0, earned: 0, unpaid: 0 };
+          if (rowData.leaveType === "Casual Leave") initialCounts.casual = days;
+          else if (rowData.leaveType === "Earned Leave") initialCounts.earned = days;
+          else if (rowData.leaveType === "UnPaid Leave") initialCounts.unpaid = days;
 
-      // Recalculate and reset counts when dates change
-      const days = calculateDays(newDates.from, newDates.to);
-      const initialCounts = { casual: 0, earned: 0, unpaid: 0 };
-      if (selectedRow?.leaveType === "Casual Leave") initialCounts.casual = days;
-      else if (selectedRow?.leaveType === "Earned Leave") initialCounts.earned = days;
-      else if (selectedRow?.leaveType === "UnPaid Leave") initialCounts.unpaid = days;
-
-      setLeaveCounts(initialCounts);
-      return newDates;
+          setEditableDates(prevDates => ({ ...prevDates, [leaveId]: { from, to } }));
+          setLeaveCounts(prevCounts => ({ ...prevCounts, [leaveId]: initialCounts }));
+        }
+        return [...prev, leaveId];
+      } else {
+        return prev.filter(id => id !== leaveId);
+      }
     });
   };
 
-  const handleCountChange = (field, value) => {
+  const handleSelectAll = (isSelectingAll) => {
+    if (isSelectingAll) {
+      const allPendingIds = leaves.map(leave => leave.id);
+      setSelectedIds(allPendingIds);
+
+      // Initialize state for all selected rows
+      const newDates = { ...editableDates };
+      const newCounts = { ...leaveCounts };
+
+      leaves.forEach(leaf => {
+        if (!newDates[leaf.id]) {
+          const formatForInput = (dateStr) => {
+            if (!dateStr) return "";
+            if (dateStr.includes("-")) return dateStr;
+            const [day, month, year] = dateStr.split("/");
+            return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+          };
+          const from = formatForInput(leaf.startDate);
+          const to = formatForInput(leaf.endDate);
+          const days = calculateDays(from, to);
+          const initialCounts = { casual: 0, earned: 0, unpaid: 0 };
+          if (leaf.leaveType === "Casual Leave") initialCounts.casual = days;
+          else if (leaf.leaveType === "Earned Leave") initialCounts.earned = days;
+          else if (leaf.leaveType === "UnPaid Leave") initialCounts.unpaid = days;
+
+          newDates[leaf.id] = { from, to };
+          newCounts[leaf.id] = initialCounts;
+        }
+      });
+
+      setEditableDates(newDates);
+      setLeaveCounts(newCounts);
+    } else {
+      setSelectedIds([]);
+    }
+  };
+
+  const handleDateChange = (id, field, value) => {
+    setEditableDates((prev) => {
+      const rowDates = prev[id] || { from: "", to: "" };
+      const newDates = {
+        ...rowDates,
+        [field]: value,
+      };
+
+      // Recalculate and reset counts for this specific row when dates change
+      const days = calculateDays(newDates.from, newDates.to);
+      const row = leaves.find(l => l.id === id);
+      const initialCounts = { casual: 0, earned: 0, unpaid: 0 };
+      if (row?.leaveType === "Casual Leave") initialCounts.casual = days;
+      else if (row?.leaveType === "Earned Leave") initialCounts.earned = days;
+      else if (row?.leaveType === "UnPaid Leave") initialCounts.unpaid = days;
+
+      setLeaveCounts(prevCounts => ({
+        ...prevCounts,
+        [id]: initialCounts
+      }));
+
+      return {
+        ...prev,
+        [id]: newDates
+      };
+    });
+  };
+
+  const handleCountChange = (id, field, value) => {
     const numValue = parseFloat(value) || 0;
     setLeaveCounts((prev) => ({
       ...prev,
-      [field]: numValue,
+      [id]: {
+        ...(prev[id] || { casual: 0, earned: 0, unpaid: 0 }),
+        [field]: numValue
+      }
     }));
   };
 
@@ -768,9 +844,6 @@ const LeaveManagement = () => {
       // Flow Logic
       if (currentStatus === "Pending" || currentStatus === "Pending HOD") {
         if (isHod || isHr) {
-          // Allow HR/Admin to override HOD step if needed, or strictly HOD?
-          // Strictly speaking, if user is HOD for this request
-          // For now, allow if isHod or Admin
           if (action === "accept") {
             newStatus = "Pending HR";
             notificationMessage = "Approved by HOD and sent to HR";
@@ -794,34 +867,34 @@ const LeaveManagement = () => {
           throw new Error("You are not authorized to perform HR action.");
         }
       } else {
-        // Should not happen if buttons are hidden
         throw new Error("Invalid status transition.");
       }
 
-      // Prepare update data
-      const currentRowRemarks = remarksInputs[selectedRow.id] || {};
+      const rowRemarks = remarksInputs[selectedRow.id] || {};
+      const rowDates = editableDates[selectedRow.id] || {};
+      const rowCounts = leaveCounts[selectedRow.id] || { casual: 0, earned: 0, unpaid: 0 };
 
       const updateData = {
-        timestamp: new Date().toISOString(), // Update timestamp
+        timestamp: new Date().toISOString(),
         leave_date_start:
-          editableDates.from && editableDates.from !== selectedRow.startDate
-            ? editableDates.from
+          rowDates.from && rowDates.from !== selectedRow.startDate
+            ? rowDates.from
             : selectedRow.startDate,
         leave_date_end:
-          editableDates.to && editableDates.to !== selectedRow.endDate
-            ? editableDates.to
+          rowDates.to && rowDates.to !== selectedRow.endDate
+            ? rowDates.to
             : selectedRow.endDate,
         status: newStatus,
-        casual: leaveCounts.casual,
-        earned: leaveCounts.earned,
-        unpaid: leaveCounts.unpaid,
+        casual: rowCounts.casual,
+        earned: rowCounts.earned,
+        unpaid: rowCounts.unpaid,
         ...(isHod && {
-          hod_remarks: currentRowRemarks.hod || "",
+          hod_remarks: rowRemarks.hod || "",
           hod_id: user.emp_id,
           hod_name: user.full_name || user.Name,
         }),
         ...(isHr && {
-          hr_remarks: currentRowRemarks.hr || "",
+          hr_remarks: rowRemarks.hr || "",
           hr_id: user.emp_id,
           hr_name: user.full_name || user.Name,
         }),
@@ -833,9 +906,7 @@ const LeaveManagement = () => {
         .update(updateData)
         .eq("id", selectedRow.id);
 
-      if (updateError) {
-        throw new Error(updateError.message);
-      }
+      if (updateError) throw new Error(updateError.message);
 
       // Update Log
       const logUpdate = {
@@ -851,7 +922,7 @@ const LeaveManagement = () => {
           hr_name: user.full_name || user.Name,
           hr_id: user.emp_id,
           hr_action: action === "accept" ? "Approved" : "Rejected",
-          hr_approval_time: new Date().toISOString(), // Fixed typo from code view
+          hr_approval_time: new Date().toISOString(),
           hr_remarks: currentRowRemarks.hr || "",
         }),
       };
@@ -863,12 +934,8 @@ const LeaveManagement = () => {
 
       // Update yearly_quota when leave is approved
       if (newStatus === "Approved") {
-        console.log("=== LEAVE APPROVED - Starting quota update ===");
-
         const currentYear = getFiscalYear();
         const employeeId = selectedRow.employeeId;
-
-        // Update quota for each leave type that has a balance used
         const updates = [
           { type: "Casual", count: leaveCounts.casual, column: "casual_leave_used" },
           { type: "Earned", count: leaveCounts.earned, column: "earned_leave_used" },
@@ -877,30 +944,19 @@ const LeaveManagement = () => {
 
         for (const update of updates) {
           const { count, column } = update;
-          console.log(`Processing ${update.type} quota update: ${count} days`);
-
           try {
-            const { data: existingQuota, error: quotaCheckError } = await supabase
+            const { data: existingQuota } = await supabase
               .from("yearly_quota")
               .select("*")
               .eq("emp_id", employeeId)
               .eq("year", currentYear)
               .maybeSingle();
 
-            if (quotaCheckError) {
-              console.error("Error checking yearly quota:", quotaCheckError);
-              toast.error(`Failed to check ${update.type} quota: ` + quotaCheckError.message);
-              continue;
-            }
-
             if (existingQuota) {
-              const currentUsed = existingQuota[column] || 0;
-              const newUsed = currentUsed + count;
               await supabase
                 .from("yearly_quota")
-                .update({ [column]: newUsed })
+                .update({ [column]: (existingQuota[column] || 0) + count })
                 .eq("id", existingQuota.id);
-              console.log(`Updated existing yearly_quota: ${column} to ${newUsed}`);
             } else {
               const insertPayload = {
                 emp_id: employeeId,
@@ -912,100 +968,52 @@ const LeaveManagement = () => {
                 earned_leave_limit: 24,
               };
               await supabase.from("yearly_quota").insert(insertPayload);
-              console.log("Created new yearly_quota record");
             }
-          } catch (err) {
-            console.error(`Quota update error for ${update.type}:`, err);
-          }
+          } catch (err) { console.error("Quota error:", err); }
         }
-        console.log("=== LEAVE QUOTA UPDATE COMPLETE ===");
       }
 
-      toast.success(
-        `Leave ${notificationMessage} for ${selectedRow.employeeName || "employee"}`,
-      );
+      toast.success(`Leave ${notificationMessage} for ${selectedRow.employeeName || "employee"}`);
 
-      // Trigger WhatsApp Notifications (Non-blocking)
+      // WhatsApp
       (async () => {
         try {
-          const leaveDays = calculateDays(
-            editableDates.from || selectedRow.startDate,
-            editableDates.to || selectedRow.endDate
-          );
-
+          const leaveDays = calculateDays(editableDates.from || selectedRow.startDate, editableDates.to || selectedRow.endDate);
           const mdNumber = import.meta.env.VITE_MD_MOBILE_NUMBER;
-          const specialEmpIds = ["1", "175", "53", "219", "3", "233", "245", "341", "16", "294", "217", "152", "527", "501", "235", "504", "180", "321", "519", "242", "246", "518"]; // Target Employee IDs for MD notification
+          const specialEmpIds = ["1", "175", "53", "219", "3", "233", "245", "341", "16", "294", "217", "152", "527", "501", "235", "504", "180", "321", "519", "242", "246", "518"];
 
           if (newStatus === "Pending HR") {
-            // HOD Approved -> Notify HR
-            console.log("📤 Sending WhatsApp notification to HR...");
             await sendWhatsappMessageToHr({
-              employeId: selectedRow.employeeId,
-              empId: selectedRow.employeeId,
-              tableid: selectedRow.id,
-              employeeName: selectedRow.employeeName,
-              leaveType: selectedRow.leaveType,
+              employeId: selectedRow.employeeId, empId: selectedRow.employeeId, tableid: selectedRow.id,
+              employeeName: selectedRow.employeeName, leaveType: selectedRow.leaveType,
               fromDate: formatDate(editableDates.from || selectedRow.startDate),
               toDate: formatDate(editableDates.to || selectedRow.endDate),
-              totalDays: leaveDays,
-              reason: selectedRow.reason,
+              totalDays: leaveDays, reason: selectedRow.reason,
             });
           } else if (newStatus === "Approved") {
-            // HR Approved -> Notify Employee
-            console.log("📤 Sending Approval WhatsApp to Employee...");
             await sendApprovedMessageToEmployee({
-              employeePhone: selectedRow.employeePhone,
-              employeeName: selectedRow.employeeName,
-              leaveType: selectedRow.leaveType,
+              employeePhone: selectedRow.employeePhone, employeeName: selectedRow.employeeName, leaveType: selectedRow.leaveType,
               fromDate: formatDate(editableDates.from || selectedRow.startDate),
               toDate: formatDate(editableDates.to || selectedRow.endDate),
-              totalDays: leaveDays,
-              reason: selectedRow.reason,
+              totalDays: leaveDays, reason: selectedRow.reason,
             });
-
-            // Also notify MD for special employees
             if (specialEmpIds.includes(String(selectedRow.employeeId))) {
-              console.log("👑 Sending Approval WhatsApp to MD Sir...");
               await sendApprovedMessageToEmployee({
-                employeePhone: mdNumber,
-                employeeName: `${selectedRow.employeeName} (Employee ID: ${selectedRow.employeeId})`,
-                leaveType: selectedRow.leaveType,
-                fromDate: formatDate(editableDates.from || selectedRow.startDate),
+                employeePhone: mdNumber, employeeName: `${selectedRow.employeeName} (ID: ${selectedRow.employeeId})`,
+                leaveType: selectedRow.leaveType, fromDate: formatDate(editableDates.from || selectedRow.startDate),
                 toDate: formatDate(editableDates.to || selectedRow.endDate),
-                totalDays: leaveDays,
-                reason: selectedRow.reason,
+                totalDays: leaveDays, reason: selectedRow.reason,
               });
             }
           } else if (newStatus === "Rejected") {
-            // Rejected -> Notify Employee
-            console.log("📤 Sending Rejection WhatsApp to Employee...");
             await sendRejectedMessageToEmployee({
-              employeePhone: selectedRow.employeePhone,
-              employeeName: selectedRow.employeeName,
-              leaveType: selectedRow.leaveType,
+              employeePhone: selectedRow.employeePhone, employeeName: selectedRow.employeeName, leaveType: selectedRow.leaveType,
               fromDate: formatDate(editableDates.from || selectedRow.startDate),
               toDate: formatDate(editableDates.to || selectedRow.endDate),
-              totalDays: leaveDays,
-              hrRemarks: currentRowRemarks.hr || currentRowRemarks.hod || "Decision by management",
+              totalDays: leaveDays, hrRemarks: currentRowRemarks.hr || currentRowRemarks.hod || "Decision by management",
             });
-
-            // Also notify MD for special employees
-            if (specialEmpIds.includes(String(selectedRow.employeeId))) {
-              console.log("👑 Sending Rejection WhatsApp to MD Sir...");
-              await sendRejectedMessageToEmployee({
-                employeePhone: mdNumber,
-                employeeName: `${selectedRow.employeeName} (Employee ID: ${selectedRow.employeeId})`,
-                leaveType: selectedRow.leaveType,
-                fromDate: formatDate(editableDates.from || selectedRow.startDate),
-                toDate: formatDate(editableDates.to || selectedRow.endDate),
-                totalDays: leaveDays,
-                hrRemarks: currentRowRemarks.hr || currentRowRemarks.hod || "Decision by management",
-              });
-            }
           }
-        } catch (waError) {
-          console.error("⚠️ WhatsApp notification failed:", waError);
-        }
+        } catch (waError) { console.error("WA error:", waError); }
       })();
 
       fetchLeaveData();
@@ -1017,6 +1025,165 @@ const LeaveManagement = () => {
     } finally {
       setLoading(false);
       setActionInProgress(null);
+    }
+  };
+
+  const handleAcceptAll = async () => {
+    if (selectedIds.length === 0) {
+      toast.error("Please select at least one leave request");
+      return;
+    }
+
+    const pendingLeavesToAccept = leaves.filter(leaf =>
+      selectedIds.includes(leaf.id) &&
+      (leaf.status === "Pending" || leaf.status === "Pending HOD" || leaf.status === "Pending HR")
+    );
+
+    if (pendingLeavesToAccept.length === 0) {
+      toast.error("No valid pending leaves selected for approval");
+      return;
+    }
+
+    setBulkLoading(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const row of pendingLeavesToAccept) {
+      try {
+        let newStatus = "";
+        let notificationMessage = "";
+        const currentStatus = row.status;
+
+        const isHodUser = user?.is_hod || false;
+        const isHrUser =
+          user?.role === "hr" ||
+          user?.role === "HR" ||
+          user?.role === "admin" ||
+          user?.role === "Admin" ||
+          user?.Admin === "Yes";
+
+        // Determine transition
+        if (currentStatus === "Pending" || currentStatus === "Pending HOD") {
+          if (isHodUser || isHrUser) {
+            newStatus = "Pending HR";
+            notificationMessage = "Approved by HOD and sent to HR";
+          } else continue;
+        } else if (currentStatus === "Pending HR") {
+          if (isHrUser) {
+            newStatus = "Approved";
+            notificationMessage = "Approved by HR";
+          } else continue;
+        } else continue;
+
+        // Use edited values if available, otherwise original values
+        const rowRemarks = remarksInputs[row.id] || {};
+        const rowDates = editableDates[row.id] || {};
+        const rowCounts = leaveCounts[row.id] || { casual: row.casual, earned: row.earned, unpaid: row.unpaid };
+
+        const updateData = {
+          timestamp: new Date().toISOString(),
+          leave_date_start: rowDates.from || row.startDate,
+          leave_date_end: rowDates.to || row.endDate,
+          status: newStatus,
+          casual: rowCounts.casual,
+          earned: rowCounts.earned,
+          unpaid: rowCounts.unpaid,
+          hod_id: isHodUser ? user.emp_id : row.hodId,
+          hod_name: isHodUser ? (user.full_name || user.Name) : row.hodName,
+          ...(isHrUser && {
+            hr_id: user.emp_id,
+            hr_name: user.full_name || user.Name,
+            hr_remarks: rowRemarks.hr || "",
+          }),
+        };
+
+        const { error: updateError } = await supabase
+          .from("leave_management")
+          .update(updateData)
+          .eq("id", row.id);
+
+        if (updateError) throw updateError;
+
+        // Log
+        const logUpdate = {
+          status: newStatus,
+          ...(isHodUser && {
+            hod_name: user.full_name || user.Name,
+            hod_id: user.emp_id,
+            hod_action: "Approved",
+            hod_approval_time: new Date().toISOString(),
+          }),
+          ...(isHrUser && {
+            hr_name: user.full_name || user.Name,
+            hr_id: user.emp_id,
+            hr_action: "Approved",
+            hr_approval_time: new Date().toISOString(),
+          }),
+        };
+        await supabase
+          .from("logs")
+          .update(logUpdate)
+          .eq("request_id", row.id)
+          .eq("request_type", "Leave");
+
+        // Quota fix
+        if (newStatus === "Approved") {
+          const currentYear = getFiscalYear();
+          const employeeId = row.employeeId;
+          const updates = [
+            { type: "Casual", count: row.casual, column: "casual_leave_used" },
+            { type: "Earned", count: row.earned, column: "earned_leave_used" },
+            { type: "UnPaid", count: row.unpaid, column: "unpaid_leave_used" }
+          ].filter(u => u.count > 0);
+
+          for (const update of updates) {
+            const { count, column } = update;
+            const { data: q } = await supabase.from("yearly_quota").select("*").eq("emp_id", employeeId).eq("year", currentYear).maybeSingle();
+            if (q) {
+              await supabase.from("yearly_quota").update({ [column]: (q[column] || 0) + count }).eq("id", q.id);
+            } else {
+              await supabase.from("yearly_quota").insert({
+                emp_id: employeeId, year: currentYear,
+                casual_leave_limit: 12, earned_leave_limit: 24,
+                [column]: count
+              });
+            }
+          }
+        }
+
+        // WhatsApp
+        try {
+          if (newStatus === "Pending HR") {
+            await sendWhatsappMessageToHr({
+              employeId: row.employeeId, empId: row.employeeId, tableid: row.id,
+              employeeName: row.employeeName, leaveType: row.leaveType,
+              fromDate: formatDate(row.startDate), toDate: formatDate(row.endDate),
+              totalDays: row.days, reason: row.reason,
+            });
+          } else if (newStatus === "Approved") {
+            await sendApprovedMessageToEmployee({
+              employeePhone: row.employeePhone, employeeName: row.employeeName,
+              leaveType: row.leaveType, fromDate: formatDate(row.startDate),
+              toDate: formatDate(row.endDate), totalDays: row.days, reason: row.reason,
+            });
+          }
+        } catch (waE) { console.error("WA Error:", waE); }
+
+        successCount++;
+      } catch (err) {
+        console.error("Bulk Item Error:", err);
+        failCount++;
+      }
+    }
+
+    setBulkLoading(false);
+    setSelectedIds([]);
+    fetchLeaveData();
+
+    if (failCount === 0) {
+      toast.success(`Successfully approved ${successCount} leave requests`);
+    } else {
+      toast.error(`Approved ${successCount} requests, but ${failCount} failed`);
     }
   };
 
@@ -1121,7 +1288,15 @@ const LeaveManagement = () => {
         <tr>
           <th className="w-4 px-4 py-3 sm:px-6 sm:py-4"></th>
           <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            Select
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={leaves.length > 0 && selectedIds.length === leaves.length}
+                onChange={(e) => handleSelectAll(e.target.checked)}
+                className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 border-slate-300"
+              />
+              <span>Select All</span>
+            </div>
           </th>
           <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
             Status
@@ -1188,7 +1363,7 @@ const LeaveManagement = () => {
                       item.status === "Pending HOD"))) && (
                     <input
                       type="checkbox"
-                      checked={selectedRow?.id === item.id}
+                      checked={selectedIds.includes(item.id)}
                       onChange={() => handleCheckboxChange(item.id, item)}
                       className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 border-slate-300"
                     />
@@ -1219,11 +1394,11 @@ const LeaveManagement = () => {
                 {item.employeeName}
               </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-600">
-                {selectedRow?.id === item.id ? (
+                {(selectedRow?.id === item.id || (isHr && selectedIds.includes(item.id))) ? (
                   <input
                     type="date"
-                    value={editableDates.from}
-                    onChange={(e) => handleDateChange("from", e.target.value)}
+                    value={editableDates[item.id]?.from || ""}
+                    onChange={(e) => handleDateChange(item.id, "from", e.target.value)}
                     className="p-1 text-sm border rounded border-slate-300"
                   />
                 ) : (
@@ -1231,11 +1406,11 @@ const LeaveManagement = () => {
                 )}
               </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-600">
-                {selectedRow?.id === item.id ? (
+                {(selectedRow?.id === item.id || (isHr && selectedIds.includes(item.id))) ? (
                   <input
                     type="date"
-                    value={editableDates.to}
-                    onChange={(e) => handleDateChange("to", e.target.value)}
+                    value={editableDates[item.id]?.to || ""}
+                    onChange={(e) => handleDateChange(item.id, "to", e.target.value)}
                     className="p-1 text-sm border rounded border-slate-300"
                   />
                 ) : (
@@ -1245,8 +1420,8 @@ const LeaveManagement = () => {
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
                 <div className="flex flex-col">
                   <span className="text-slate-700">
-                    {selectedRow?.id === item.id
-                      ? calculateDays(editableDates.from, editableDates.to)
+                    {(selectedRow?.id === item.id || (isHr && selectedIds.includes(item.id)))
+                      ? calculateDays(editableDates[item.id]?.from, editableDates[item.id]?.to)
                       : item.days} days
                   </span>
                   {item.monthSplit && (
@@ -1260,14 +1435,14 @@ const LeaveManagement = () => {
                 {item.reason}
               </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                {isHr && (item.status === "Pending HR" || item.status === "Pending" || item.status === "Pending HOD") && selectedRow?.id === item.id ? (
+                {isHr && (item.status === "Pending HR" || item.status === "Pending" || item.status === "Pending HOD") && (selectedRow?.id === item.id || selectedIds.includes(item.id)) ? (
                   <div className="flex flex-col gap-1.5 p-2 bg-slate-50 rounded-lg border border-slate-200 min-w-[140px]">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[10px] font-bold text-slate-500 uppercase">CL:</span>
                       <input
                         type="number"
-                        value={leaveCounts.casual}
-                        onChange={(e) => handleCountChange("casual", e.target.value)}
+                        value={leaveCounts[item.id]?.casual || 0}
+                        onChange={(e) => handleCountChange(item.id, "casual", e.target.value)}
                         className="w-14 px-1.5 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-mono"
                         min="0"
                         step="1"
@@ -1277,8 +1452,8 @@ const LeaveManagement = () => {
                       <span className="text-[10px] font-bold text-slate-500 uppercase">EL:</span>
                       <input
                         type="number"
-                        value={leaveCounts.earned}
-                        onChange={(e) => handleCountChange("earned", e.target.value)}
+                        value={leaveCounts[item.id]?.earned || 0}
+                        onChange={(e) => handleCountChange(item.id, "earned", e.target.value)}
                         className="w-14 px-1.5 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-mono"
                         min="0"
                         step="1"
@@ -1288,19 +1463,19 @@ const LeaveManagement = () => {
                       <span className="text-[10px] font-bold text-slate-500 uppercase">LOP:</span>
                       <input
                         type="number"
-                        value={leaveCounts.unpaid}
-                        onChange={(e) => handleCountChange("unpaid", e.target.value)}
+                        value={leaveCounts[item.id]?.unpaid || 0}
+                        onChange={(e) => handleCountChange(item.id, "unpaid", e.target.value)}
                         className="w-14 px-1.5 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-mono"
                         min="0"
                         step="1"
                       />
                     </div>
-                    <div className={`border-t border-slate-200 pt-1 mt-1 text-[10px] font-bold flex justify-between ${Math.abs((leaveCounts.casual + leaveCounts.earned + leaveCounts.unpaid) - calculateDays(editableDates.from, editableDates.to)) > 0.01
+                    <div className={`border-t border-slate-200 pt-1 mt-1 text-[10px] font-bold flex justify-between ${Math.abs(((leaveCounts[item.id]?.casual || 0) + (leaveCounts[item.id]?.earned || 0) + (leaveCounts[item.id]?.unpaid || 0)) - calculateDays(editableDates[item.id]?.from, editableDates[item.id]?.to)) > 0.01
                       ? "text-red-500"
                       : "text-green-600"
                       }`}>
                       <span>Total:</span>
-                      <span>{(leaveCounts.casual + leaveCounts.earned + leaveCounts.unpaid).toFixed(0)} / {calculateDays(editableDates.from, editableDates.to)}</span>
+                      <span>{((leaveCounts[item.id]?.casual || 0) + (leaveCounts[item.id]?.earned || 0) + (leaveCounts[item.id]?.unpaid || 0)).toFixed(0)} / {calculateDays(editableDates[item.id]?.from, editableDates[item.id]?.to)}</span>
                     </div>
                   </div>
                 ) : (
@@ -1344,7 +1519,7 @@ const LeaveManagement = () => {
                 <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
                   {isHr &&
                     item.status === "Pending HR" &&
-                    selectedRow?.id === item.id ? (
+                    (selectedRow?.id === item.id || selectedIds.includes(item.id)) ? (
                     <input
                       type="text"
                       placeholder="HR Remarks"
@@ -1773,13 +1948,37 @@ const LeaveManagement = () => {
             Manage employee leave requests and history
           </p>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="inline-flex items-center justify-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 w-full md:w-auto"
-        >
-          <Plus size={18} className="mr-2" />
-          New Leave Request
-        </button>
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          {selectedIds.length > 0 && (
+            <button
+              onClick={handleAcceptAll}
+              disabled={bulkLoading}
+              className="inline-flex items-center justify-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {bulkLoading ? (
+                <>
+                  <svg className="w-4 h-4 mr-2 text-white animate-spin" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Accepting ({selectedIds.length})
+                </>
+              ) : (
+                <>
+                  <Check size={18} className="mr-2" />
+                  Accept All ({selectedIds.length})
+                </>
+              )}
+            </button>
+          )}
+          <button
+            onClick={() => setShowModal(true)}
+            className="inline-flex items-center justify-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shrink-0"
+          >
+            <Plus size={18} className="mr-2" />
+            New Leave Request
+          </button>
+        </div>
       </div>
 
       {/* Content Area */}
