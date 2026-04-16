@@ -12,7 +12,7 @@ select cron.schedule(
   $$
   select
     net.http_post(
-        url:='https://ulgviqruyccrjncetqsv.supabase.co/functions/v1/sync-attendance-data',
+        url:='',
         headers:='{"Content-Type": "application/json"}'::jsonb,
         body:='{}'::jsonb
     ) as request_id;
