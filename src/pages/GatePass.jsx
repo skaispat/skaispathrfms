@@ -331,31 +331,8 @@ const GatePass = () => {
               reason: request.place_reason_to_visit,
             });
           } else if (newStatus === 'Approved') {
-            // HR Approved -> Notify Employee
-            if (employeePhone) {
-              console.log("📤 Sending Gate Pass Approval to Employee...");
-              await sendGatePassApprovedToEmployee({
-                employeePhone,
-                employeeName: request.employee_name,
-                fromDate: formatDateTime(request.departure_from_plant),
-                toDate: formatDateTime(request.arrival_at_plant),
-                totalDays: calculateDuration(request.departure_from_plant, request.arrival_at_plant),
-                reason: request.place_reason_to_visit,
-              });
-            }
-
-            // MD Notification
-            if (specialEmpIds.includes(currentEmpId)) {
-              console.log("👑 Sending Gate Pass Approval to MD Sir...");
-              await sendGatePassApprovedToEmployee({
-                employeePhone: mdNumber,
-                employeeName: `${request.employee_name} (ID: ${currentEmpId})`,
-                fromDate: formatDateTime(request.departure_from_plant),
-                toDate: formatDateTime(request.arrival_at_plant),
-                totalDays: calculateDuration(request.departure_from_plant, request.arrival_at_plant),
-                reason: request.place_reason_to_visit,
-              });
-            }
+            // HR Approved -> Notifications are now handled via Supabase Edge Function Webhook
+            console.log("✅ Gate Pass Approved. Notification will be sent via Supabase Webhook.");
           } else if (newStatus === 'Rejected') {
             // Final Rejection (HR Action or HOD Action)
             if (isHr) {

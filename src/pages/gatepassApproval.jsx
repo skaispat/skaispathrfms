@@ -288,32 +288,8 @@ const GatePassApproval = () => {
                 const currentEmpId = String(request.users?.emp_id || request.emp_id);
 
                 if (newStatus === 'Approved') {
-                    const employeeResult = await sendGatePassApprovedToEmployee({
-                        employeePhone: employeePhone,
-                        employeeName: request.employee_name,
-                        leaveType: 'Gate Pass',
-                        fromDate: formatDateTime(request.departure_from_plant),
-                        toDate: formatDateTime(request.arrival_at_plant),
-                        totalDays: calculateDuration(request.departure_from_plant, request.arrival_at_plant),
-                        reason: request.place_reason_to_visit || 'No reason specified',
-                    });
-                    if (!employeeResult.success) {
-                        console.warn('Failed to send approved message to employee:', employeeResult.error);
-                    }
-
-                    // Notify MD for special employees
-                    if (specialEmpIds.includes(currentEmpId)) {
-                        console.log("👑 Sending Gate Pass Approval WhatsApp to MD Sir...");
-                        await sendGatePassApprovedToEmployee({
-                            employeePhone: mdNumber,
-                            employeeName: `${request.employee_name} (ID: ${currentEmpId})`,
-                            leaveType: 'Gate Pass',
-                            fromDate: formatDateTime(request.departure_from_plant),
-                            toDate: formatDateTime(request.arrival_at_plant),
-                            totalDays: calculateDuration(request.departure_from_plant, request.arrival_at_plant),
-                            reason: request.place_reason_to_visit || 'No reason specified',
-                        });
-                    }
+                    // HR Approved -> Notifications are now handled via Supabase Edge Function Webhook
+                    console.log("✅ Gate Pass Approved. Notification will be sent via Supabase Webhook.");
                 } else if (newStatus === 'Rejected' && !isHodAction) {
                     const employeeResult = await sendGatePassRejectedToEmployee({
                         employeePhone: employeePhone,
