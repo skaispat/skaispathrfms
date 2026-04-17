@@ -411,8 +411,8 @@ const Sidebar = ({ onClose }) => {
     { path: '/my-attendance', icon: Clock, label: 'My Attendance', id: 'my-attendance' },
     { path: '/leave-request', icon: LeaveIcon, label: 'Leave Request', id: 'leave-request' },
     { path: '/gate-pass-request', icon: DoorOpen, label: 'Gate-Pass Request', id: 'gate-pass-request' },
-    { path: '/my-salary', icon: DollarSign, label: 'My Salary', id: 'my-salary' },
-    { path: '/company-calendar', icon: Calendar, label: 'Company Calendar', id: 'company-calendar' },
+    // { path: '/my-salary', icon: DollarSign, label: 'My Salary', id: 'my-salary' },
+    // { path: '/company-calendar', icon: Calendar, label: 'Company Calendar', id: 'company-calendar' },
 
     // Admin/Manager Specific
     { path: '/leave-management', icon: BookPlus, label: 'Leave Management', id: 'leave-management' },

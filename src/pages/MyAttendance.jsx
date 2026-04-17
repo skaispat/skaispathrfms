@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
-import { Calendar, Clock, CheckCircle, XCircle, ChevronDown, Activity, AlertCircle } from 'lucide-react';
+import { Calendar, Clock, CheckCircle, XCircle, ChevronDown, Activity, AlertCircle, FileText } from 'lucide-react';
 
 const MyAttendance = () => {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
@@ -17,6 +17,7 @@ const MyAttendance = () => {
   });
   const [weekOff, setWeekOff] = useState('');
   const [userLeaves, setUserLeaves] = useState([]);
+  const [activeFilter, setActiveFilter] = useState('All');
 
   const weekDayMap = {
     'SUNDAY': 0,
@@ -307,7 +308,21 @@ const MyAttendance = () => {
       }
     }
 
-    return enrichedRecords.sort((a, b) => new Date(b.date) - new Date(a.date));
+    const baseRecords = enrichedRecords.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    if (activeFilter === 'All' || activeFilter === 'Total Days') return baseRecords;
+    
+    return baseRecords.filter(record => {
+      const status = record.status.toLowerCase();
+      const filter = activeFilter.toLowerCase();
+      
+      if (filter === 'present') return status === 'present';
+      if (filter === 'absent') return status.includes('absent');
+      if (filter === 'week off') return status === 'week off';
+      if (filter === 'overtime') return record.overtimeVal > 0;
+      if (filter === 'work hours') return status === 'present';
+      return true;
+    });
   })();
 
   const months = [
@@ -318,184 +333,225 @@ const MyAttendance = () => {
   const years = [2023, 2024, 2025, 2026];
 
   return (
-    <div className="h-full flex flex-col gap-6 overflow-hidden">
+    <div className="h-full flex flex-col gap-6 overflow-hidden bg-slate-50/30 px-4 sm:px-0">
       {/* Header & Controls */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 shrink-0">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 shrink-0 pt-2 lg:pt-0">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">My Attendance</h1>
-          <p className="mt-1 text-sm text-slate-500">Overview of your daily check-ins and performance.</p>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 drop-shadow-sm">My Attendance</h1>
+          <p className="mt-1 text-sm text-slate-500">Track your daily swipes and productivity</p>
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="relative">
+          <div className="relative group flex-1 sm:flex-none">
             <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-              className="appearance-none bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-xl focus:ring-2 focus:ring-red-500/20 focus:border-red-500 block w-40 py-2.5 pl-4 pr-10 cursor-pointer shadow-sm transition-all hover:border-slate-300"
+              className="appearance-none bg-white border border-slate-200 text-slate-700 text-sm font-semibold rounded-2xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 block w-full sm:w-44 py-3 pl-11 pr-10 cursor-pointer shadow-sm transition-all hover:border-indigo-300"
             >
               {months.map((month, index) => (
                 <option key={index} value={index}>{month}</option>
               ))}
             </select>
+            <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-hover:text-indigo-500 transition-colors" />
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           </div>
 
-          <div className="relative">
+          <div className="relative group flex-1 sm:flex-none">
             <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-              className="appearance-none bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-xl focus:ring-2 focus:ring-red-500/20 focus:border-red-500 block w-32 py-2.5 pl-4 pr-10 cursor-pointer shadow-sm transition-all hover:border-slate-300"
+              className="appearance-none bg-white border border-slate-200 text-slate-700 text-sm font-semibold rounded-2xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 block w-full sm:w-32 py-3 pl-11 pr-10 cursor-pointer shadow-sm transition-all hover:border-indigo-300"
             >
               {years.map(year => (
                 <option key={year} value={year}>{year}</option>
               ))}
             </select>
+            <Clock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-hover:text-indigo-500 transition-colors" />
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           </div>
         </div>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 shrink-0">
+      <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 shrink-0">
         <StatCard
           label="Total Days"
           value={stats.totalDays}
           icon={Calendar}
-          color="text-blue-600"
-          bg="bg-blue-50/50"
+          color="text-indigo-600"
+          bg="bg-indigo-50"
+          active={activeFilter === 'All' || activeFilter === 'Total Days'}
+          onClick={() => setActiveFilter('All')}
         />
         <StatCard
           label="Present"
           value={stats.presentDays}
           icon={CheckCircle}
           color="text-emerald-600"
-          bg="bg-emerald-50/50"
+          bg="bg-emerald-50"
+          active={activeFilter === 'Present'}
+          onClick={() => setActiveFilter('Present')}
         />
         <StatCard
           label="Absent"
           value={stats.absentDays}
           icon={XCircle}
           color="text-rose-600"
-          bg="bg-rose-50/50"
+          bg="bg-rose-50"
+          active={activeFilter === 'Absent'}
+          onClick={() => setActiveFilter('Absent')}
         />
         <StatCard
-          label="Working Hrs"
+          label="Work Hours"
           value={stats.workingHours.toFixed(1)}
-          icon={Activity}
+          icon={Clock}
           color="text-indigo-600"
-          bg="bg-indigo-50/50"
+          bg="bg-indigo-50"
           subValue="hrs"
+          active={activeFilter === 'Work Hours'}
+          onClick={() => setActiveFilter('Work Hours')}
         />
         <StatCard
           label="Overtime"
           value={stats.overtimeHours.toFixed(1)}
-          icon={Clock}
+          icon={Activity}
           color="text-amber-600"
-          bg="bg-amber-50/50"
+          bg="bg-amber-50"
           subValue="hrs"
+          active={activeFilter === 'Overtime'}
+          onClick={() => setActiveFilter('Overtime')}
         />
       </div>
 
-      {/* Data Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex-1 flex flex-col">
+      {/* Data Section */}
+      <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex-1 flex flex-col mb-4">
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 flex-1">
-            <div className="w-8 h-8 border-2 border-red-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-            <p className="text-slate-500 text-sm font-medium">Retrieving logs...</p>
+          <div className="flex flex-col items-center justify-center py-20 flex-1 bg-white/50 backdrop-blur-sm">
+            <div className="w-10 h-10 border-4 border-indigo-500/20 border-t-indigo-600 rounded-full animate-spin mb-4"></div>
+            <p className="text-slate-500 text-sm font-bold animate-pulse">Synchronizing logs...</p>
           </div>
         ) : error ? (
           <div className="flex flex-col items-center justify-center py-20 text-center px-4 flex-1">
-            <div className="bg-red-50 p-3 rounded-full mb-3">
-              <AlertCircle className="w-6 h-6 text-red-600" />
+            <div className="bg-rose-50 p-4 rounded-3xl mb-4 border border-rose-100">
+              <AlertCircle className="w-8 h-8 text-rose-600" />
             </div>
-            <p className="text-slate-900 font-medium">Unable to load attendance</p>
+            <h3 className="text-slate-900 font-bold text-lg">Connection Issue</h3>
             <p className="text-slate-500 text-sm mt-1 max-w-sm">{error}</p>
           </div>
         ) : (
           <div className="overflow-auto flex-1 custom-scrollbar">
-            <table className="min-w-full whitespace-nowrap text-left text-sm">
-              <thead className="bg-slate-50 sticky top-0 z-10 border-b border-slate-200">
+            {/* Desktop Table - Hidden on smaller screens */}
+            <table className="hidden lg:table min-w-full whitespace-nowrap text-left text-sm">
+              <thead className="bg-slate-50/80 sticky top-0 z-10 backdrop-blur-md border-b border-slate-200">
                 <tr>
-                  <th className="px-6 py-4 pl-8 font-semibold text-slate-500 uppercase tracking-wider text-xs">Date</th>
-                  <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">Day</th>
-                  <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">Check In</th>
-                  <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">Check Out</th>
-                  <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">Working Hrs</th>
-                  <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">Overtime</th>
-                  <th className="px-6 py-4 pr-8 font-semibold text-slate-500 uppercase tracking-wider text-xs">Status</th>
+                  <th className="px-8 py-5 font-bold text-slate-400 uppercase tracking-widest text-[11px]">Date & Day</th>
+                  <th className="px-6 py-5 font-bold text-slate-400 uppercase tracking-widest text-[11px]">Check-In</th>
+                  <th className="px-6 py-5 font-bold text-slate-400 uppercase tracking-widest text-[11px]">Check-Out</th>
+                  <th className="px-6 py-5 font-bold text-slate-400 uppercase tracking-widest text-[11px]">Total Hours</th>
+                  <th className="px-6 py-5 font-bold text-slate-400 uppercase tracking-widest text-[11px]">Overtime</th>
+                  <th className="px-8 py-5 text-right font-bold text-slate-400 uppercase tracking-widest text-[11px]">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
                 {filteredRecords.length > 0 ? (
-                  filteredRecords.map((record, index) => {
-                    return (
-                      <tr key={index} className="group hover:bg-slate-50 transition-colors duration-150">
-                        <td className="px-6 py-4 pl-8 font-medium text-slate-900">
-                          {record.date.split('-').reverse().join('/')}
-                        </td>
-                        <td className="px-6 py-4 text-slate-500">
-                          {record.day}
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="font-mono text-xs text-slate-700 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200/60">
-                            {record.inTime || '--:--'}
+                  filteredRecords.map((record, index) => (
+                    <tr key={index} className="group hover:bg-slate-50 transition-all duration-200">
+                      <td className="px-8 py-4">
+                        <div className="flex flex-col">
+                          <span className="font-bold text-slate-900 text-sm">{record.date.split('-').reverse().join('/')}</span>
+                          <span className="text-xs text-slate-400 font-medium">{record.day}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="font-mono text-[13px] font-bold text-slate-700 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200/60 transition-colors group-hover:bg-white group-hover:border-indigo-100 group-hover:text-indigo-600">
+                          {record.inTime || '--:--'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="font-mono text-[13px] font-bold text-slate-700 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200/60 transition-colors group-hover:bg-white group-hover:border-indigo-100 group-hover:text-indigo-600">
+                          {record.outTime !== '-' ? record.outTime : '--:--'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 font-bold text-slate-700">
+                        {record.workingHoursDisplay}
+                      </td>
+                      <td className="px-6 py-4">
+                        {record.overtimeVal > 0 ? (
+                          <span className="text-amber-600 font-bold text-sm bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-100">
+                            +{record.overtimeDisplay}
                           </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="font-mono text-xs text-slate-700 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200/60">
-                            {record.outTime !== '-' ? record.outTime : '--:--'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 font-medium text-slate-700">
-                          {record.workingHoursDisplay}
-                        </td>
-                        <td className="px-6 py-4">
-                          {record.overtimeVal > 0 ? (
-                            <span className="text-amber-600 font-medium inline-flex items-center gap-1">
-                              {record.overtimeDisplay}
-                            </span>
-                          ) : (
-                            <span className="text-slate-300">-</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 pr-8">
-                          {record.status === 'Week Off' ? (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
-                              <span className="w-1.5 h-1.5 mr-1.5 rounded-full bg-indigo-500"></span>
-                              {record.status}
-                            </span>
-                          ) : record.status === 'Absent (Sandwich)' ? (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-50 text-rose-700 border border-rose-100">
-                              <span className="w-1.5 h-1.5 mr-1.5 rounded-full bg-rose-500"></span>
-                              {record.status}
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
-                              <span className="w-1.5 h-1.5 mr-1.5 rounded-full bg-emerald-500"></span>
-                              {record.status}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })
+                        ) : (
+                          <span className="text-slate-300">--</span>
+                        )}
+                      </td>
+                      <td className="px-8 py-4 text-right">
+                        <StatusBadge status={record.status} />
+                      </td>
+                    </tr>
+                  ))
                 ) : (
                   <tr>
-                    <td colSpan="7" className="px-6 py-24 text-center">
-                      <div className="flex flex-col items-center justify-center">
-                        <div className="bg-slate-50 rounded-full p-4 mb-4">
-                          <Calendar className="h-8 w-8 text-slate-300" />
-                        </div>
-                        <h3 className="text-slate-900 font-medium">No Records Found</h3>
-                        <p className="mt-1 text-sm text-slate-500">
-                          No attendance data available for {months[selectedMonth]} {selectedYear}.
-                        </p>
-                      </div>
+                    <td colSpan="6">
+                      <EmptyState selectedMonth={selectedMonth} selectedYear={selectedYear} />
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
+
+            {/* Mobile Card View - Visible on smaller screens */}
+            <div className="lg:hidden p-4 space-y-4">
+              {filteredRecords.length > 0 ? (
+                filteredRecords.map((record, index) => (
+                  <div key={index} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4 hover:border-indigo-200 transition-all group animate-in slide-in-from-right-4 duration-300">
+                    <div className="flex justify-between items-center bg-slate-50 -m-5 mb-0 px-5 py-3 border-b border-slate-100 rounded-t-2xl">
+                      <div className="flex flex-col">
+                        <span className="text-xs font-black text-slate-400 uppercase tracking-widest">{record.day}</span>
+                        <span className="text-sm font-bold text-slate-900">{record.date.split('-').reverse().join('/')}</span>
+                      </div>
+                      <StatusBadge status={record.status} />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 pt-2">
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Punch In</p>
+                        <p className="text-sm font-bold text-slate-700 font-mono flex items-center gap-1.5">
+                          <CheckCircle size={14} className="text-emerald-500" />
+                          {record.inTime || '--:--'}
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Punch Out</p>
+                        <p className="text-sm font-bold text-slate-700 font-mono flex items-center gap-1.5">
+                          <XCircle size={14} className="text-rose-500" />
+                          {record.outTime !== '-' ? record.outTime : '--:--'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+                      <div className="flex items-center gap-2">
+                        <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
+                          <Clock size={16} />
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Work Hours</p>
+                          <p className="text-sm font-bold text-slate-900">{record.workingHoursDisplay}</p>
+                        </div>
+                      </div>
+                      {record.overtimeVal > 0 && (
+                        <div className="text-right">
+                          <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">Overtime</p>
+                          <p className="text-sm font-bold text-amber-600">+{record.overtimeDisplay}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <EmptyState selectedMonth={selectedMonth} selectedYear={selectedYear} mobile />
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -503,17 +559,51 @@ const MyAttendance = () => {
   );
 };
 
-const StatCard = ({ label, value, icon: Icon, color, bg, subValue }) => (
-  <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 flex items-start justify-between hover:shadow-md transition-shadow duration-200">
-    <div>
-      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">{label}</p>
-      <div className="flex items-baseline gap-1">
-        <h3 className="text-2xl font-bold text-slate-900">{value}</h3>
-        {subValue && <span className="text-xs text-slate-400 font-medium">{subValue}</span>}
+const StatCard = ({ label, value, icon: Icon, color, bg, subValue, active, onClick }) => (
+  <button 
+    onClick={onClick}
+    className={`w-full bg-white p-2 sm:p-5 rounded-2xl sm:rounded-3xl shadow-sm border ${active ? 'border-indigo-500 ring-4 ring-indigo-500/10' : 'border-slate-200'} flex flex-col items-center justify-center text-center gap-1 sm:gap-2 hover:shadow-md transition-all duration-300 group min-w-0 overflow-hidden cursor-pointer active:scale-95`}
+  >
+    <div className={`p-1 sm:p-2.5 rounded-lg sm:rounded-2xl ${bg} ${color} transition-transform group-hover:scale-110 shadow-sm border border-white ${active ? 'scale-110' : ''}`}>
+      <Icon size={12} className="sm:w-5 sm:h-5" />
+    </div>
+    <div className="space-y-0 w-full">
+      <p className={`text-[10px] sm:text-[10px] font-bold ${active ? 'text-indigo-600' : 'text-slate-400'} uppercase tracking-tighter sm:tracking-widest truncate leading-tight`}>{label}</p>
+      <div className="flex items-baseline justify-center gap-0.5 sm:gap-1">
+        <h3 className="text-lg sm:text-2xl font-black text-slate-900 tracking-tight truncate">{value}</h3>
+        {subValue && <span className="text-[8px] sm:text-[10px] text-slate-400 font-bold uppercase">{subValue}</span>}
       </div>
     </div>
-    <div className={`p-2.5 rounded-lg ${bg}`}>
-      <Icon size={20} className={color} />
+  </button>
+);
+
+const StatusBadge = ({ status }) => {
+  const s = status?.toLowerCase() || '';
+  let colorClass = 'bg-slate-100 text-slate-600 border-slate-200';
+
+  if (s.includes('present')) colorClass = 'bg-emerald-50 text-emerald-700 border-emerald-100 shadow-sm shadow-emerald-50';
+  else if (s.includes('absent')) colorClass = 'bg-rose-50 text-rose-700 border-rose-100 shadow-sm shadow-rose-50';
+  else if (s.includes('week off')) colorClass = 'bg-indigo-50 text-indigo-700 border-indigo-100 shadow-sm shadow-indigo-50';
+  else if (s.includes('leave')) colorClass = 'bg-amber-50 text-amber-700 border-amber-100 shadow-sm shadow-amber-50';
+
+  return (
+    <span className={`inline-flex items-center px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-widest border ${colorClass}`}>
+      <span className="w-1.5 h-1.5 mr-2 rounded-full bg-current opacity-80"></span>
+      {status}
+    </span>
+  );
+};
+
+const EmptyState = ({ selectedMonth, selectedYear, mobile }) => (
+  <div className={`${mobile ? 'py-12' : 'py-24'} text-center w-full`}>
+    <div className="flex flex-col items-center justify-center">
+      <div className="bg-slate-50 rounded-3xl p-6 mb-4 border border-slate-100 shadow-inner">
+        <Calendar className="h-10 w-10 text-slate-200" />
+      </div>
+      <h3 className="text-slate-900 font-bold text-lg">No Attendance Logs</h3>
+      <p className="mt-1 text-sm text-slate-500 max-w-[240px] mx-auto font-medium">
+        We couldn't find any swipe records for this period.
+      </p>
     </div>
   </div>
 );
