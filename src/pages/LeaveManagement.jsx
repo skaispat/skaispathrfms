@@ -916,14 +916,14 @@ const LeaveManagement = () => {
           hod_id: user.emp_id,
           hod_action: action === "accept" ? "Approved" : "Rejected",
           hod_approval_time: new Date().toISOString(),
-          hod_remarks: currentRowRemarks.hod || "",
+          hod_remarks: rowRemarks.hod || "",
         }),
         ...(isHr && {
           hr_name: user.full_name || user.Name,
           hr_id: user.emp_id,
           hr_action: action === "accept" ? "Approved" : "Rejected",
           hr_approval_time: new Date().toISOString(),
-          hr_remarks: currentRowRemarks.hr || "",
+          hr_remarks: rowRemarks.hr || "",
         }),
       };
       await supabase
@@ -1010,7 +1010,7 @@ const LeaveManagement = () => {
               employeePhone: selectedRow.employeePhone, employeeName: selectedRow.employeeName, leaveType: selectedRow.leaveType,
               fromDate: formatDate(editableDates.from || selectedRow.startDate),
               toDate: formatDate(editableDates.to || selectedRow.endDate),
-              totalDays: leaveDays, hrRemarks: currentRowRemarks.hr || currentRowRemarks.hod || "Decision by management",
+              totalDays: leaveDays, hrRemarks: rowRemarks.hr || rowRemarks.hod || "Decision by management",
             });
           }
         } catch (waError) { console.error("WA error:", waError); }
