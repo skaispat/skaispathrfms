@@ -417,6 +417,7 @@ const Sidebar = ({ onClose }) => {
     // Admin/Manager Specific
     { path: '/leave-management', icon: BookPlus, label: 'Leave Management', id: 'leave-management' },
     { path: '/gate-pass', icon: DoorOpen, label: 'Gate-Pass Management', id: 'gate-pass' },
+    { path: '/total-leave-details', icon: FileText, label: 'Total Leave Details', id: 'total-leave-details' },
     {
       type: 'dropdown',
       icon: Book,

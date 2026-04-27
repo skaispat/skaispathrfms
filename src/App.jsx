@@ -30,6 +30,7 @@ import GatePass from './pages/GatePass';
 import GatePassRequest from './pages/GatePassRequest';
 import GatePassApproval from './pages/gatepassApproval';
 import Settings from './pages/Settings';
+import TotalLeaveDetails from './pages/TotalLeaveDetails';
 
 
 function App() {
@@ -64,6 +65,7 @@ function App() {
             <Route path="company-calendar" element={<CompanyCalendar />} />
             <Route path="leave-management" element={<LeaveManagement />} />
             <Route path="gate-pass" element={<GatePass />} />
+            <Route path="total-leave-details" element={<TotalLeaveDetails />} />
             <Route path="gate-pass-request" element={<GatePassRequest />} />
             <Route path="attendance" element={<Attendance />} />
             <Route path="attendancedaily" element={<Attendancedaily />} />

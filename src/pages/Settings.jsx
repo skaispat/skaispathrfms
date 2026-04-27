@@ -53,6 +53,7 @@ const Settings = () => {
         { id: 'report', label: 'Reports' },
         { id: 'payroll', label: 'Payroll' },
         { id: 'misreport', label: 'MIS Report' },
+        { id: 'total-leave-details', label: 'Total Leave Details' },
         { id: 'settings', label: 'Settings' }
     ];
 

@@ -29,7 +29,7 @@ select cron.schedule(
   $$
   select
     net.http_post(
-        url:='https://ulgviqruyccrjncetqsv.supabase.co/functions/v1/daily-attendance-report',
+        url:='',
         headers:='{"Content-Type": "application/json"}'::jsonb,
         body:='{}'::jsonb
     ) as request_id;
@@ -46,7 +46,7 @@ select cron.schedule(
   $$
   select
     net.http_post(
-        url:='https://ulgviqruyccrjncetqsv.supabase.co/functions/v1/today-in-report',
+        url:='',
         headers:='{"Content-Type": "application/json"}'::jsonb,
         body:='{}'::jsonb
     ) as request_id;
