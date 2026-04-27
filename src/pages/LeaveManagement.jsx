@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import dayjs from "dayjs";
 import { createPortal } from "react-dom";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useInView } from "react-intersection-observer";
 import {
   Search,
@@ -36,6 +36,8 @@ import { sendApprovedMessageToEmployee, sendRejectedMessageToEmployee } from "..
 
 const LeaveManagement = () => {
   const { user } = useAuthStore();
+  const queryClient = useQueryClient();
+
   const isHr =
     user?.role === "hr" ||
     user?.role === "HR" ||
@@ -61,6 +63,9 @@ const LeaveManagement = () => {
   const [exportLoading, setExportLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [exportMonth, setExportMonth] = useState(dayjs().month());
+  const [exportYear, setExportYear] = useState(dayjs().year());
+
 
   // Pagination state removed in favor of infinite scroll
   // const [currentPage, setCurrentPage] = useState(1);
@@ -614,6 +619,44 @@ const LeaveManagement = () => {
     };
   };
 
+  const fetchTabCounts = async () => {
+    if (!user) return { pending: 0, approved: 0, rejected: 0 };
+
+    const getBaseQuery = () => {
+      let q = supabase.from("leave_management").select("*", { count: "exact", head: true });
+      if (isHr) {
+        // HR sees all
+      } else if (isHod) {
+        q = q.or(`hod_id.eq.${user.emp_id},emp_id.eq.${user.emp_id}`);
+      } else {
+        q = q.eq("emp_id", user.emp_id);
+      }
+      if (searchTerm) {
+        q = q.or(`employee_name.ilike.%${searchTerm}%,emp_id.ilike.%${searchTerm}%`);
+      }
+      return q;
+    };
+
+    const [pendingRes, approvedRes, rejectedRes] = await Promise.all([
+      getBaseQuery().in("status", ["Pending", "Pending HOD", "Pending HR"]),
+      getBaseQuery().ilike("status", "%Approved%"),
+      getBaseQuery().ilike("status", "%Reject%"),
+    ]);
+
+    return {
+      pending: pendingRes.count || 0,
+      approved: approvedRes.count || 0,
+      rejected: rejectedRes.count || 0,
+    };
+  };
+
+  const { data: countsData } = useQuery({
+    queryKey: ["leaveCounts", user?.emp_id, searchTerm],
+    queryFn: fetchTabCounts,
+    enabled: !!user,
+  });
+
+
   const {
     data,
     fetchNextPage,
@@ -645,7 +688,8 @@ const LeaveManagement = () => {
 
   // Helper function to manually trigger fetchLeaveData (kept for compatibility with submit/update handlers)
   const fetchLeaveData = () => {
-    refetch();
+    queryClient.invalidateQueries({ queryKey: ["leaves"] });
+    queryClient.invalidateQueries({ queryKey: ["leaveCounts"] });
   };
 
   const leaves = data?.pages.flatMap((page) => page.data) || [];
@@ -1191,16 +1235,17 @@ const LeaveManagement = () => {
     try {
       setExportLoading(true);
 
-      const startOfCurrentMonth = dayjs().startOf('month').format('YYYY-MM-DD');
-      const endOfCurrentMonth = dayjs().endOf('month').format('YYYY-MM-DD');
+      const selectedDate = dayjs().year(exportYear).month(exportMonth);
+      const startOfMonth = selectedDate.startOf('month').format('YYYY-MM-DD');
+      const endOfMonth = selectedDate.endOf('month').format('YYYY-MM-DD');
 
       // Fetch all approved leaves for the current month
       const { data, error } = await supabase
         .from('leave_management')
         .select('*')
         .eq('status', 'Approved')
-        .gte('leave_date_start', startOfCurrentMonth)
-        .lte('leave_date_start', endOfCurrentMonth)
+        .gte('leave_date_start', startOfMonth)
+        .lte('leave_date_start', endOfMonth)
         .order('leave_date_start', { ascending: true });
 
       if (error) throw error;
@@ -1252,7 +1297,7 @@ const LeaveManagement = () => {
       XLSX.utils.book_append_sheet(workbook, worksheet, "Approved Leaves");
 
       // Download
-      const fileName = `Approved_Leaves_${dayjs().format('MMM_YYYY')}.xlsx`;
+      const fileName = `Approved_Leaves_${selectedDate.format('MMM_YYYY')}.xlsx`;
       XLSX.writeFile(workbook, fileName);
 
       toast.success(`Exported ${data.length} records successfully!`);
@@ -1948,12 +1993,12 @@ const LeaveManagement = () => {
             Manage employee leave requests and history
           </p>
         </div>
-        <div className="flex items-center gap-3 w-full md:w-auto">
+        <div className="flex flex-col gap-3 w-full md:flex-row md:w-auto md:items-center md:justify-end">
           {selectedIds.length > 0 && (
             <button
               onClick={handleAcceptAll}
               disabled={bulkLoading}
-              className="inline-flex items-center justify-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center justify-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed w-full md:w-auto"
             >
               {bulkLoading ? (
                 <>
@@ -1971,13 +2016,62 @@ const LeaveManagement = () => {
               )}
             </button>
           )}
-          <button
-            onClick={() => setShowModal(true)}
-            className="inline-flex items-center justify-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shrink-0"
-          >
-            <Plus size={18} className="mr-2" />
-            New Leave Request
-          </button>
+
+          <div className="grid grid-cols-2 gap-2 w-full md:flex md:w-auto md:items-center">
+            {activeTab === "approved" && isHr ? (
+              <div className="flex items-center gap-1 p-1 border rounded-lg bg-emerald-50 border-emerald-200 shadow-sm overflow-hidden h-[42px]">
+                <div className="flex items-center gap-0.5 px-1 border-r border-emerald-200 shrink-0">
+                  <select
+                    value={exportMonth}
+                    onChange={(e) => setExportMonth(parseInt(e.target.value))}
+                    className="bg-transparent border-none focus:ring-0 text-[10px] sm:text-xs font-bold text-emerald-800 cursor-pointer p-0 w-10 sm:w-12"
+                  >
+                    {Array.from({ length: 12 }, (_, i) => (
+                      <option key={i} value={i} className="text-slate-900">
+                        {dayjs().month(i).format("MMM")}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={exportYear}
+                    onChange={(e) => setExportYear(parseInt(e.target.value))}
+                    className="bg-transparent border-none focus:ring-0 text-[10px] sm:text-xs font-bold text-emerald-800 cursor-pointer p-0 w-12 sm:w-14"
+                  >
+                    {Array.from({ length: 5 }, (_, i) => dayjs().year() - 2 + i).map((year) => (
+                      <option key={year} value={year} className="text-slate-900">
+                        {year}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  onClick={handleExportToExcel}
+                  disabled={exportLoading}
+                  className="inline-flex items-center justify-center px-2 py-1 text-[10px] sm:text-xs font-bold text-emerald-700 hover:text-emerald-900 transition-all disabled:opacity-50 group whitespace-nowrap"
+                  title="Export approved leaves for selected month"
+                >
+                  {exportLoading ? (
+                    <Clock size={12} className="mr-1 animate-spin text-emerald-600" />
+                  ) : (
+                    <FileSpreadsheet
+                      size={12}
+                      className="mr-1 text-emerald-600 group-hover:scale-110 transition-transform"
+                    />
+                  )}
+                  {exportLoading ? "..." : "Export"}
+                </button>
+              </div>
+            ) : (
+              <div className="hidden md:block"></div> // Spacer for grid if export hidden
+            )}
+            <button
+              onClick={() => setShowModal(true)}
+              className="inline-flex items-center justify-center px-3 py-2.5 border border-transparent rounded-lg shadow-sm text-xs sm:text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 h-[42px] whitespace-nowrap"
+            >
+              <Plus size={16} className="mr-1.5" />
+              New Request
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1988,7 +2082,7 @@ const LeaveManagement = () => {
           <div className="flex items-center gap-2 p-1 overflow-x-auto border rounded-lg bg-slate-100/50 border-slate-200/50">
             {["pending", "approved", "rejected"].map((tab) => {
               const isActive = activeTab === tab;
-              const count = activeTab === tab ? leaves.length : 0;
+              const count = countsData?.[tab] || 0;
               return (
                 <button
                   key={tab}
@@ -2013,23 +2107,6 @@ const LeaveManagement = () => {
           </div>
 
           <div className="flex flex-col gap-3 w-full md:w-auto md:flex-row md:items-center">
-            {/* Export Button for HR/Admin on Approved Tab */}
-            {activeTab === "approved" && isHr && (
-              <button
-                onClick={handleExportToExcel}
-                disabled={exportLoading}
-                className="inline-flex items-center justify-center px-4 py-2 border border-green-200 rounded-lg shadow-sm text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100 hover:text-green-800 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 w-full md:w-auto disabled:opacity-50 disabled:cursor-not-allowed group"
-                title="Export current month's approved leaves to Excel"
-              >
-                {exportLoading ? (
-                  <Clock size={18} className="mr-2 animate-spin" />
-                ) : (
-                  <FileSpreadsheet size={18} className="mr-2 text-green-600 group-hover:scale-110 transition-transform" />
-                )}
-                {exportLoading ? "Exporting..." : "Export Current Month"}
-              </button>
-            )}
-
             {/* Status Legend */}
             <div className="flex items-center gap-3 px-1">
               <div className="flex items-center gap-1.5">

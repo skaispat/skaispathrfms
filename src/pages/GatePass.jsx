@@ -32,6 +32,9 @@ const GatePass = () => {
   const [selectedRow, setSelectedRow] = useState(null);
   const [remarksInputs, setRemarksInputs] = useState({});
   const [exportLoading, setExportLoading] = useState(false);
+  const [exportMonth, setExportMonth] = useState(dayjs().month());
+  const [exportYear, setExportYear] = useState(dayjs().year());
+
 
   const handleRemarkChange = (id, field, value) => {
     setRemarksInputs(prev => ({
@@ -391,8 +394,9 @@ const GatePass = () => {
     try {
       setExportLoading(true);
 
-      const startOfCurrentMonth = dayjs().startOf('month').format('YYYY-MM-DDTHH:mm:ss');
-      const endOfCurrentMonth = dayjs().endOf('month').format('YYYY-MM-DDTHH:mm:ss');
+      const selectedDate = dayjs().year(exportYear).month(exportMonth);
+      const startOfMonth = selectedDate.startOf('month').format('YYYY-MM-DDTHH:mm:ss');
+      const endOfMonth = selectedDate.endOf('month').format('YYYY-MM-DDTHH:mm:ss');
 
       // Fetch all approved gate passes for the current month
       const { data, error } = await supabase
@@ -402,8 +406,8 @@ const GatePass = () => {
           users(full_name, emp_id)
         `)
         .eq('status', 'Approved')
-        .gte('departure_from_plant', startOfCurrentMonth)
-        .lte('departure_from_plant', endOfCurrentMonth)
+        .gte('departure_from_plant', startOfMonth)
+        .lte('departure_from_plant', endOfMonth)
         .order('departure_from_plant', { ascending: true });
 
       if (error) throw error;
@@ -451,7 +455,7 @@ const GatePass = () => {
       XLSX.utils.book_append_sheet(workbook, worksheet, "Approved Gate Passes");
 
       // Download
-      const fileName = `Approved_Gate_Passes_${dayjs().format('MMM_YYYY')}.xlsx`;
+      const fileName = `Approved_Gate_Passes_${selectedDate.format('MMM_YYYY')}.xlsx`;
       XLSX.writeFile(workbook, fileName);
 
       toast.success(`Exported ${data.length} records successfully!`);
@@ -814,13 +818,59 @@ const GatePass = () => {
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Gate Pass Management</h1>
           <p className="text-slate-500 mt-1 text-sm">Manage employee gate pass requests</p>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="inline-flex items-center justify-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 w-full md:w-auto"
-        >
-          <Plus size={18} className="mr-2" />
-          New Gate Pass
-        </button>
+        <div className="grid grid-cols-2 gap-2 w-full md:flex md:w-auto md:items-center md:justify-end">
+          {activeTab === "approved" && isHr && (
+            <div className="flex items-center gap-1 p-1 border rounded-lg bg-emerald-50 border-emerald-200 shadow-sm overflow-hidden h-[42px]">
+              <div className="flex items-center gap-0.5 px-1 border-r border-emerald-200 shrink-0">
+                <select
+                  value={exportMonth}
+                  onChange={(e) => setExportMonth(parseInt(e.target.value))}
+                  className="bg-transparent border-none focus:ring-0 text-[10px] sm:text-xs font-bold text-emerald-800 cursor-pointer p-0 w-10 sm:w-12"
+                >
+                  {Array.from({ length: 12 }, (_, i) => (
+                    <option key={i} value={i} className="text-slate-900">
+                      {dayjs().month(i).format("MMM")}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={exportYear}
+                  onChange={(e) => setExportYear(parseInt(e.target.value))}
+                  className="bg-transparent border-none focus:ring-0 text-[10px] sm:text-xs font-bold text-emerald-800 cursor-pointer p-0 w-12 sm:w-14"
+                >
+                  {Array.from({ length: 5 }, (_, i) => dayjs().year() - 2 + i).map((year) => (
+                    <option key={year} value={year} className="text-slate-900">
+                      {year}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                onClick={handleExportToExcel}
+                disabled={exportLoading}
+                className="inline-flex items-center justify-center px-2 py-1 text-[10px] sm:text-xs font-bold text-emerald-700 hover:text-emerald-900 transition-all disabled:opacity-50 group whitespace-nowrap"
+                title="Export approved gate passes for selected month"
+              >
+                {exportLoading ? (
+                  <Clock size={12} className="mr-1 animate-spin text-emerald-600" />
+                ) : (
+                  <FileSpreadsheet
+                    size={12}
+                    className="mr-1 text-emerald-600 group-hover:scale-110 transition-transform"
+                  />
+                )}
+                {exportLoading ? "..." : "Export"}
+              </button>
+            </div>
+          )}
+          <button
+            onClick={() => setShowModal(true)}
+            className="inline-flex items-center justify-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 w-full md:w-auto h-[42px] whitespace-nowrap"
+          >
+            <Plus size={18} className="mr-2" />
+            New Gate Pass
+          </button>
+        </div>
       </div>
 
       {/* Controls & Table */}
@@ -851,22 +901,7 @@ const GatePass = () => {
           </div>
 
           <div className="flex flex-col gap-3 w-full md:w-auto md:flex-row md:items-center">
-            {/* Export Button for HR/Admin on Approved Tab */}
-            {activeTab === "approved" && isHr && (
-              <button
-                onClick={handleExportToExcel}
-                disabled={exportLoading}
-                className="inline-flex items-center justify-center px-4 py-2 border border-green-200 rounded-lg shadow-sm text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100 hover:text-green-800 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 w-full md:w-auto disabled:opacity-50 disabled:cursor-not-allowed group"
-                title="Export current month's approved gate passes to Excel"
-              >
-                {exportLoading ? (
-                  <Clock size={18} className="mr-2 animate-spin" />
-                ) : (
-                  <FileSpreadsheet size={18} className="mr-2 text-green-600 group-hover:scale-110 transition-transform" />
-                )}
-                {exportLoading ? "Exporting..." : "Export Current Month"}
-              </button>
-            )}
+            {/* Status Legend or other controls can go here */}
           </div>
 
           {/* Search */}
