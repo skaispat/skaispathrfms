@@ -209,15 +209,14 @@ const JobVacancy = () => {
     setFormData({ post: '', gender: '', department: '', prefer: '', numberOfPost: '', competitionDate: '', socialSite: '', indentNumber: '', timestamp: '', experience: '', socialSiteTypes: [] });
     setShowModal(false); setEditingId(null);
   };
-
   return (
-    <div className="p-1 sm:p-8 max-w-[1600px] mx-auto space-y-4 sm:space-y-6 min-h-screen font-sans">
+    <div className="p-3 sm:p-4 md:p-6 w-full space-y-4 sm:space-y-6 font-sans bg-slate-50/30 h-[calc(100vh-0rem)] flex flex-col">
       {/* Header */}
-      <div className="shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 px-1 sm:px-0">
-        <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">Job Vacancy</h1>
+      <div className="shrink-0 flex items-center justify-between gap-4">
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight truncate">Job Vacancy</h1>
         <button
           onClick={() => setShowModal(true)}
-          className="inline-flex items-center justify-center px-4 py-2.5 sm:py-2 border border-transparent rounded-xl shadow-md text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-all duration-200"
+          className="inline-flex items-center justify-center px-3 py-2 sm:px-4 border border-transparent rounded-xl shadow-md text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-all duration-200 shrink-0"
           disabled={loading}
         >
           {loading ? (
@@ -236,7 +235,7 @@ const JobVacancy = () => {
 
       {/* Filter and Search */}
       <div className="shrink-0 bg-white p-3 sm:p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div className="flex flex-1 w-full max-w-md">
+        <div className="flex flex-1 w-full sm:max-w-md">
           <div className="relative w-full">
             <input
               type="text"
@@ -250,9 +249,9 @@ const JobVacancy = () => {
         </div>
       </div>
 
-      <div className="flex-1 bg-white rounded-xl sm:rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]">
-        {/* Table Area (Desktop) */}
-        <div className="flex-1 overflow-auto custom-scrollbar relative hidden md:block">
+      <div className="flex-1 bg-white rounded-xl sm:rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px] max-w-full">
+        {/* Table Area */}
+        <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar relative">
           <table className="min-w-full divide-y divide-slate-200">
             <thead className="bg-slate-50 sticky top-0 z-10">
               <tr>
@@ -281,7 +280,7 @@ const JobVacancy = () => {
                 <th className="px-4 py-3 sm:px-6 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
                   Social Types
                 </th>
-                <th className="px-4 py-3 sm:px-6 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                <th className="px-4 py-3 sm:px-6 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider sticky right-0 bg-slate-50 shadow-[-4px_0_10px_-2px_rgba(0,0,0,0.05)] z-20">
                   Actions
                 </th>
               </tr>
@@ -346,7 +345,7 @@ const JobVacancy = () => {
                     <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-600">
                       {item.socialSiteTypes}
                     </td>
-                    <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-right text-sm font-medium sticky right-0 bg-white group-hover:bg-slate-50 shadow-[-4px_0_10px_-2px_rgba(0,0,0,0.05)] z-10 transition-colors">
                       <div className="flex justify-end gap-2">
                         <button
                           onClick={() => handleEdit(item)}
@@ -369,75 +368,7 @@ const JobVacancy = () => {
           </table>
         </div>
 
-        {/* Card Area (Mobile) */}
-        <div className="flex-1 overflow-auto p-4 space-y-4 md:hidden bg-slate-50/50">
-          {tableLoading ? (
-            <div className="flex justify-center flex-col items-center py-12">
-              <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-2"></div>
-              <span className="text-slate-500 text-sm">Loading jobs...</span>
-            </div>
-          ) : currentItems.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-slate-500">No jobs found.</p>
-            </div>
-          ) : (
-            currentItems.map((item, index) => (
-              <div key={index} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 space-y-3">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 uppercase tracking-wider mb-1">
-                      {item.indentNumber}
-                    </span>
-                    <h4 className="text-base font-bold text-slate-800">{item.post}</h4>
-                    <p className="text-xs font-semibold text-slate-500">{item.department}</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => handleEdit(item)} className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
-                      <Edit size={16} />
-                    </button>
-                    <button onClick={() => handleDelete(item.id)} className="p-2 bg-red-50 text-red-600 rounded-lg">
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-2 gap-y-3 gap-x-4 pt-2 border-t border-slate-50">
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase">Gender</p>
-                    <p className="text-xs font-semibold text-slate-700">{item.gender}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase">No. of Posts</p>
-                    <p className="text-xs font-semibold text-slate-700">{item.noOfPost}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase">Experience</p>
-                    <p className="text-xs font-semibold text-slate-700">{item.experience || "Any"}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase">Target Date</p>
-                    <p className="text-xs font-semibold text-slate-700">
-                      {item.completionDate ? new Date(item.completionDate).toLocaleDateString('en-GB') : '-'}
-                    </p>
-                  </div>
-                </div>
-
-                {item.socialSite === 'Yes' && (
-                  <div className="pt-2">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Social Channels</p>
-                    <div className="flex flex-wrap gap-1">
-                      {item.socialSiteTypes?.split(',').map((type, i) => (
-                        <span key={i} className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px] font-bold">
-                          {type.trim()}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))
-          )}
-        </div>
 
         {/* Pagination */}
         <div className="bg-slate-50 border-t border-slate-200 p-4 flex items-center justify-between shrink-0">

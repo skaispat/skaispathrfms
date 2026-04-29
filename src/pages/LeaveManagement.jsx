@@ -981,9 +981,9 @@ const LeaveManagement = () => {
         const currentYear = getFiscalYear();
         const employeeId = selectedRow.employeeId;
         const updates = [
-          { type: "Casual", count: leaveCounts.casual, column: "casual_leave_used" },
-          { type: "Earned", count: leaveCounts.earned, column: "earned_leave_used" },
-          { type: "UnPaid", count: leaveCounts.unpaid, column: "unpaid_leave_used" }
+          { type: "Casual", count: rowCounts.casual, column: "casual_leave_used" },
+          { type: "Earned", count: rowCounts.earned, column: "earned_leave_used" },
+          { type: "UnPaid", count: rowCounts.unpaid, column: "unpaid_leave_used" }
         ].filter(u => u.count > 0);
 
         for (const update of updates) {
@@ -997,9 +997,22 @@ const LeaveManagement = () => {
               .maybeSingle();
 
             if (existingQuota) {
+              let updatePayload = {};
+              if (update.type === "Earned") {
+                const carriedForward = existingQuota.carried_forward_el || 0;
+                if (carriedForward >= count) {
+                  updatePayload.carried_forward_el = carriedForward - count;
+                } else {
+                  updatePayload.carried_forward_el = 0;
+                  updatePayload.earned_leave_used = (existingQuota.earned_leave_used || 0) + (count - carriedForward);
+                }
+              } else {
+                updatePayload[column] = (existingQuota[column] || 0) + count;
+              }
+
               await supabase
                 .from("yearly_quota")
-                .update({ [column]: (existingQuota[column] || 0) + count })
+                .update(updatePayload)
                 .eq("id", existingQuota.id);
             } else {
               const insertPayload = {
@@ -1010,6 +1023,7 @@ const LeaveManagement = () => {
                 unpaid_leave_used: update.type === "UnPaid" ? count : 0,
                 casual_leave_limit: 12,
                 earned_leave_limit: 24,
+                carried_forward_el: 0
               };
               await supabase.from("yearly_quota").insert(insertPayload);
             }
@@ -1175,20 +1189,33 @@ const LeaveManagement = () => {
           const currentYear = getFiscalYear();
           const employeeId = row.employeeId;
           const updates = [
-            { type: "Casual", count: row.casual, column: "casual_leave_used" },
-            { type: "Earned", count: row.earned, column: "earned_leave_used" },
-            { type: "UnPaid", count: row.unpaid, column: "unpaid_leave_used" }
+            { type: "Casual", count: rowCounts.casual, column: "casual_leave_used" },
+            { type: "Earned", count: rowCounts.earned, column: "earned_leave_used" },
+            { type: "UnPaid", count: rowCounts.unpaid, column: "unpaid_leave_used" }
           ].filter(u => u.count > 0);
 
           for (const update of updates) {
             const { count, column } = update;
             const { data: q } = await supabase.from("yearly_quota").select("*").eq("emp_id", employeeId).eq("year", currentYear).maybeSingle();
             if (q) {
-              await supabase.from("yearly_quota").update({ [column]: (q[column] || 0) + count }).eq("id", q.id);
+              let updatePayload = {};
+              if (update.type === "Earned") {
+                const carriedForward = q.carried_forward_el || 0;
+                if (carriedForward >= count) {
+                  updatePayload.carried_forward_el = carriedForward - count;
+                } else {
+                  updatePayload.carried_forward_el = 0;
+                  updatePayload.earned_leave_used = (q.earned_leave_used || 0) + (count - carriedForward);
+                }
+              } else {
+                updatePayload[column] = (q[column] || 0) + count;
+              }
+              await supabase.from("yearly_quota").update(updatePayload).eq("id", q.id);
             } else {
               await supabase.from("yearly_quota").insert({
                 emp_id: employeeId, year: currentYear,
                 casual_leave_limit: 12, earned_leave_limit: 24,
+                carried_forward_el: 0,
                 [column]: count
               });
             }

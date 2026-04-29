@@ -15,10 +15,17 @@ const TotalLeaveDetails = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedMonth, setSelectedMonth] = useState(dayjs().format("YYYY-MM"));
   const [selectedMonthDetails, setSelectedMonthDetails] = useState(null);
+  const [quotas, setQuotas] = useState({});
 
   useEffect(() => {
     fetchData();
   }, []);
+
+  const getFiscalYear = () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    return today.getMonth() >= 3 ? year : year - 1;
+  };
 
   const fetchData = async () => {
     try {
@@ -36,6 +43,15 @@ const TotalLeaveDetails = () => {
         .order("leave_date_start", { ascending: false });
       if (leaveError) throw leaveError;
       setLeaves(leaveData || []);
+
+      const { data: quotaData, error: quotaError } = await supabase
+        .from("yearly_quota")
+        .select("*")
+        .eq("year", getFiscalYear());
+      if (quotaError) throw quotaError;
+      const quotaMap = {};
+      (quotaData || []).forEach(q => { quotaMap[q.emp_id] = q; });
+      setQuotas(quotaMap);
     } catch (error) {
       console.error("Error fetching data:", error);
       toast.error("Failed to load data");
@@ -76,27 +92,57 @@ const TotalLeaveDetails = () => {
     return summary;
   }, [leaves, selectedMonth]);
 
-  const filteredUsers = users.filter((u) =>
-    u.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.emp_id?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredUsers = users.filter((u) => {
+    if (u.emp_id?.toLowerCase() === "admin" || u.full_name?.toLowerCase() === "admin") return false;
+    return (
+      u.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      u.emp_id?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  });
 
   const exportToExcel = () => {
-    const exportData = filteredUsers.map((user) => {
-      const data = processedData[user.emp_id] || { el: 0, cl: 0, unpaid: 0 };
-      return {
-        "Employee ID": user.emp_id,
-        "Employee Name": user.full_name,
-        "EL": data.el.toFixed(0),
-        "CL": data.cl.toFixed(0),
-        "UN": data.unpaid.toFixed(0),
-        "Month": dayjs(selectedMonth).format("MMMM YYYY"),
-      };
+    const exportData = [];
+    filteredUsers.forEach((user) => {
+      const data = processedData[user.emp_id] || { records: [] };
+      const q = quotas[user.emp_id] || {};
+      const carriedEL = q.carried_forward_el || 0;
+      const remEL = 24 - (q.earned_leave_used || 0);
+      const remCL = 12 - (q.casual_leave_used || 0);
+      const totalUnpaid = q.unpaid_leave_used || 0;
+
+      if (data.records.length === 0) {
+        exportData.push({
+          "Employee ID": user.emp_id,
+          "Employee Name": user.full_name,
+          "From Date": "-",
+          "To Date": "-",
+          "Reason": "-",
+          "Carry FWD EL": carriedEL,
+          "Remaining EL": remEL,
+          "Remaining CL": remCL,
+          "Unpaid (Yr)": totalUnpaid,
+        });
+      } else {
+        data.records.forEach(record => {
+          exportData.push({
+            "Employee ID": user.emp_id,
+            "Employee Name": user.full_name,
+            "From Date": dayjs(record.leave_date_start).format("DD MMM YYYY"),
+            "To Date": dayjs(record.leave_date_end).format("DD MMM YYYY"),
+            "Reason": record.remarks || "-",
+            "Carry FWD EL": carriedEL,
+            "Remaining EL": remEL,
+            "Remaining CL": remCL,
+            "Unpaid (Yr)": totalUnpaid,
+          });
+        });
+      }
     });
+
     const ws = XLSX.utils.json_to_sheet(exportData);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Summary");
-    XLSX.writeFile(wb, `Leave_${selectedMonth}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, "Detailed Leaves");
+    XLSX.writeFile(wb, `Detailed_Leaves_${selectedMonth}.xlsx`);
   };
 
   return (
@@ -146,7 +192,10 @@ const TotalLeaveDetails = () => {
                 <th className="px-6 py-3 text-[11px] font-black text-slate-500 uppercase">Employee</th>
                 <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase text-center">EL</th>
                 <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase text-center">CL</th>
-                <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase text-center">UN</th>
+                <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase text-center">Unpaid</th>
+                <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase text-center">Carry FWD</th>
+                <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase text-center">Rem EL</th>
+                <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase text-center">Rem CL</th>
                 <th className="px-6 py-3 text-[11px] font-black text-slate-500 uppercase text-right">View</th>
               </tr>
             </thead>
@@ -167,7 +216,10 @@ const TotalLeaveDetails = () => {
                     </td>
                     <td className={`px-4 py-3 text-center text-sm font-black ${data.el > 0 ? 'text-green-600' : 'text-slate-200'}`}>{data.el.toFixed(0)}</td>
                     <td className={`px-4 py-3 text-center text-sm font-black ${data.cl > 0 ? 'text-blue-600' : 'text-slate-200'}`}>{data.cl.toFixed(0)}</td>
-                    <td className={`px-4 py-3 text-center text-sm font-black ${data.unpaid > 0 ? 'text-amber-600' : 'text-slate-200'}`}>{data.unpaid.toFixed(0)}</td>
+                    <td className={`px-4 py-3 text-center text-sm font-black text-amber-700`}>{quotas[user.emp_id]?.unpaid_leave_used || 0}</td>
+                    <td className={`px-4 py-3 text-center text-sm font-black text-purple-600`}>{quotas[user.emp_id]?.carried_forward_el || 0}</td>
+                    <td className={`px-4 py-3 text-center text-sm font-black text-emerald-600`}>{24 - (quotas[user.emp_id]?.earned_leave_used || 0)}</td>
+                    <td className={`px-4 py-3 text-center text-sm font-black text-sky-600`}>{12 - (quotas[user.emp_id]?.casual_leave_used || 0)}</td>
                     <td className="px-6 py-3 text-right">
                       <button
                         onClick={() => hasLeaves && setSelectedMonthDetails({ employee: user, monthName: dayjs(selectedMonth).format("MMM YYYY"), ...data })}
@@ -216,8 +268,22 @@ const TotalLeaveDetails = () => {
                       <p className={`text-base font-black ${data.cl > 0 ? 'text-blue-600' : 'text-slate-300'}`}>{data.cl.toFixed(0)}</p>
                     </div>
                     <div className="text-center p-2 rounded-lg bg-amber-50/50">
-                      <p className="text-[9px] font-black text-amber-700 uppercase mb-0.5">UN</p>
-                      <p className={`text-base font-black ${data.unpaid > 0 ? 'text-amber-600' : 'text-slate-300'}`}>{data.unpaid.toFixed(0)}</p>
+                      <p className="text-[9px] font-black text-amber-700 uppercase mb-0.5">Unpaid</p>
+                      <p className={`text-base font-black text-amber-700`}>{quotas[user.emp_id]?.unpaid_leave_used || 0}</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 mt-2">
+                    <div className="text-center p-2 rounded-lg bg-purple-50/50">
+                      <p className="text-[9px] font-black text-purple-700 uppercase mb-0.5">Carry</p>
+                      <p className={`text-base font-black text-purple-600`}>{quotas[user.emp_id]?.carried_forward_el || 0}</p>
+                    </div>
+                    <div className="text-center p-2 rounded-lg bg-emerald-50/50">
+                      <p className="text-[9px] font-black text-emerald-700 uppercase mb-0.5">Rem EL</p>
+                      <p className={`text-base font-black text-emerald-600`}>{24 - (quotas[user.emp_id]?.earned_leave_used || 0)}</p>
+                    </div>
+                    <div className="text-center p-2 rounded-lg bg-sky-50/50">
+                      <p className="text-[9px] font-black text-sky-700 uppercase mb-0.5">Rem CL</p>
+                      <p className={`text-base font-black text-sky-600`}>{12 - (quotas[user.emp_id]?.casual_leave_used || 0)}</p>
                     </div>
                   </div>
                 </div>

@@ -117,6 +117,15 @@ const LeaveRequest = () => {
         .eq('emp_id', user.emp_id)
         .maybeSingle();
 
+      const { data: quotaData } = await supabase
+        .from('yearly_quota')
+        .select('carried_forward_el')
+        .eq('emp_id', user.emp_id)
+        .eq('year', getFiscalYear())
+        .maybeSingle();
+
+      const carriedForwardEL = quotaData?.carried_forward_el || 0;
+
       if (balanceData) {
         setLeaveBalances({
           casual: {
@@ -127,14 +136,16 @@ const LeaveRequest = () => {
           earned: {
             total: 24,
             used: 24 - (balanceData.earned_leave_remaining ?? 24),
-            remaining: balanceData.earned_leave_remaining ?? 24
+            remaining: (balanceData.earned_leave_remaining ?? 24) + carriedForwardEL,
+            actualRemaining: balanceData.earned_leave_remaining ?? 24,
+            carriedForward: carriedForwardEL
           },
           unpaid: { used: balanceData.unpaid_leave_total_taken ?? 0 }
         });
       }
 
       // 6. Calculate monthly count and daily status
-      calculateBalancesAndStatus(historyData, !!balanceData);
+      calculateBalancesAndStatus(historyData, !!balanceData, carriedForwardEL);
 
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -144,7 +155,7 @@ const LeaveRequest = () => {
     }
   };
 
-  const calculateBalancesAndStatus = (history, hasViewData = false) => {
+  const calculateBalancesAndStatus = (history, hasViewData = false, carriedForwardEL = 0) => {
     const currentYear = getFiscalYear();
     const currentMonth = new Date().getMonth();
     const currentDate = new Date().getDate();
@@ -177,7 +188,13 @@ const LeaveRequest = () => {
     if (!hasViewData) {
       setLeaveBalances({
         casual: { total: 12, used: casualUsed, remaining: 12 - casualUsed },
-        earned: { total: 24, used: earnedUsed, remaining: 24 - earnedUsed },
+        earned: { 
+          total: 24, 
+          used: earnedUsed, 
+          remaining: 24 + carriedForwardEL - earnedUsed,
+          actualRemaining: 24 - earnedUsed,
+          carriedForward: carriedForwardEL
+        },
         unpaid: { used: unpaidUsed }
       });
     }
@@ -375,7 +392,7 @@ const LeaveRequest = () => {
             { bg: 'bg-rose-50', text: 'text-rose-600', border: 'border-rose-100' }
           ][idx];
           const Icon = [Calendar, Briefcase, AlertCircle][idx];
-          const val = type === 'unpaid' ? balance.used : balance.remaining;
+          const val = type === 'unpaid' ? balance.used : (type === 'earned' ? balance.actualRemaining : balance.remaining);
           const total = type !== 'unpaid' ? balance.total : null;
 
           return (
@@ -387,9 +404,22 @@ const LeaveRequest = () => {
                 <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-tighter sm:tracking-widest truncate leading-tight">
                   {label.split(' ')[0]}
                 </p>
-                <div className="flex items-baseline justify-center gap-0.5 sm:gap-1">
-                  <h3 className="text-lg sm:text-2xl font-black text-slate-900 tracking-tight truncate">{val}</h3>
-                  {total && <span className="text-[8px] sm:text-[10px] text-slate-400 font-bold uppercase">/{total}</span>}
+                <div className="flex flex-col items-center justify-center w-full">
+                  {type === 'earned' && balance.carriedForward > 0 ? (
+                    <>
+                      <h3 className="text-base sm:text-xl font-black text-slate-900 tracking-tight truncate">
+                        {balance.actualRemaining} + {balance.carriedForward} = {balance.remaining}
+                      </h3>
+                      <p className="text-[9px] sm:text-[11px] font-bold text-indigo-600 uppercase mt-0.5 tracking-wide">
+                        ({balance.carriedForward} Previous Year)
+                      </p>
+                    </>
+                  ) : (
+                    <div className="flex items-baseline justify-center gap-0.5 sm:gap-1">
+                      <h3 className="text-lg sm:text-2xl font-black text-slate-900 tracking-tight truncate">{val}</h3>
+                      {total && <span className="text-[8px] sm:text-[10px] text-slate-400 font-bold uppercase">/{total}</span>}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
