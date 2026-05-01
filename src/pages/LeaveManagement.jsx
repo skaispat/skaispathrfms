@@ -949,9 +949,9 @@ const LeaveManagement = () => {
             ? rowDates.to
             : selectedRow.endDate,
         status: newStatus,
-        casual: rowCounts.casual,
-        earned: rowCounts.earned,
-        unpaid: rowCounts.unpaid,
+        casual: newStatus === "Rejected" ? 0 : rowCounts.casual,
+        earned: newStatus === "Rejected" ? 0 : rowCounts.earned,
+        unpaid: newStatus === "Rejected" ? 0 : rowCounts.unpaid,
         ...(isHod && {
           hod_remarks: rowRemarks.hod || "",
           hod_id: user.emp_id,

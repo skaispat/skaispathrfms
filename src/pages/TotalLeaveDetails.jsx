@@ -5,6 +5,7 @@ import toast from "react-hot-toast";
 import dayjs from "dayjs";
 import isBetween from "dayjs/plugin/isBetween";
 import * as XLSX from "xlsx";
+import useAuthStore from "../store/authStore";
 
 dayjs.extend(isBetween);
 
@@ -17,6 +18,11 @@ const TotalLeaveDetails = () => {
   const [endDate, setEndDate] = useState(dayjs().endOf("month").format("YYYY-MM-DD"));
   const [selectedMonthDetails, setSelectedMonthDetails] = useState(null);
   const [quotas, setQuotas] = useState({});
+  const { user: currentUser } = useAuthStore();
+  const isAdmin = currentUser?.role === "admin" || currentUser?.role === "Admin" || currentUser?.Admin === "Yes";
+  const [editingRecordId, setEditingRecordId] = useState(null);
+  const [tempRecordData, setTempRecordData] = useState({});
+  const [saveLoading, setSaveLoading] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -79,9 +85,14 @@ const TotalLeaveDetails = () => {
         if (!summary[empId]) summary[empId] = { el: 0, cl: 0, unpaid: 0, records: [] };
         const totalDays = end.diff(start, "day") + 1;
         const ratio = overlapDays / totalDays;
-        summary[empId].el += (record.earned || 0) * ratio;
-        summary[empId].cl += (record.casual || 0) * ratio;
-        summary[empId].unpaid += (record.unpaid || 0) * ratio;
+
+        const isRejected = record.status?.toLowerCase().includes("reject");
+        if (!isRejected) {
+          summary[empId].el += (record.earned || 0) * ratio;
+          summary[empId].cl += (record.casual || 0) * ratio;
+          summary[empId].unpaid += (record.unpaid || 0) * ratio;
+        }
+
         summary[empId].records.push({
           ...record,
           overlapDays,
@@ -162,6 +173,120 @@ const TotalLeaveDetails = () => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Detailed Leaves");
     XLSX.writeFile(wb, `Detailed_Leaves_${startDate}_to_${endDate}.xlsx`);
+  };
+
+  const handleEditRecord = (record) => {
+    setEditingRecordId(record.id);
+    setTempRecordData({
+      casual: record.casual || 0,
+      earned: record.earned || 0,
+      unpaid: record.unpaid || 0,
+    });
+  };
+
+  const handleSaveRecord = async (record) => {
+    try {
+      setSaveLoading(true);
+
+      const deltaCasual = tempRecordData.casual - (record.casual || 0);
+      const deltaEarned = tempRecordData.earned - (record.earned || 0);
+      const deltaUnpaid = tempRecordData.unpaid - (record.unpaid || 0);
+
+      if (deltaCasual === 0 && deltaEarned === 0 && deltaUnpaid === 0) {
+        setEditingRecordId(null);
+        return;
+      }
+
+      // 1. Update leave_management
+      const { error: updateError } = await supabase
+        .from("leave_management")
+        .update({
+          casual: tempRecordData.casual,
+          earned: tempRecordData.earned,
+          unpaid: tempRecordData.unpaid,
+        })
+        .eq("id", record.id);
+
+      if (updateError) throw updateError;
+
+      // 2. Update yearly_quota (delta-based)
+      const currentYear = getFiscalYear();
+      const { data: q } = await supabase
+        .from("yearly_quota")
+        .select("*")
+        .eq("emp_id", record.emp_id)
+        .eq("year", currentYear)
+        .maybeSingle();
+
+      if (q) {
+        let updatePayload = {};
+
+        // Handle Casual
+        if (deltaCasual !== 0) {
+          updatePayload.casual_leave_used = (q.casual_leave_used || 0) + deltaCasual;
+        }
+
+        // Handle Unpaid
+        if (deltaUnpaid !== 0) {
+          updatePayload.unpaid_leave_used = (q.unpaid_leave_used || 0) + deltaUnpaid;
+        }
+
+        // Handle Earned (including carry-forward logic)
+        if (deltaEarned !== 0) {
+          if (deltaEarned > 0) {
+            // Added more EL usage
+            const carried = q.carried_forward_el || 0;
+            if (carried >= deltaEarned) {
+              updatePayload.carried_forward_el = carried - deltaEarned;
+            } else {
+              updatePayload.carried_forward_el = 0;
+              updatePayload.earned_leave_used = (q.earned_leave_used || 0) + (deltaEarned - carried);
+            }
+          } else {
+            // Reduced EL usage (restore balance)
+            const absDelta = Math.abs(deltaEarned);
+            const used = q.earned_leave_used || 0;
+            if (used >= absDelta) {
+              updatePayload.earned_leave_used = used - absDelta;
+            } else {
+              updatePayload.earned_leave_used = 0;
+              updatePayload.carried_forward_el = (q.carried_forward_el || 0) + (absDelta - used);
+            }
+          }
+        }
+
+        if (Object.keys(updatePayload).length > 0) {
+          await supabase.from("yearly_quota").update(updatePayload).eq("id", q.id);
+        }
+      }
+
+      toast.success("Record updated successfully");
+      setEditingRecordId(null);
+
+      // Update local state for modal
+      const updatedRecords = selectedMonthDetails.records.map(r =>
+        r.id === record.id ? { ...r, ...tempRecordData } : r
+      );
+
+      // Calculate new totals for the user in processedData context if necessary, 
+      // but easier to just refetch all data to keep summary accurate
+      fetchData();
+
+      // Update current modal view if still open
+      setSelectedMonthDetails(prev => ({
+        ...prev,
+        records: updatedRecords,
+        el: updatedRecords.reduce((acc, r) => acc + (r.earned || 0), 0),
+        cl: updatedRecords.reduce((acc, r) => acc + (r.casual || 0), 0),
+        unpaid: updatedRecords.reduce((acc, r) => acc + (r.unpaid || 0), 0),
+      }));
+
+    } catch (error) {
+      console.error("Save error:", error);
+      toast.error("Failed to update record");
+    } finally {
+      setSaveLoading(false);
+    }
   };
 
   return (
@@ -355,15 +480,83 @@ const TotalLeaveDetails = () => {
               {selectedMonthDetails.records.map((record, idx) => (
                 <div key={idx} className="py-3">
                   <div className="flex justify-between items-start mb-1">
-                    <div>
-                      <span className="text-[10px] font-black text-red-600 uppercase tracking-wider">{record.leave_type}</span>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black text-red-600 uppercase tracking-wider">{record.leave_type}</span>
+                        {isAdmin && editingRecordId !== record.id && (
+                          <button
+                            onClick={() => handleEditRecord(record)}
+                            className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase"
+                          >
+                            Edit
+                          </button>
+                        )}
+                      </div>
                       <p className="text-sm font-bold text-black mt-0.5">{record.displayRange}</p>
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-black text-black">{record.overlapDays} Days</p>
-                      <p className="text-[9px] font-bold text-slate-400 uppercase">{record.status}</p>
+                      <p className={`text-[9px] font-bold uppercase ${record.status?.toLowerCase().includes("reject") ? "text-red-600 font-black" : "text-slate-400"}`}>
+                        {record.status}
+                      </p>
                     </div>
                   </div>
+
+                  {editingRecordId === record.id ? (
+                    <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                      <div className="grid grid-cols-3 gap-3 mb-3">
+                        <div>
+                          <label className="block text-[9px] font-black text-slate-500 uppercase mb-1">Casual</label>
+                          <input
+                            type="number"
+                            className="w-full px-2 py-1 text-xs font-bold border rounded bg-white"
+                            value={tempRecordData.casual}
+                            onChange={(e) => setTempRecordData({ ...tempRecordData, casual: parseFloat(e.target.value) || 0 })}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[9px] font-black text-slate-500 uppercase mb-1">Earned</label>
+                          <input
+                            type="number"
+                            className="w-full px-2 py-1 text-xs font-bold border rounded bg-white"
+                            value={tempRecordData.earned}
+                            onChange={(e) => setTempRecordData({ ...tempRecordData, earned: parseFloat(e.target.value) || 0 })}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[9px] font-black text-slate-500 uppercase mb-1">Unpaid</label>
+                          <input
+                            type="number"
+                            className="w-full px-2 py-1 text-xs font-bold border rounded bg-white"
+                            value={tempRecordData.unpaid}
+                            onChange={(e) => setTempRecordData({ ...tempRecordData, unpaid: parseFloat(e.target.value) || 0 })}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleSaveRecord(record)}
+                          disabled={saveLoading}
+                          className="flex-1 py-1.5 bg-green-600 text-white text-[10px] font-bold rounded uppercase hover:bg-green-700 transition-colors"
+                        >
+                          {saveLoading ? "Saving..." : "Save"}
+                        </button>
+                        <button
+                          onClick={() => setEditingRecordId(null)}
+                          className="flex-1 py-1.5 bg-slate-200 text-slate-600 text-[10px] font-bold rounded uppercase hover:bg-slate-300 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className={`flex gap-3 mt-1.5 ${record.status?.toLowerCase().includes("reject") ? "opacity-60" : ""}`}>
+                      <span className="text-[10px] font-bold text-slate-500">CL: <span className={`text-black ${record.status?.toLowerCase().includes("reject") ? "text-red-600 line-through" : ""}`}>{record.casual || 0}</span></span>
+                      <span className="text-[10px] font-bold text-slate-500">EL: <span className={`text-black ${record.status?.toLowerCase().includes("reject") ? "text-red-600 line-through" : ""}`}>{record.earned || 0}</span></span>
+                      <span className="text-[10px] font-bold text-slate-500">UN: <span className={`text-black ${record.status?.toLowerCase().includes("reject") ? "text-red-600 line-through" : ""}`}>{record.unpaid || 0}</span></span>
+                    </div>
+                  )}
+
                   {record.remarks && <p className="text-[11px] text-slate-500 italic mt-1 px-2 border-l-2 border-slate-100">"{record.remarks}"</p>}
                 </div>
               ))}

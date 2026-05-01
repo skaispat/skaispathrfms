@@ -154,6 +154,11 @@ const ApprovalForm = () => {
             // Update leave_management
             const updateData = {
                 status: newStatus,
+                ...(newStatus === 'Rejected' && {
+                    casual: 0,
+                    earned: 0,
+                    unpaid: 0
+                }),
                 ...(isHodAction && {
                     hod_remarks: currentRemarks,
                     hod_id: approver.emp_id,
