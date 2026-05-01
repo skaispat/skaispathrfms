@@ -188,9 +188,9 @@ const LeaveRequest = () => {
     if (!hasViewData) {
       setLeaveBalances({
         casual: { total: 12, used: casualUsed, remaining: 12 - casualUsed },
-        earned: { 
-          total: 24, 
-          used: earnedUsed, 
+        earned: {
+          total: 24,
+          used: earnedUsed,
           remaining: 24 + carriedForwardEL - earnedUsed,
           actualRemaining: 24 - earnedUsed,
           carriedForward: carriedForwardEL

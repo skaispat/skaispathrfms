@@ -103,7 +103,7 @@ const TotalLeaveDetails = () => {
   const exportToExcel = () => {
     const exportData = [];
     filteredUsers.forEach((user) => {
-      const data = processedData[user.emp_id] || { records: [] };
+      const data = processedData[user.emp_id] || { el: 0, cl: 0, unpaid: 0, records: [] };
       const q = quotas[user.emp_id] || {};
       const carriedEL = q.carried_forward_el || 0;
       const remEL = 24 - (q.earned_leave_used || 0);
@@ -114,6 +114,9 @@ const TotalLeaveDetails = () => {
         exportData.push({
           "Employee ID": user.emp_id,
           "Employee Name": user.full_name,
+          "EL (Month)": (data.el || 0).toFixed(0),
+          "CL (Month)": (data.cl || 0).toFixed(0),
+          "Unpaid (Month)": (data.unpaid || 0).toFixed(0),
           "From Date": "-",
           "To Date": "-",
           "Reason": "-",
@@ -127,6 +130,9 @@ const TotalLeaveDetails = () => {
           exportData.push({
             "Employee ID": user.emp_id,
             "Employee Name": user.full_name,
+            "EL (Month)": (data.el || 0).toFixed(0),
+            "CL (Month)": (data.cl || 0).toFixed(0),
+            "Unpaid (Month)": (data.unpaid || 0).toFixed(0),
             "From Date": dayjs(record.leave_date_start).format("DD MMM YYYY"),
             "To Date": dayjs(record.leave_date_end).format("DD MMM YYYY"),
             "Reason": record.remarks || "-",
