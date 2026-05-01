@@ -143,11 +143,13 @@ const TotalLeaveDetails = () => {
           "Unpaid (Month)": (data.unpaid || 0).toFixed(0),
           "From Date": "-",
           "To Date": "-",
+          "Days": "-",
           "Reason": "-",
           "Carry FWD EL": carriedEL,
           "Remaining EL": remEL,
           "Remaining CL": remCL,
           "Unpaid (Yr)": totalUnpaid,
+          "Status": "-",
         });
       } else {
         data.records.forEach(record => {
@@ -159,11 +161,13 @@ const TotalLeaveDetails = () => {
             "Unpaid (Month)": (data.unpaid || 0).toFixed(0),
             "From Date": dayjs(record.leave_date_start).format("DD MMM YYYY"),
             "To Date": dayjs(record.leave_date_end).format("DD MMM YYYY"),
+            "Days": record.overlapDays,
             "Reason": record.remarks || "-",
             "Carry FWD EL": carriedEL,
             "Remaining EL": remEL,
             "Remaining CL": remCL,
             "Unpaid (Yr)": totalUnpaid,
+            "Status": record.status || "-",
           });
         });
       }
@@ -486,7 +490,7 @@ const TotalLeaveDetails = () => {
                         {isAdmin && editingRecordId !== record.id && (
                           <button
                             onClick={() => handleEditRecord(record)}
-                            className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase"
+                            className="px-2 py-0.5 text-[9px] font-black text-white bg-red-600 rounded hover:bg-red-700 transition-colors uppercase shadow-sm"
                           >
                             Edit
                           </button>
