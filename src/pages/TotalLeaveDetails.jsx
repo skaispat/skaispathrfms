@@ -13,7 +13,8 @@ const TotalLeaveDetails = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedMonth, setSelectedMonth] = useState(dayjs().format("YYYY-MM"));
+  const [startDate, setStartDate] = useState(dayjs().startOf("month").format("YYYY-MM-DD"));
+  const [endDate, setEndDate] = useState(dayjs().endOf("month").format("YYYY-MM-DD"));
   const [selectedMonthDetails, setSelectedMonthDetails] = useState(null);
   const [quotas, setQuotas] = useState({});
 
@@ -62,17 +63,16 @@ const TotalLeaveDetails = () => {
 
   const processedData = useMemo(() => {
     const summary = {};
-    const currentMonth = dayjs(selectedMonth, "YYYY-MM");
-    const monthStart = currentMonth.startOf("month");
-    const monthEnd = currentMonth.endOf("month");
+    const rangeStart = dayjs(startDate);
+    const rangeEnd = dayjs(endDate);
 
     leaves.forEach(record => {
       const empId = record.emp_id;
       const start = dayjs(record.leave_date_start);
       const end = dayjs(record.leave_date_end);
 
-      const overlapStart = start.isAfter(monthStart) ? start : monthStart;
-      const overlapEnd = end.isBefore(monthEnd) ? end : monthEnd;
+      const overlapStart = start.isAfter(rangeStart) ? start : rangeStart;
+      const overlapEnd = end.isBefore(rangeEnd) ? end : rangeEnd;
       const overlapDays = overlapEnd.diff(overlapStart, "day") + 1;
 
       if (overlapDays > 0 && !overlapStart.isAfter(overlapEnd)) {
@@ -90,13 +90,24 @@ const TotalLeaveDetails = () => {
       }
     });
     return summary;
-  }, [leaves, selectedMonth]);
+  }, [leaves, startDate, endDate]);
 
   const filteredUsers = users.filter((u) => {
     if (u.emp_id?.toLowerCase() === "admin" || u.full_name?.toLowerCase() === "admin") return false;
-    return (
+
+    // Check search term
+    const matchesSearch = (
       u.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       u.emp_id?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+    if (!matchesSearch) return false;
+
+    // Filter out users who haven't taken any leave in the selected range
+    const data = processedData[u.emp_id];
+    return data && (
+      (data.el || 0) > 0 ||
+      (data.cl || 0) > 0 ||
+      (data.unpaid || 0) > 0
     );
   });
 
@@ -104,6 +115,8 @@ const TotalLeaveDetails = () => {
     const exportData = [];
     filteredUsers.forEach((user) => {
       const data = processedData[user.emp_id] || { el: 0, cl: 0, unpaid: 0, records: [] };
+      if ((data.el || 0) === 0 && (data.cl || 0) === 0 && (data.unpaid || 0) === 0) return;
+
       const q = quotas[user.emp_id] || {};
       const carriedEL = q.carried_forward_el || 0;
       const remEL = 24 - (q.earned_leave_used || 0);
@@ -148,7 +161,7 @@ const TotalLeaveDetails = () => {
     const ws = XLSX.utils.json_to_sheet(exportData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Detailed Leaves");
-    XLSX.writeFile(wb, `Detailed_Leaves_${selectedMonth}.xlsx`);
+    XLSX.writeFile(wb, `Detailed_Leaves_${startDate}_to_${endDate}.xlsx`);
   };
 
   return (
@@ -157,16 +170,28 @@ const TotalLeaveDetails = () => {
       <div className="flex flex-col gap-4 mb-6">
         <h1 className="text-xl font-bold text-black flex items-center gap-2">
           <Calendar size={20} className="text-red-600" />
-          Leave Summary
+          Total Leave Details
         </h1>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <input
-            type="month"
-            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-black font-bold text-sm focus:ring-1 focus:ring-black outline-none"
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-          />
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold text-slate-400 uppercase shrink-0">From:</span>
+            <input
+              type="date"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-black font-bold text-xs focus:ring-1 focus:ring-black outline-none"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold text-slate-400 uppercase shrink-0">To:</span>
+            <input
+              type="date"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-black font-bold text-xs focus:ring-1 focus:ring-black outline-none"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+            />
+          </div>
           <div className="relative">
             <Search size={16} className="absolute left-3 top-2.5 text-slate-500" />
             <input
@@ -228,7 +253,11 @@ const TotalLeaveDetails = () => {
                     <td className={`px-4 py-3 text-center text-sm font-black text-sky-600`}>{12 - (quotas[user.emp_id]?.casual_leave_used || 0)}</td>
                     <td className="px-6 py-3 text-right">
                       <button
-                        onClick={() => hasLeaves && setSelectedMonthDetails({ employee: user, monthName: dayjs(selectedMonth).format("MMM YYYY"), ...data })}
+                        onClick={() => hasLeaves && setSelectedMonthDetails({
+                          employee: user,
+                          range: `${dayjs(startDate).format("DD MMM")} - ${dayjs(endDate).format("DD MMM YYYY")}`,
+                          ...data
+                        })}
                         className={`p-1.5 rounded transition-all ${hasLeaves ? 'text-red-600 hover:bg-red-50' : 'text-slate-200'}`}
                       >
                         <ChevronRight size={18} />
@@ -248,7 +277,11 @@ const TotalLeaveDetails = () => {
               return (
                 <div
                   key={user.emp_id}
-                  onClick={() => hasLeaves && setSelectedMonthDetails({ employee: user, monthName: dayjs(selectedMonth).format("MMM YYYY"), ...data })}
+                  onClick={() => hasLeaves && setSelectedMonthDetails({
+                    employee: user,
+                    range: `${dayjs(startDate).format("DD MMM")} - ${dayjs(endDate).format("DD MMM YYYY")}`,
+                    ...data
+                  })}
                   className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm active:scale-[0.98] transition-all"
                 >
                   <div className="flex items-center justify-between mb-4">
@@ -308,7 +341,7 @@ const TotalLeaveDetails = () => {
                 <div className="w-8 h-8 rounded bg-red-600 text-white flex items-center justify-center font-bold text-xs">{selectedMonthDetails.employee.full_name?.charAt(0)}</div>
                 <div>
                   <p className="text-sm font-bold text-black leading-none">{selectedMonthDetails.employee.full_name}</p>
-                  <p className="text-[10px] font-bold text-slate-500 mt-1">{selectedMonthDetails.monthName}</p>
+                  <p className="text-[10px] font-bold text-slate-500 mt-1">{selectedMonthDetails.range}</p>
                 </div>
               </div>
               <div className="flex gap-3 text-center border-l border-slate-200 pl-3 mr-4">

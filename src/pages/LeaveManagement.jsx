@@ -45,6 +45,11 @@ const LeaveManagement = () => {
     user?.role === "Admin" ||
     user?.Admin === "Yes";
   const isHod = user?.is_hod;
+  const isAdmin =
+    user?.role === "admin" ||
+    user?.role === "Admin" ||
+    user?.Admin === "Yes";
+
   const showHrColumn = isHr || (!isHod && !isHr);
   const showHodColumn = (isHod && !isHr) || (!isHod && !isHr);
 
@@ -63,8 +68,11 @@ const LeaveManagement = () => {
   const [exportLoading, setExportLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkLoading, setBulkLoading] = useState(false);
-  const [exportMonth, setExportMonth] = useState(dayjs().month());
-  const [exportYear, setExportYear] = useState(dayjs().year());
+  const [exportFromDate, setExportFromDate] = useState(dayjs().startOf('month').format('YYYY-MM-DD'));
+  const [exportToDate, setExportToDate] = useState(dayjs().endOf('month').format('YYYY-MM-DD'));
+
+  const [editingApprovedId, setEditingApprovedId] = useState(null);
+  const [tempApprovedData, setTempApprovedData] = useState({});
 
 
   // Pagination state removed in favor of infinite scroll
@@ -594,6 +602,10 @@ const LeaveManagement = () => {
       query = query.in("status", ["Pending", "Pending HOD", "Pending HR"]);
     } else if (activeTab === "approved") {
       query = query.ilike("status", "%Approved%");
+      // Apply date range filter for approved leaves
+      if (exportFromDate && exportToDate) {
+        query = query.gte("leave_date_start", exportFromDate).lte("leave_date_start", exportToDate);
+      }
     } else if (activeTab === "rejected") {
       query = query.ilike("status", "%Reject%");
     }
@@ -637,9 +649,17 @@ const LeaveManagement = () => {
       return q;
     };
 
+    const getApprovedQuery = () => {
+      let q = getBaseQuery().ilike("status", "%Approved%");
+      if (exportFromDate && exportToDate) {
+        q = q.gte("leave_date_start", exportFromDate).lte("leave_date_start", exportToDate);
+      }
+      return q;
+    };
+
     const [pendingRes, approvedRes, rejectedRes] = await Promise.all([
       getBaseQuery().in("status", ["Pending", "Pending HOD", "Pending HR"]),
-      getBaseQuery().ilike("status", "%Approved%"),
+      getApprovedQuery(),
       getBaseQuery().ilike("status", "%Reject%"),
     ]);
 
@@ -651,7 +671,7 @@ const LeaveManagement = () => {
   };
 
   const { data: countsData } = useQuery({
-    queryKey: ["leaveCounts", user?.emp_id, searchTerm],
+    queryKey: ["leaveCounts", user?.emp_id, searchTerm, exportFromDate, exportToDate],
     queryFn: fetchTabCounts,
     enabled: !!user,
   });
@@ -666,7 +686,7 @@ const LeaveManagement = () => {
     error: queryError,
     refetch
   } = useInfiniteQuery({
-    queryKey: ["leaves", user?.emp_id, activeTab, searchTerm],
+    queryKey: ["leaves", user?.emp_id, activeTab, searchTerm, exportFromDate, exportToDate],
     queryFn: fetchLeaves,
     getNextPageParam: (lastPage) => lastPage.nextPage,
     enabled: !!user,
@@ -1262,17 +1282,13 @@ const LeaveManagement = () => {
     try {
       setExportLoading(true);
 
-      const selectedDate = dayjs().year(exportYear).month(exportMonth);
-      const startOfMonth = selectedDate.startOf('month').format('YYYY-MM-DD');
-      const endOfMonth = selectedDate.endOf('month').format('YYYY-MM-DD');
-
-      // Fetch all approved leaves for the current month
+      // Fetch all approved leaves for the custom date range
       const { data, error } = await supabase
         .from('leave_management')
         .select('*')
         .eq('status', 'Approved')
-        .gte('leave_date_start', startOfMonth)
-        .lte('leave_date_start', endOfMonth)
+        .gte('leave_date_start', exportFromDate)
+        .lte('leave_date_start', exportToDate)
         .order('leave_date_start', { ascending: true });
 
       if (error) throw error;
@@ -1324,7 +1340,7 @@ const LeaveManagement = () => {
       XLSX.utils.book_append_sheet(workbook, worksheet, "Approved Leaves");
 
       // Download
-      const fileName = `Approved_Leaves_${selectedDate.format('MMM_YYYY')}.xlsx`;
+      const fileName = `Approved_Leaves_${dayjs(exportFromDate).format('DDMMYY')}_to_${dayjs(exportToDate).format('DDMMYY')}.xlsx`;
       XLSX.writeFile(workbook, fileName);
 
       toast.success(`Exported ${data.length} records successfully!`);
@@ -1336,7 +1352,115 @@ const LeaveManagement = () => {
     }
   };
 
+  const handleEditApproved = (item) => {
+    setEditingApprovedId(item.id);
+    setTempApprovedData({
+      startDate: item.startDate,
+      endDate: item.endDate,
+      leaveType: item.leaveType,
+      casual: item.casual || 0,
+      earned: item.earned || 0,
+      unpaid: item.unpaid || 0,
+      days: item.days,
+    });
+  };
 
+  const handleCancelEdit = () => {
+    setEditingApprovedId(null);
+    setTempApprovedData({});
+  };
+
+  const handleSaveApproved = async (originalItem) => {
+    try {
+      setLoading(true);
+
+      const updateData = {};
+      if (tempApprovedData.startDate !== originalItem.startDate) updateData.leave_date_start = tempApprovedData.startDate;
+      if (tempApprovedData.endDate !== originalItem.endDate) updateData.leave_date_end = tempApprovedData.endDate;
+      if (tempApprovedData.leaveType !== originalItem.leaveType) updateData.leave_type = tempApprovedData.leaveType;
+      if (tempApprovedData.casual !== originalItem.casual) updateData.casual = tempApprovedData.casual;
+      if (tempApprovedData.earned !== originalItem.earned) updateData.earned = tempApprovedData.earned;
+      if (tempApprovedData.unpaid !== originalItem.unpaid) updateData.unpaid = tempApprovedData.unpaid;
+
+      if (Object.keys(updateData).length === 0) {
+        handleCancelEdit();
+        setLoading(false);
+        return;
+      }
+
+      // Update leave_management
+      const { error: updateError } = await supabase
+        .from("leave_management")
+        .update(updateData)
+        .eq("id", originalItem.id);
+
+      if (updateError) throw updateError;
+
+      // Handle Quota updates if counts changed
+      const countsChanged =
+        tempApprovedData.casual !== originalItem.casual ||
+        tempApprovedData.earned !== originalItem.earned ||
+        tempApprovedData.unpaid !== originalItem.unpaid;
+
+      if (countsChanged) {
+        const currentYear = getFiscalYear(new Date(originalItem.startDate));
+        const employeeId = originalItem.employeeId;
+
+        const quotaUpdates = [
+          { type: "Casual", old: originalItem.casual || 0, new: tempApprovedData.casual, column: "casual_leave_used" },
+          { type: "Earned", old: originalItem.earned || 0, new: tempApprovedData.earned, column: "earned_leave_used" },
+          { type: "UnPaid", old: originalItem.unpaid || 0, new: tempApprovedData.unpaid, column: "unpaid_leave_used" }
+        ].filter(u => u.old !== u.new);
+
+        for (const update of quotaUpdates) {
+          const { data: q } = await supabase
+            .from("yearly_quota")
+            .select("*")
+            .eq("emp_id", employeeId)
+            .eq("year", currentYear)
+            .maybeSingle();
+
+          if (q) {
+            let updatePayload = {};
+            const diff = update.new - update.old;
+
+            if (update.type === "Earned") {
+              if (diff > 0) {
+                const carriedForward = q.carried_forward_el || 0;
+                if (carriedForward >= diff) {
+                  updatePayload.carried_forward_el = carriedForward - diff;
+                } else {
+                  updatePayload.carried_forward_el = 0;
+                  updatePayload.earned_leave_used = (q.earned_leave_used || 0) + (diff - carriedForward);
+                }
+              } else {
+                const absDiff = Math.abs(diff);
+                const used = q.earned_leave_used || 0;
+                if (used >= absDiff) {
+                  updatePayload.earned_leave_used = used - absDiff;
+                } else {
+                  updatePayload.earned_leave_used = 0;
+                  updatePayload.carried_forward_el = (q.carried_forward_el || 0) + (absDiff - used);
+                }
+              }
+            } else {
+              updatePayload[update.column] = (q[update.column] || 0) + diff;
+            }
+            await supabase.from("yearly_quota").update(updatePayload).eq("id", q.id);
+          }
+        }
+      }
+
+      toast.success("Leave request updated successfully");
+      handleCancelEdit();
+      fetchLeaveData();
+    } catch (error) {
+      console.error("Save Error:", error);
+      toast.error(`Failed to save changes: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const formatDate = (dateString) => {
     if (!dateString) return "-";
@@ -1740,6 +1864,11 @@ const LeaveManagement = () => {
       <thead className="sticky top-0 z-10 border-b bg-slate-50 border-slate-200">
         <tr>
           <th className="w-4 px-4 py-3 sm:px-6 sm:py-4"></th>
+          {isAdmin && (
+            <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+              Actions
+            </th>
+          )}
           <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
             Status
           </th>
@@ -1786,6 +1915,37 @@ const LeaveManagement = () => {
               <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
                 <div className={`h-2.5 w-2.5 rounded-full ${item.isActive ? 'bg-green-500' : 'bg-slate-400'}`}></div>
               </td>
+              {isAdmin && (
+                <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
+                  <div className="flex space-x-2">
+                    {editingApprovedId === item.id ? (
+                      <>
+                        <button
+                          onClick={() => handleSaveApproved(item)}
+                          disabled={loading}
+                          className="px-2 py-1 text-xs font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-sm disabled:opacity-50"
+                        >
+                          {loading ? "..." : "Save"}
+                        </button>
+                        <button
+                          onClick={handleCancelEdit}
+                          disabled={loading}
+                          className="px-2 py-1 text-xs font-medium text-white bg-slate-500 rounded-lg hover:bg-slate-600 transition-colors shadow-sm disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => handleEditApproved(item)}
+                        className="px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+                      >
+                        Edit
+                      </button>
+                    )}
+                  </div>
+                </td>
+              )}
               <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
                 <span className="px-2 py-1 text-xs font-semibold text-green-800 bg-green-100 rounded-full">
                   {item.status}
@@ -1798,14 +1958,36 @@ const LeaveManagement = () => {
                 {item.employeeName}
               </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-600">
-                {formatDate(item.startDate)}
+                {editingApprovedId === item.id ? (
+                  <input
+                    type="date"
+                    value={tempApprovedData.startDate || ""}
+                    onChange={(e) => setTempApprovedData({ ...tempApprovedData, startDate: e.target.value })}
+                    className="p-1 text-sm border rounded border-slate-300 focus:ring-1 focus:ring-indigo-500"
+                  />
+                ) : (
+                  formatDate(item.startDate)
+                )}
               </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-600">
-                {formatDate(item.endDate)}
+                {editingApprovedId === item.id ? (
+                  <input
+                    type="date"
+                    value={tempApprovedData.endDate || ""}
+                    onChange={(e) => setTempApprovedData({ ...tempApprovedData, endDate: e.target.value })}
+                    className="p-1 text-sm border rounded border-slate-300 focus:ring-1 focus:ring-indigo-500"
+                  />
+                ) : (
+                  formatDate(item.endDate)
+                )}
               </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
                 <div className="flex flex-col">
-                  <span className="text-slate-700">{item.days} days</span>
+                  <span className="text-slate-700">
+                    {editingApprovedId === item.id
+                      ? calculateDays(tempApprovedData.startDate, tempApprovedData.endDate)
+                      : item.days} days
+                  </span>
                   {item.monthSplit && (
                     <span className="text-xs text-slate-500 flex items-center gap-1">
                       <span className="text-slate-400">↳</span> {item.monthSplit}
@@ -1817,16 +1999,61 @@ const LeaveManagement = () => {
                 {item.reason}
               </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                <div className="flex flex-col">
-                  <span className="font-medium text-slate-700">{item.leaveType}</span>
-                  {(item.casual > 0 || item.earned > 0 || item.unpaid > 0) && (
-                    <div className="flex gap-1.5 mt-1">
-                      {item.casual > 0 && <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[10px] font-bold">CL: {item.casual}</span>}
-                      {item.earned > 0 && <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold">EL: {item.earned}</span>}
-                      {item.unpaid > 0 && <span className="px-1.5 py-0.5 bg-rose-50 text-rose-600 rounded text-[10px] font-bold">LOP: {item.unpaid}</span>}
+                {editingApprovedId === item.id ? (
+                  <div className="flex flex-col gap-1.5 p-2 bg-slate-50 rounded-lg border border-slate-200 min-w-[140px]">
+                    <select
+                      value={tempApprovedData.leaveType}
+                      onChange={(e) => setTempApprovedData({ ...tempApprovedData, leaveType: e.target.value })}
+                      className="w-full mb-1 p-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500"
+                    >
+                      {leaveTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase">CL:</span>
+                      <input
+                        type="number"
+                        value={tempApprovedData.casual}
+                        onChange={(e) => setTempApprovedData({ ...tempApprovedData, casual: parseFloat(e.target.value) || 0 })}
+                        className="w-14 px-1.5 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 font-mono"
+                        min="0"
+                        step="1"
+                      />
                     </div>
-                  )}
-                </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase">EL:</span>
+                      <input
+                        type="number"
+                        value={tempApprovedData.earned}
+                        onChange={(e) => setTempApprovedData({ ...tempApprovedData, earned: parseFloat(e.target.value) || 0 })}
+                        className="w-14 px-1.5 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 font-mono"
+                        min="0"
+                        step="1"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase">LOP:</span>
+                      <input
+                        type="number"
+                        value={tempApprovedData.unpaid}
+                        onChange={(e) => setTempApprovedData({ ...tempApprovedData, unpaid: parseFloat(e.target.value) || 0 })}
+                        className="w-14 px-1.5 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 font-mono"
+                        min="0"
+                        step="1"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col">
+                    <span className="font-medium text-slate-700">{item.leaveType}</span>
+                    {(item.casual > 0 || item.earned > 0 || item.unpaid > 0) && (
+                      <div className="flex gap-1.5 mt-1">
+                        {item.casual > 0 && <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[10px] font-bold">CL: {item.casual}</span>}
+                        {item.earned > 0 && <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold">EL: {item.earned}</span>}
+                        {item.unpaid > 0 && <span className="px-1.5 py-0.5 bg-rose-50 text-rose-600 rounded text-[10px] font-bold">LOP: {item.unpaid}</span>}
+                      </div>
+                    )}
+                  </div>
+                )}
               </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
                 {item.hodName}
@@ -1845,7 +2072,7 @@ const LeaveManagement = () => {
           ))
         ) : (
           <tr>
-            <td colSpan={10} className="px-6 py-12 text-center text-slate-500">
+            <td colSpan={isAdmin ? 14 : 13} className="px-6 py-12 text-center text-slate-500">
               No approved leave requests found.
             </td>
           </tr>
@@ -2047,35 +2274,31 @@ const LeaveManagement = () => {
           <div className="grid grid-cols-2 gap-2 w-full md:flex md:w-auto md:items-center">
             {activeTab === "approved" && isHr ? (
               <div className="flex items-center gap-1 p-1 border rounded-lg bg-emerald-50 border-emerald-200 shadow-sm overflow-hidden h-[42px]">
-                <div className="flex items-center gap-0.5 px-1 border-r border-emerald-200 shrink-0">
-                  <select
-                    value={exportMonth}
-                    onChange={(e) => setExportMonth(parseInt(e.target.value))}
-                    className="bg-transparent border-none focus:ring-0 text-[10px] sm:text-xs font-bold text-emerald-800 cursor-pointer p-0 w-10 sm:w-12"
-                  >
-                    {Array.from({ length: 12 }, (_, i) => (
-                      <option key={i} value={i} className="text-slate-900">
-                        {dayjs().month(i).format("MMM")}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={exportYear}
-                    onChange={(e) => setExportYear(parseInt(e.target.value))}
-                    className="bg-transparent border-none focus:ring-0 text-[10px] sm:text-xs font-bold text-emerald-800 cursor-pointer p-0 w-12 sm:w-14"
-                  >
-                    {Array.from({ length: 5 }, (_, i) => dayjs().year() - 2 + i).map((year) => (
-                      <option key={year} value={year} className="text-slate-900">
-                        {year}
-                      </option>
-                    ))}
-                  </select>
+                <div className="flex items-center gap-1.5 px-2 border-r border-emerald-200 shrink-0">
+                  <div className="flex flex-col">
+                    <span className="text-[8px] font-bold text-emerald-600 uppercase leading-none">From</span>
+                    <input
+                      type="date"
+                      value={exportFromDate}
+                      onChange={(e) => setExportFromDate(e.target.value)}
+                      className="bg-transparent border-none focus:ring-0 text-[10px] sm:text-xs font-bold text-emerald-800 cursor-pointer p-0 w-24 sm:w-28 h-4"
+                    />
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[8px] font-bold text-emerald-600 uppercase leading-none">To</span>
+                    <input
+                      type="date"
+                      value={exportToDate}
+                      onChange={(e) => setExportToDate(e.target.value)}
+                      className="bg-transparent border-none focus:ring-0 text-[10px] sm:text-xs font-bold text-emerald-800 cursor-pointer p-0 w-24 sm:w-28 h-4"
+                    />
+                  </div>
                 </div>
                 <button
                   onClick={handleExportToExcel}
                   disabled={exportLoading}
                   className="inline-flex items-center justify-center px-2 py-1 text-[10px] sm:text-xs font-bold text-emerald-700 hover:text-emerald-900 transition-all disabled:opacity-50 group whitespace-nowrap"
-                  title="Export approved leaves for selected month"
+                  title="Export approved leaves for selected range"
                 >
                   {exportLoading ? (
                     <Clock size={12} className="mr-1 animate-spin text-emerald-600" />
