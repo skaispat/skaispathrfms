@@ -1020,12 +1020,17 @@ const LeaveManagement = () => {
               let updatePayload = {};
               if (update.type === "Earned") {
                 const carriedForward = existingQuota.carried_forward_el || 0;
+                let cfUsed = 0;
                 if (carriedForward >= count) {
                   updatePayload.carried_forward_el = carriedForward - count;
+                  cfUsed = count;
                 } else {
                   updatePayload.carried_forward_el = 0;
                   updatePayload.earned_leave_used = (existingQuota.earned_leave_used || 0) + (count - carriedForward);
+                  cfUsed = carriedForward;
                 }
+                // Save consumption to the request record
+                await supabase.from("leave_management").update({ cf_el_used: cfUsed }).eq("id", selectedRow.id);
               } else {
                 updatePayload[column] = (existingQuota[column] || 0) + count;
               }
@@ -1221,12 +1226,16 @@ const LeaveManagement = () => {
               let updatePayload = {};
               if (update.type === "Earned") {
                 const carriedForward = q.carried_forward_el || 0;
+                let cfUsed = 0;
                 if (carriedForward >= count) {
                   updatePayload.carried_forward_el = carriedForward - count;
+                  cfUsed = count;
                 } else {
                   updatePayload.carried_forward_el = 0;
                   updatePayload.earned_leave_used = (q.earned_leave_used || 0) + (count - carriedForward);
+                  cfUsed = carriedForward;
                 }
+                await supabase.from("leave_management").update({ cf_el_used: cfUsed }).eq("id", row.id);
               } else {
                 updatePayload[column] = (q[column] || 0) + count;
               }

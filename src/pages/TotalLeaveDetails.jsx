@@ -82,7 +82,7 @@ const TotalLeaveDetails = () => {
       const overlapDays = overlapEnd.diff(overlapStart, "day") + 1;
 
       if (overlapDays > 0 && !overlapStart.isAfter(overlapEnd)) {
-        if (!summary[empId]) summary[empId] = { el: 0, cl: 0, unpaid: 0, records: [] };
+        if (!summary[empId]) summary[empId] = { el: 0, cl: 0, unpaid: 0, cf_used: 0, records: [] };
         const totalDays = end.diff(start, "day") + 1;
         const ratio = overlapDays / totalDays;
 
@@ -91,6 +91,7 @@ const TotalLeaveDetails = () => {
           summary[empId].el += (record.earned || 0) * ratio;
           summary[empId].cl += (record.casual || 0) * ratio;
           summary[empId].unpaid += (record.unpaid || 0) * ratio;
+          summary[empId].cf_used += (record.cf_el_used || 0) * ratio;
         }
 
         summary[empId].records.push({
@@ -149,6 +150,7 @@ const TotalLeaveDetails = () => {
           "Remaining EL": remEL,
           "Remaining CL": remCL,
           "Unpaid (Yr)": totalUnpaid,
+          "Used Carry FWD": (data.cf_used || 0).toFixed(0),
           "Status": "-",
         });
       } else {
@@ -167,6 +169,7 @@ const TotalLeaveDetails = () => {
             "Remaining EL": remEL,
             "Remaining CL": remCL,
             "Unpaid (Yr)": totalUnpaid,
+            "Used Carry FWD": (record.cf_el_used * (record.overlapDays / (dayjs(record.leave_date_end).diff(dayjs(record.leave_date_start), "day") + 1)) || 0).toFixed(0),
             "Status": record.status || "-",
           });
         });
@@ -356,6 +359,7 @@ const TotalLeaveDetails = () => {
                 <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase text-center">Carry FWD</th>
                 <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase text-center">Rem EL</th>
                 <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase text-center">Rem CL</th>
+                <th className="px-4 py-3 text-[11px] font-black text-slate-500 uppercase text-center">Used CF</th>
                 <th className="px-6 py-3 text-[11px] font-black text-slate-500 uppercase text-right">View</th>
               </tr>
             </thead>
@@ -380,6 +384,7 @@ const TotalLeaveDetails = () => {
                     <td className={`px-4 py-3 text-center text-sm font-black text-purple-600`}>{quotas[user.emp_id]?.carried_forward_el || 0}</td>
                     <td className={`px-4 py-3 text-center text-sm font-black text-emerald-600`}>{24 - (quotas[user.emp_id]?.earned_leave_used || 0)}</td>
                     <td className={`px-4 py-3 text-center text-sm font-black text-sky-600`}>{12 - (quotas[user.emp_id]?.casual_leave_used || 0)}</td>
+                    <td className={`px-4 py-3 text-center text-sm font-black ${data.cf_used > 0 ? 'text-purple-600' : 'text-slate-200'}`}>{data.cf_used.toFixed(0)}</td>
                     <td className="px-6 py-3 text-right">
                       <button
                         onClick={() => hasLeaves && setSelectedMonthDetails({
@@ -426,10 +431,14 @@ const TotalLeaveDetails = () => {
                     {hasLeaves && <ChevronRight size={18} className="text-slate-400" />}
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 border-t border-slate-50 pt-3">
+                  <div className="grid grid-cols-4 gap-2 border-t border-slate-50 pt-3">
                     <div className="text-center p-2 rounded-lg bg-green-50/50">
                       <p className="text-[9px] font-black text-green-700 uppercase mb-0.5">EL</p>
                       <p className={`text-base font-black ${data.el > 0 ? 'text-green-600' : 'text-slate-300'}`}>{data.el.toFixed(0)}</p>
+                    </div>
+                    <div className="text-center p-2 rounded-lg bg-purple-50/50">
+                      <p className="text-[9px] font-black text-purple-700 uppercase mb-0.5">Used CF</p>
+                      <p className={`text-base font-black ${data.cf_used > 0 ? 'text-purple-600' : 'text-slate-300'}`}>{data.cf_used.toFixed(0)}</p>
                     </div>
                     <div className="text-center p-2 rounded-lg bg-blue-50/50">
                       <p className="text-[9px] font-black text-blue-700 uppercase mb-0.5">CL</p>
