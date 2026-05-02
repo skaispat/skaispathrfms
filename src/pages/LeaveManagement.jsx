@@ -73,6 +73,7 @@ const LeaveManagement = () => {
 
   const [editingApprovedId, setEditingApprovedId] = useState(null);
   const [tempApprovedData, setTempApprovedData] = useState({});
+  const [rowQuotas, setRowQuotas] = useState({});
 
 
   // Pagination state removed in favor of infinite scroll
@@ -301,6 +302,7 @@ const LeaveManagement = () => {
   const [leaveBalances, setLeaveBalances] = useState({
     casual: { total: 12, used: 0, remaining: 12 },
     earned: { total: 24, used: 0, remaining: 24 },
+    carriedForward: 0,
     unpaid: { used: 0 }
   });
 
@@ -323,6 +325,16 @@ const LeaveManagement = () => {
 
       if (balanceData) {
         console.log('Balance data found:', balanceData);
+
+        // Also fetch carry forward from yearly_quota
+        const currentYear = getFiscalYear();
+        const { data: quotaData } = await supabase
+          .from('yearly_quota')
+          .select('carried_forward_el')
+          .eq('emp_id', employeeId)
+          .eq('year', currentYear)
+          .maybeSingle();
+
         setLeaveBalances({
           casual: {
             total: 12,
@@ -334,6 +346,7 @@ const LeaveManagement = () => {
             used: 24 - (balanceData.earned_leave_remaining ?? 24),
             remaining: balanceData.earned_leave_remaining ?? 24
           },
+          carriedForward: quotaData?.carried_forward_el || 0,
           unpaid: { used: balanceData.unpaid_leave_total_taken ?? 0 }
         });
       } else {
@@ -341,6 +354,7 @@ const LeaveManagement = () => {
         setLeaveBalances({
           casual: { total: 12, used: 0, remaining: 12 },
           earned: { total: 24, used: 0, remaining: 24 },
+          carriedForward: 0,
           unpaid: { used: 0 }
         });
       }
@@ -713,6 +727,36 @@ const LeaveManagement = () => {
   };
 
   const leaves = data?.pages.flatMap((page) => page.data) || [];
+
+  useEffect(() => {
+    const fetchQuotas = async () => {
+      const empIds = [...new Set(leaves.map((l) => l.employeeId))];
+      if (empIds.length === 0) return;
+
+      const currentYear = getFiscalYear();
+      try {
+        const { data, error } = await supabase
+          .from("yearly_quota")
+          .select("*")
+          .in("emp_id", empIds)
+          .eq("year", currentYear);
+
+        if (!error && data) {
+          const quotaMap = {};
+          data.forEach((q) => {
+            quotaMap[q.emp_id] = q;
+          });
+          setRowQuotas((prev) => ({ ...prev, ...quotaMap }));
+        }
+      } catch (err) {
+        console.error("Error fetching row quotas:", err);
+      }
+    };
+
+    if (leaves.length > 0) {
+      fetchQuotas();
+    }
+  }, [leaves]);
 
   // No need for separate state variables anymore, but keeping render logic intact
   // We can derive "filtered" lists directly from `leaves` 
@@ -1596,7 +1640,28 @@ const LeaveManagement = () => {
                 {item.employeeId}
               </td>
               <td className="px-4 py-3 text-sm font-medium sm:px-6 sm:py-4 whitespace-nowrap text-slate-900">
-                {item.employeeName}
+                <div className="flex flex-col">
+                  <span>{item.employeeName}</span>
+                  {rowQuotas[item.employeeId] ? (
+                    <div className="flex gap-1.5 mt-1 text-[9px] font-bold uppercase tracking-tighter">
+                      <span className="text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded border border-emerald-100">
+                        EL: {(rowQuotas[item.employeeId].earned_leave_limit || 24) - (rowQuotas[item.employeeId].earned_leave_used || 0)}
+                      </span>
+                      <span className="text-indigo-700 bg-indigo-50 px-1 py-0.5 rounded border border-indigo-100">
+                        CL: {(rowQuotas[item.employeeId].casual_leave_limit || 12) - (rowQuotas[item.employeeId].casual_leave_used || 0)}
+                      </span>
+                      <span className="text-purple-700 bg-purple-50 px-1 py-0.5 rounded border border-purple-100">
+                        CF: {rowQuotas[item.employeeId].carried_forward_el || 0}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex gap-1.5 mt-1 text-[9px] font-bold uppercase tracking-tighter opacity-60">
+                      <span className="text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded border border-emerald-100">EL: 24</span>
+                      <span className="text-indigo-700 bg-indigo-50 px-1 py-0.5 rounded border border-indigo-100">CL: 12</span>
+                      <span className="text-purple-700 bg-purple-50 px-1 py-0.5 rounded border border-purple-100">CF: 0</span>
+                    </div>
+                  )}
+                </div>
               </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-600">
                 {(selectedRow?.id === item.id || (isHr && selectedIds.includes(item.id))) ? (
@@ -1643,7 +1708,12 @@ const LeaveManagement = () => {
                 {isHr && (item.status === "Pending HR" || item.status === "Pending" || item.status === "Pending HOD") && (selectedRow?.id === item.id || selectedIds.includes(item.id)) ? (
                   <div className="flex flex-col gap-1.5 p-2 bg-slate-50 rounded-lg border border-slate-200 min-w-[140px]">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase">CL:</span>
+                      <div className="flex flex-col">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase">CL:</span>
+                        {rowQuotas[item.employeeId] && (
+                          <span className="text-[8px] text-indigo-600 font-black">Rem: {(rowQuotas[item.employeeId].casual_leave_limit || 12) - (rowQuotas[item.employeeId].casual_leave_used || 0)}</span>
+                        )}
+                      </div>
                       <input
                         type="number"
                         value={leaveCounts[item.id]?.casual || 0}
@@ -1654,7 +1724,12 @@ const LeaveManagement = () => {
                       />
                     </div>
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase">EL:</span>
+                      <div className="flex flex-col">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase">EL:</span>
+                        {rowQuotas[item.employeeId] && (
+                          <span className="text-[8px] text-emerald-600 font-black">Rem: {((rowQuotas[item.employeeId].earned_leave_limit || 24) - (rowQuotas[item.employeeId].earned_leave_used || 0)) + (rowQuotas[item.employeeId].carried_forward_el || 0)}</span>
+                        )}
+                      </div>
                       <input
                         type="number"
                         value={leaveCounts[item.id]?.earned || 0}
@@ -1964,7 +2039,28 @@ const LeaveManagement = () => {
                 {item.employeeId}
               </td>
               <td className="px-4 py-3 text-sm font-medium sm:px-6 sm:py-4 whitespace-nowrap text-slate-900">
-                {item.employeeName}
+                <div className="flex flex-col">
+                  <span>{item.employeeName}</span>
+                  {rowQuotas[item.employeeId] ? (
+                    <div className="flex gap-1.5 mt-1 text-[9px] font-bold uppercase tracking-tighter">
+                      <span className="text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded border border-emerald-100">
+                        EL: {(rowQuotas[item.employeeId].earned_leave_limit || 24) - (rowQuotas[item.employeeId].earned_leave_used || 0)}
+                      </span>
+                      <span className="text-indigo-700 bg-indigo-50 px-1 py-0.5 rounded border border-indigo-100">
+                        CL: {(rowQuotas[item.employeeId].casual_leave_limit || 12) - (rowQuotas[item.employeeId].casual_leave_used || 0)}
+                      </span>
+                      <span className="text-purple-700 bg-purple-50 px-1 py-0.5 rounded border border-purple-100">
+                        CF: {rowQuotas[item.employeeId].carried_forward_el || 0}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex gap-1.5 mt-1 text-[9px] font-bold uppercase tracking-tighter opacity-60">
+                      <span className="text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded border border-emerald-100">EL: 24</span>
+                      <span className="text-indigo-700 bg-indigo-50 px-1 py-0.5 rounded border border-indigo-100">CL: 12</span>
+                      <span className="text-purple-700 bg-purple-50 px-1 py-0.5 rounded border border-purple-100">CF: 0</span>
+                    </div>
+                  )}
+                </div>
               </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-600">
                 {editingApprovedId === item.id ? (
@@ -2595,6 +2691,23 @@ const LeaveManagement = () => {
                         </div>
                       </div>
                     </div>
+                    {/* Leave Balances Grid */}
+                    {formData.employeeId && (
+                      <div className="grid grid-cols-3 gap-3 mt-4">
+                        <div className="p-2 text-center border rounded-xl border-emerald-100 bg-emerald-50 shadow-sm">
+                          <p className="text-[9px] font-black text-emerald-600 uppercase tracking-wider mb-0.5 leading-none">EL Rem.</p>
+                          <p className="text-sm font-bold text-emerald-700">{leaveBalances.earned.remaining}</p>
+                        </div>
+                        <div className="p-2 text-center border rounded-xl border-indigo-100 bg-indigo-50 shadow-sm">
+                          <p className="text-[9px] font-black text-indigo-600 uppercase tracking-wider mb-0.5 leading-none">CL Rem.</p>
+                          <p className="text-sm font-bold text-indigo-700">{leaveBalances.casual.remaining}</p>
+                        </div>
+                        <div className="p-2 text-center border rounded-xl border-purple-100 bg-purple-50 shadow-sm">
+                          <p className="text-[9px] font-black text-purple-600 uppercase tracking-wider mb-0.5 leading-none">CF EL</p>
+                          <p className="text-sm font-bold text-purple-700">{leaveBalances.carriedForward}</p>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
 
@@ -2627,9 +2740,9 @@ const LeaveManagement = () => {
                         </option>
                         <option
                           value="Earned Leave"
-                          disabled={leaveBalances.earned.remaining <= 0}
+                          disabled={leaveBalances.earned.remaining <= 0 && leaveBalances.carriedForward <= 0}
                         >
-                          Earned Leave {leaveBalances.earned.remaining <= 0 ? '(Quota Exhausted)' : `(${leaveBalances.earned.remaining} remaining)`}
+                          Earned Leave {(leaveBalances.earned.remaining <= 0 && leaveBalances.carriedForward <= 0) ? '(Quota Exhausted)' : `(${leaveBalances.earned.remaining + leaveBalances.carriedForward} remaining)`}
                         </option>
                         <option value="UnPaid Leave">UnPaid Leave (No Limit)</option>
                       </select>

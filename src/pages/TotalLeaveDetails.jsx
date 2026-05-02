@@ -509,7 +509,7 @@ const TotalLeaveDetails = () => {
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-black text-black">{record.overlapDays} Days</p>
-                      <p className={`text-[9px] font-bold uppercase ${record.status?.toLowerCase().includes("reject") ? "text-red-600 font-black" : "text-slate-400"}`}>
+                      <p className={`text-[12px] font-bold uppercase ${record.status?.toLowerCase().includes("reject") ? "text-red-600 font-black" : "text-green-700"}`}>
                         {record.status}
                       </p>
                     </div>
