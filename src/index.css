@@ -75,3 +75,55 @@ body {
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background-color: #94a3b8;
 }
+
+@keyframes shimmer {
+  0% { background-position: -200% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+.animate-shimmer {
+  background-size: 200% auto;
+  animation: shimmer 4s linear infinite;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes typing {
+  from { width: 0; }
+  to { width: 100%; }
+}
+
+.animate-typing {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  width: 0;
+  animation: typing 1.5s steps(30, end) forwards;
+}
+
+@keyframes float-up-heart-left {
+  0% { transform: translate(0, 0) scale(0.5) rotate(0deg); opacity: 0; }
+  10% { opacity: 0.8; }
+  100% { transform: translate(-15px, -60px) scale(1.2) rotate(-20deg); opacity: 0; }
+}
+
+@keyframes float-up-heart-right {
+  0% { transform: translate(0, 0) scale(0.5) rotate(0deg); opacity: 0; }
+  10% { opacity: 0.8; }
+  100% { transform: translate(15px, -60px) scale(1.2) rotate(20deg); opacity: 0; }
+}
+
+.animate-heart-left {
+  animation: float-up-heart-left 3s ease-out infinite;
+}
+
+.animate-heart-right {
+  animation: float-up-heart-right 3s ease-out infinite;
+}
