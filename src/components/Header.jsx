@@ -242,14 +242,14 @@ const Header = ({ children }) => {
       <div className="flex justify-between items-center max-w-7xl mx-auto w-full">
         <div className="flex items-center gap-4 flex-1">
           <div className="flex items-center gap-2 ml-12 lg:ml-0 relative group">
-            <img
+            {/* <img
               src="/mother4.png"
               alt="Logo"
               className="h-12 w-auto object-contain"
-            />
+            /> */}
 
             {/* Flowing Hearts Animation */}
-            <div className="absolute inset-0 pointer-events-none overflow-visible">
+            {/* <div className="absolute inset-0 pointer-events-none overflow-visible">
               <Heart className="absolute bottom-0 left-6 text-red-500 animate-heart-left opacity-0" size={10} fill="currentColor" />
               <Heart className="absolute bottom-2 left-10 text-red-400 animate-heart-right opacity-0 [animation-delay:0.4s]" size={9} fill="currentColor" />
               <Heart className="absolute bottom-1 left-14 text-pink-500 animate-heart-left opacity-0 [animation-delay:0.8s]" size={14} fill="currentColor" />
@@ -258,12 +258,12 @@ const Header = ({ children }) => {
               <Heart className="absolute bottom-1 left-32 text-rose-500 animate-heart-right opacity-0 [animation-delay:2s]" size={13} fill="currentColor" />
               <Heart className="absolute bottom-0 left-28 text-pink-400 animate-heart-left opacity-0 [animation-delay:2.4s]" size={12} fill="currentColor" />
               <Heart className="absolute bottom-3 left-18 text-red-600 animate-heart-right opacity-0 [animation-delay:2.8s]" size={10} fill="currentColor" />
-            </div>
+            </div> */}
 
-            <div className="flex flex-col leading-tight font-extrabold bg-gradient-to-r from-red-600 via-pink-500 to-red-600 bg-clip-text text-transparent animate-shimmer drop-shadow-sm">
+            {/* <div className="flex flex-col leading-tight font-extrabold bg-gradient-to-r from-red-600 via-pink-500 to-red-600 bg-clip-text text-transparent animate-shimmer drop-shadow-sm">
               <span className="animate-typing text-xs sm:text-sm">Happy</span>
               <span className="animate-typing [animation-delay:0.2s] text-sm sm:text-base">Mother's Day</span>
-            </div>
+            </div> */}
           </div>
           {children}
         </div>
