@@ -206,10 +206,9 @@ const GatePass = () => {
 
       setPendingPasses(filteredData.filter(p => p.status === 'Pending' || p.status === 'Pending HOD' || p.status === 'Pending HR'));
 
-      // Approved tab should show any pass that has been approved by HOD or is fully Approved
+      // Approved tab should only show fully Approved passes
       setApprovedPasses(filteredData.filter(p =>
-        p.status?.toLowerCase() === 'approved' ||
-        p.status === 'Pending HR' // Show acts approved by HOD, pending HR in approved list for HOD
+        p.status?.toLowerCase() === 'approved'
       ));
 
       setRejectedPasses(filteredData.filter(p => p.status?.toLowerCase().includes('rejected')));

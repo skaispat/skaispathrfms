@@ -380,7 +380,7 @@ const TotalLeaveDetails = () => {
                     </td>
                     <td className={`px-4 py-3 text-center text-sm font-black ${data.el > 0 ? 'text-green-600' : 'text-slate-200'}`}>{data.el.toFixed(0)}</td>
                     <td className={`px-4 py-3 text-center text-sm font-black ${data.cl > 0 ? 'text-blue-600' : 'text-slate-200'}`}>{data.cl.toFixed(0)}</td>
-                    <td className={`px-4 py-3 text-center text-sm font-black text-amber-700`}>{quotas[user.emp_id]?.unpaid_leave_used || 0}</td>
+                    <td className={`px-4 py-3 text-center text-sm font-black text-amber-700`}>{data.unpaid.toFixed(0)}</td>
                     <td className={`px-4 py-3 text-center text-sm font-black text-purple-600`}>{quotas[user.emp_id]?.carried_forward_el || 0}</td>
                     <td className={`px-4 py-3 text-center text-sm font-black text-emerald-600`}>{24 - (quotas[user.emp_id]?.earned_leave_used || 0)}</td>
                     <td className={`px-4 py-3 text-center text-sm font-black text-sky-600`}>{12 - (quotas[user.emp_id]?.casual_leave_used || 0)}</td>
@@ -446,7 +446,7 @@ const TotalLeaveDetails = () => {
                     </div>
                     <div className="text-center p-2 rounded-lg bg-amber-50/50">
                       <p className="text-[9px] font-black text-amber-700 uppercase mb-0.5">Unpaid</p>
-                      <p className={`text-base font-black text-amber-700`}>{quotas[user.emp_id]?.unpaid_leave_used || 0}</p>
+                      <p className={`text-base font-black text-amber-700`}>{data.unpaid.toFixed(0)}</p>
                     </div>
                   </div>
                   <div className="grid grid-cols-3 gap-2 mt-2">
