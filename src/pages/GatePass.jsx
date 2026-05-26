@@ -300,7 +300,7 @@ const GatePass = () => {
 
           const formatDateTime = (dateStr) => {
             if (!dateStr) return 'N/A';
-            return new Date(dateStr).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+            return new Date(dateStr).toLocaleString('en-GB', { timeZone: 'UTC', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
           };
 
           const calculateDuration = (fromDate, toDate) => {
@@ -421,8 +421,8 @@ const GatePass = () => {
         'Employee ID': item.emp_id || item.users?.emp_id,
         'Employee Name': item.emp_name || item.users?.full_name,
         'Destination & Reason': item.place_reason_to_visit,
-        'Departure': item.departure_from_plant ? dayjs(item.departure_from_plant).format('DD/MM/YYYY hh:mm A') : '-',
-        'Arrival': item.arrival_at_plant ? dayjs(item.arrival_at_plant).format('DD/MM/YYYY hh:mm A') : '-',
+        'Departure': item.departure_from_plant ? dayjs(new Date(item.departure_from_plant).toLocaleString('en-US', { timeZone: 'UTC' })).format('DD/MM/YYYY hh:mm A') : '-',
+        'Arrival': item.arrival_at_plant ? dayjs(new Date(item.arrival_at_plant).toLocaleString('en-US', { timeZone: 'UTC' })).format('DD/MM/YYYY hh:mm A') : '-',
         'WhatsApp Number': item.employee_whatsapp_number,
         'HOD Name': item.hod_name,
         'HOD Remarks': item.hod_remarks || '-',
@@ -607,7 +607,7 @@ const GatePass = () => {
           try {
             const formatDateTime = (dateStr) => {
               if (!dateStr) return 'N/A';
-              return new Date(dateStr).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+              return new Date(dateStr).toLocaleString('en-GB', { timeZone: 'UTC', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
             };
 
             const calculateDuration = (fromDate, toDate) => {
@@ -661,7 +661,7 @@ const GatePass = () => {
 
   const formatDate = (dateString) => {
     if (!dateString) return '-';
-    return new Date(dateString).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    return new Date(dateString).toLocaleString('en-GB', { timeZone: 'UTC', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   };
 
   const renderTable = (data) => (
