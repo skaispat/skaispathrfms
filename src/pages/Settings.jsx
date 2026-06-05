@@ -138,7 +138,6 @@ const Settings = () => {
         leaveType: '',
         fromDate: '',
         toDate: '',
-        toDate: '',
         reason: '',
         hodId: '' // Add hodId to state
     });
@@ -1295,7 +1294,7 @@ const Settings = () => {
                         <div className="flex-1 overflow-y-auto p-2 sm:p-4 custom-scrollbar">
                             {users
                                 .filter(u =>
-                                    (u.role !== 'manager' && u.role !== 'Manager' && u.role !== 'admin' && u.role !== 'Admin' && u.hod_id !== selectedHod.emp_id) &&
+                                    (u.role !== 'admin' && u.role !== 'Admin' && u.hod_id !== selectedHod.emp_id) &&
                                     (u.full_name?.toLowerCase().includes(assignSearchTerm.toLowerCase()) ||
                                         u.emp_id?.toLowerCase().includes(assignSearchTerm.toLowerCase()) ||
                                         u.department?.toLowerCase().includes(assignSearchTerm.toLowerCase()))
