@@ -1352,21 +1352,57 @@ const LeaveManagement = () => {
       }
 
       // Format data for Excel
-      const excelData = data.map(item => ({
-        'Employee ID': item.emp_id,
-        'Employee Name': item.employee_name,
-        'Designation': item.designation || '-',
-        'Leave Type': item.leave_type,
-        'From Date': item.leave_date_start ? dayjs(item.leave_date_start).format('DD/MM/YYYY') : '-',
-        'To Date': item.leave_date_end ? dayjs(item.leave_date_end).format('DD/MM/YYYY') : '-',
-        'Total Days': calculateDays(item.leave_date_start, item.leave_date_end),
-        'Reason': item.remarks,
-        'HOD Name': item.hod_name,
-        'HOD Remarks': item.hod_remarks || '-',
-        'HR Name': item.hr_name || '-',
-        'HR Remarks': item.hr_remarks || '-',
-        'Approved At': item.timestamp ? dayjs(item.timestamp).format('DD/MM/YYYY hh:mm A') : '-'
-      }));
+      const excelData = data.flatMap(item => {
+        const rows = [];
+        const baseRow = {
+          'Employee ID': item.emp_id,
+          'Employee Name': item.employee_name,
+          'Designation': item.designation || '-',
+          'From Date': item.leave_date_start ? dayjs(item.leave_date_start).format('DD/MM/YYYY') : '-',
+          'To Date': item.leave_date_end ? dayjs(item.leave_date_end).format('DD/MM/YYYY') : '-',
+          'Reason': item.remarks,
+          'HOD Name': item.hod_name,
+          'HOD Remarks': item.hod_remarks || '-',
+          'HR Name': item.hr_name || '-',
+          'HR Remarks': item.hr_remarks || '-',
+          'Approved At': item.timestamp ? dayjs(item.timestamp).format('DD/MM/YYYY hh:mm A') : '-'
+        };
+
+        const casual = item.casual || 0;
+        const earned = item.earned || 0;
+        const unpaid = item.unpaid || 0;
+
+        if (casual > 0) {
+          rows.push({ ...baseRow, 'Leave Type': 'Casual Leave', 'Days': casual });
+        }
+        if (earned > 0) {
+          rows.push({ ...baseRow, 'Leave Type': 'Earned Leave', 'Days': earned });
+        }
+        if (unpaid > 0) {
+          rows.push({ ...baseRow, 'Leave Type': 'UnPaid Leave', 'Days': unpaid });
+        }
+
+        if (rows.length === 0) {
+          const totalDays = calculateDays(item.leave_date_start, item.leave_date_end);
+          rows.push({ ...baseRow, 'Leave Type': item.leave_type || '-', 'Days': totalDays });
+        }
+
+        return rows.map(r => ({
+          'Employee ID': r['Employee ID'],
+          'Employee Name': r['Employee Name'],
+          'Designation': r['Designation'],
+          'Leave Type': r['Leave Type'],
+          'Days': r['Days'],
+          'From Date': r['From Date'],
+          'To Date': r['To Date'],
+          'Reason': r['Reason'],
+          'HOD Name': r['HOD Name'],
+          'HOD Remarks': r['HOD Remarks'],
+          'HR Name': r['HR Name'],
+          'HR Remarks': r['HR Remarks'],
+          'Approved At': r['Approved At']
+        }));
+      });
 
       // Create sheet
       const worksheet = XLSX.utils.json_to_sheet(excelData);
@@ -1377,9 +1413,9 @@ const LeaveManagement = () => {
         { wch: 25 }, // Name
         { wch: 20 }, // Designation
         { wch: 15 }, // Leave Type
+        { wch: 10 }, // Days
         { wch: 12 }, // From
         { wch: 12 }, // To
-        { wch: 10 }, // Days
         { wch: 30 }, // Reason
         { wch: 20 }, // HOD Name
         { wch: 25 }, // HOD Remarks
