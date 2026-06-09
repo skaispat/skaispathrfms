@@ -93,7 +93,7 @@ const AfterJoiningWork = () => {
           pfEsic: checklistItem?.pf_esic || false,
           companyDirectory: checklistItem?.company_directory || false,
           status: checklistItem?.status || 'Pending',
-          empId: checklistItem?.emp_id || "",
+          empId: joinItem.emp_id || checklistItem?.emp_id || "",
           delay: checklistItem?.delay || "",
           isSubmitted: joinItem.father_name !== 'Pending Update'
         }
@@ -611,7 +611,7 @@ const AfterJoiningWork = () => {
                       Action
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider bg-slate-50">
-                      Joining ID
+                      EMP ID
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider bg-slate-50">
                       Name
@@ -676,7 +676,7 @@ const AfterJoiningWork = () => {
                           </button>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900 group-hover:text-indigo-600 transition-colors">
-                          {item.joiningNo}
+                          {item.empId || item.joiningNo}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">
                           {item.candidateName}

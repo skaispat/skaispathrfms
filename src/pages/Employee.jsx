@@ -41,7 +41,7 @@ const Employee = () => {
         const afterJoining = Array.isArray(item.after_joining) ? item.after_joining[0] : item.after_joining;
 
         return {
-          employeeId: afterJoining?.emp_id || item.joining_id || "",
+          employeeId: afterJoining?.emp_id || item.emp_id || item.joining_id || "",
           candidateName: item.name_as_per_aadhar || "",
           fatherName: item.father_name || "",
           dateOfJoining: item.date_of_joining || "",
