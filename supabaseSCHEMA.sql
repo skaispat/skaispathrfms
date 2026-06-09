@@ -190,7 +190,7 @@ CREATE TABLE public.job_vacancy (
   completion_date date,
   social_site text,
   experience text,
-  social_site_types text,
+  skill_required text,
   status text DEFAULT 'NeedMore'::text,
   CONSTRAINT job_vacancy_pkey PRIMARY KEY (id)
 );

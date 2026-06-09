@@ -510,7 +510,7 @@ const Attendance = () => {
       {/* Header Section */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between shrink-0">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Attendance Overview</h1>
+          <h1 className="text-xl sm:text-2xl font-extrabold text-[#800000] tracking-tight">Attendance Overview</h1>
           <p className="text-slate-500 mt-1 text-sm">Monthly aggregate records and performance metrics</p>
         </div>
         <div className="flex items-center gap-3">

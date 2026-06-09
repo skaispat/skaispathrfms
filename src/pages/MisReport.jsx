@@ -256,7 +256,7 @@ const MisReport = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center shrink-0 gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">MIS Report</h1>
+          <h1 className="text-xl sm:text-2xl font-extrabold text-[#800000] tracking-tight">MIS Report</h1>
           <p className="text-slate-500 mt-1 text-sm">Overview of work performance and leave statistics.</p>
         </div>
         

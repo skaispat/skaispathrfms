@@ -221,7 +221,7 @@ const MyProfile = () => {
       {/* Header */}
       <div className="flex flex-row items-center justify-between gap-4 px-4 sm:px-0 shrink-0">
         <div className="space-y-1">
-          <h1 className="text-xl sm:text-3xl font-bold tracking-tight text-slate-900 drop-shadow-sm truncate">My Profile</h1>
+          <h1 className="text-xl sm:text-2xl font-extrabold text-[#800000] tracking-tight truncate drop-shadow-sm">My Profile</h1>
           <p className="text-slate-500 text-xs sm:text-sm hidden sm:block">Personal details and activity summary</p>
         </div>
         <div className="flex items-center gap-2">

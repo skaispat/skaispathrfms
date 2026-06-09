@@ -13,7 +13,7 @@ const Layout = () => {
         <Header />
 
         {/* Scrollable content area */}
-        <main className="flex-1 overflow-y-auto flex flex-col p-3 sm:p-6 lg:p-8 custom-scrollbar">
+        <main className="flex-1 overflow-y-auto flex flex-col px-5 py-5 sm:p-6 lg:p-8 custom-scrollbar">
           <div className="flex-1 w-full max-w-7xl mx-auto flex flex-col">
             <Outlet />
           </div>

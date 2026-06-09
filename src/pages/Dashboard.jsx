@@ -150,14 +150,33 @@ const Dashboard = () => {
         setMonthlyHiringData(months);
 
 
-        // 4. Leave Management Stats
-        const { data: leaveData, error: leaveError } = await supabase
-          .from('leave_management')
-          .select('status');
+        // 4. Leave Management Stats (Fetch all records bypassing 1000 limit)
+        let allLeaveData = [];
+        let leavePage = 0;
+        const leavePageSize = 1000;
+        let hasMoreLeaves = true;
 
-        if (leaveError) throw leaveError;
+        while (hasMoreLeaves) {
+          const { data: leaveDataChunk, error: leaveError } = await supabase
+            .from('leave_management')
+            .select('status')
+            .range(leavePage * leavePageSize, (leavePage + 1) * leavePageSize - 1);
 
-        const leaveStats = getDistribution(leaveData, 'status');
+          if (leaveError) throw leaveError;
+
+          if (leaveDataChunk && leaveDataChunk.length > 0) {
+            allLeaveData = [...allLeaveData, ...leaveDataChunk];
+            if (leaveDataChunk.length < leavePageSize) {
+              hasMoreLeaves = false;
+            } else {
+              leavePage++;
+            }
+          } else {
+            hasMoreLeaves = false;
+          }
+        }
+
+        const leaveStats = getDistribution(allLeaveData, 'status');
         setLeaveStatusData(leaveStats);
 
 
@@ -207,7 +226,7 @@ const Dashboard = () => {
       {/* Header */}
       <div className="flex items-center justify-between gap-1.5 mb-1 sm:mb-4 px-1 sm:px-0">
         <div className="text-left">
-          <h1 className="text-lg sm:text-2xl font-bold text-slate-800 tracking-tight">Dashboard Overview</h1>
+          <h1 className="text-xl sm:text-2xl font-extrabold text-[#800000] tracking-tight">Dashboard Overview</h1>
           <p className="text-slate-600 text-xs sm:text-base mt-0.5 font-semibold">Welcome back! SKA HR System</p>
         </div>
         <div className="flex items-center gap-1 px-2 py-1 sm:px-4 sm:py-2 bg-white rounded-full shadow-sm border border-slate-200/60 flex-shrink-0">

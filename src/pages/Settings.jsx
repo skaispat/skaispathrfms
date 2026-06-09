@@ -128,6 +128,10 @@ const Settings = () => {
 
     const [showPassword, setShowPassword] = useState(false);
 
+    // Joini List Modal State
+    const [isJoiniListModalOpen, setIsJoiniListModalOpen] = useState(false);
+    const [joiniList, setJoiniList] = useState([]);
+
     // Leave Request State (Admin)
     const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
     const [leaveFormData, setLeaveFormData] = useState({
@@ -153,13 +157,16 @@ const Settings = () => {
     const fetchUsers = async () => {
         setLoading(true);
         try {
-            const [usersResponse, teamResponse] = await Promise.all([
+            const [usersResponse, teamResponse, joiniResponse] = await Promise.all([
                 supabase
                     .from('users')
                     .select('*')
                     .order('created_at', { ascending: false }),
                 supabase
                     .from('team_members')
+                    .select('*'),
+                supabase
+                    .from('joining_form')
                     .select('*')
             ]);
 
@@ -187,6 +194,16 @@ const Settings = () => {
             }));
 
             setUsers(usersWithTeam);
+
+            // Fetch and set pending joinis for the badge
+            if (joiniResponse.data) {
+                const existingEmpIds = new Set(usersWithTeam.filter(u => u.emp_id).map(u => String(u.emp_id).trim().toLowerCase()));
+                const newJoinisOnly = joiniResponse.data.filter(joini => {
+                    if (!joini.emp_id) return true;
+                    return !existingEmpIds.has(String(joini.emp_id).trim().toLowerCase());
+                });
+                setJoiniList(newJoinisOnly);
+            }
         } catch (error) {
             console.error('Error fetching users:', error);
             toast.error('Failed to fetch users');
@@ -838,12 +855,75 @@ const Settings = () => {
         }
     };
 
+    const handleFetchNewJoini = async () => {
+        setLoading(true);
+        try {
+            const { data, error } = await supabase
+                .from('joining_form')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            // Only show joinis whose emp_id is not already in the users table
+            const existingEmpIds = new Set(users.filter(u => u.emp_id).map(u => String(u.emp_id).trim().toLowerCase()));
+            const newJoinisOnly = (data || []).filter(joini => {
+                if (!joini.emp_id) return true; // Keep joinis without an emp_id
+                return !existingEmpIds.has(String(joini.emp_id).trim().toLowerCase());
+            });
+
+            setJoiniList(newJoinisOnly);
+            setIsJoiniListModalOpen(true);
+        } catch (error) {
+            console.error('Error fetching new joinis:', error);
+            toast.error('Failed to fetch new joini data');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleProcessJoini = (joini) => {
+        resetForm();
+
+        setFormData({
+            emp_id: joini.emp_id ? String(joini.emp_id) : '',
+            full_name: joini.name_as_per_aadhar ? String(joini.name_as_per_aadhar) : '',
+            email: joini.personal_email ? String(joini.personal_email) : '',
+            password: joini.password ? String(joini.password) : '',
+            role: 'employee',
+            designation: joini.designation ? String(joini.designation) : '',
+            department: joini.department ? String(joini.department) : '',
+            phone_number: joini.mobile_no ? String(joini.mobile_no).replace('+91', '') : '',
+            date_of_birth: joini.date_of_birth || '',
+            joining_date: joini.date_of_joining || '',
+            gender: joini.gender || '',
+            emergency_contact: joini.family_mobile_no ? String(joini.family_mobile_no).replace('+91', '') : '',
+            current_address: joini.current_address ? String(joini.current_address) : '',
+            username: joini.username ? String(joini.username) : '',
+            is_active: true,
+            is_hod: false,
+            page_access: DEFAULT_USER_PAGES,
+            profile_picture: joini.passport_photo_url || '',
+            week_off: ''
+        });
+
+        setLeaveQuota({
+            casual_leave_remaining: 12,
+            earned_leave_remaining: 24,
+            unpaid_leave_total_taken: 0
+        });
+
+        setEditingUser(null);
+        setIsJoiniListModalOpen(false);
+        setIsModalOpen(true);
+    };
+
     return (
         <div className="h-full flex flex-col gap-4 sm:gap-6 overflow-hidden">
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0 mb-2">
                 <div>
-                    <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Settings</h1>
+                    <h1 className="text-xl sm:text-2xl font-extrabold text-[#800000] tracking-tight">Settings</h1>
                     <p className="text-slate-500 mt-1 text-sm">Manage system users, teams, and access permissions.</p>
                 </div>
 
@@ -872,12 +952,17 @@ const Settings = () => {
                         <div className="flex gap-2 w-full sm:w-auto">
                             {(currentUser?.role === 'admin' || currentUser?.role === 'Admin') && (
                                 <button
-                                    onClick={handleOpenLeaveModal}
-                                    className="flex-1 sm:flex-none items-center justify-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm font-medium flex"
+                                    onClick={handleFetchNewJoini}
+                                    className="relative flex-1 sm:flex-none items-center justify-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm font-medium flex"
                                 >
-                                    <Calendar size={20} />
-                                    <span className="hidden sm:inline">Add Leave</span>
-                                    <span className="sm:hidden">Leave</span>
+                                    <User size={20} />
+                                    <span className="hidden sm:inline">New Joini</span>
+                                    <span className="sm:hidden">Joini</span>
+                                    {joiniList.length > 0 && (
+                                        <span className="absolute -top-2 -right-2 bg-white text-red-600 text-[10px] sm:text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full shadow border border-red-100">
+                                            {joiniList.length}
+                                        </span>
+                                    )}
                                 </button>
                             )}
                             <button
@@ -1962,6 +2047,67 @@ const Settings = () => {
                     </div >
                 )
             }
+
+            {/* New Joini List Modal */}
+            {isJoiniListModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center sm:p-4">
+                    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsJoiniListModalOpen(false)}></div>
+                    <div className="relative bg-white sm:rounded-2xl shadow-xl w-full sm:max-w-4xl h-full sm:h-auto sm:max-h-[85vh] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+                        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-100 bg-white sticky top-0 z-10 shrink-0">
+                            <h2 className="text-lg sm:text-xl font-bold text-slate-800 flex items-center gap-2">
+                                <User className="text-[#991B1B]" size={24} /> New Joini Applications
+                            </h2>
+                            <button onClick={() => setIsJoiniListModalOpen(false)} className="p-2 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="p-4 sm:p-6 overflow-y-auto custom-scrollbar flex-1 bg-slate-50/50">
+                            {joiniList.length === 0 ? (
+                                <div className="py-12 text-center flex flex-col items-center justify-center text-slate-400">
+                                    <User size={48} className="mb-4 text-slate-200 opacity-50" />
+                                    <p className="text-lg font-medium text-slate-500">No Applications Found</p>
+                                </div>
+                            ) : (
+                                <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
+                                    {joiniList.map(joini => (
+                                        <div key={joini.id || joini.emp_id || Math.random()} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-all duration-200 hover:border-indigo-200">
+                                            <div className="flex justify-between items-start mb-3">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-12 h-12 rounded-full bg-slate-100 overflow-hidden border border-slate-200 flex items-center justify-center shrink-0">
+                                                        {joini.passport_photo_url ? (
+                                                            <img src={joini.passport_photo_url} alt="" className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <User className="text-slate-400" />
+                                                        )}
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <h3 className="font-bold text-slate-800 truncate">{joini.name_as_per_aadhar || 'Unknown'}</h3>
+                                                        <p className="text-xs text-slate-500 truncate">{joini.emp_id} • {joini.designation}</p>
+                                                    </div>
+                                                </div>
+                                                <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded shrink-0">
+                                                    {new Date(joini.created_at).toLocaleDateString()}
+                                                </span>
+                                            </div>
+                                            <div className="space-y-1.5 mb-4 text-xs text-slate-600">
+                                                <p className="flex items-center gap-2"><Briefcase size={14} className="text-slate-400" /> <span className="font-medium text-slate-700">Department:</span> {joini.department}</p>
+                                                <p className="flex items-center gap-2"><Phone size={14} className="text-slate-400" /> <span className="font-medium text-slate-700">Phone:</span> {joini.mobile_no}</p>
+                                                <p className="flex items-center gap-2"><Mail size={14} className="text-slate-400" /> <span className="font-medium text-slate-700">Email:</span> <span className="truncate">{joini.personal_email || 'N/A'}</span></p>
+                                            </div>
+                                            <button
+                                                onClick={() => handleProcessJoini(joini)}
+                                                className="w-full bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white transition-colors py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 border border-indigo-100 hover:border-indigo-600"
+                                            >
+                                                <Check size={16} /> Process & Add User
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Leave Request Modal */}
             {isLeaveModalOpen && (

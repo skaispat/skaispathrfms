@@ -300,7 +300,7 @@ const TotalLeaveDetails = () => {
     <div className="p-3 md:p-6 min-h-screen bg-white">
       {/* Header */}
       <div className="flex flex-col gap-4 mb-6">
-        <h1 className="text-xl font-bold text-black flex items-center gap-2">
+        <h1 className="text-xl sm:text-2xl font-extrabold text-[#800000] tracking-tight flex items-center gap-2">
           <Calendar size={20} className="text-red-600" />
           Total Leave Details
         </h1>

@@ -152,7 +152,7 @@ const MySalary = () => {
     <div className="h-full flex flex-col gap-6 overflow-auto p-6 custom-scrollbar">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between shrink-0">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">My Salary</h1>
+          <h1 className="text-xl sm:text-2xl font-extrabold text-[#800000] tracking-tight">My Salary</h1>
           <p className="text-slate-500 mt-1 text-sm">Overview of your earnings, deductions, and monthly salary details</p>
         </div>
         <div>

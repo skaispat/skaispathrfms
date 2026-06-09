@@ -2381,7 +2381,7 @@ const LeaveManagement = () => {
       {/* Header */}
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center shrink-0">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl text-slate-900">
+          <h1 className="text-xl sm:text-2xl font-extrabold text-[#800000] tracking-tight">
             Leave Management
           </h1>
           <p className="mt-1 text-sm text-slate-500">

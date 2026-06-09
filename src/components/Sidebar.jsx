@@ -398,8 +398,8 @@ const Sidebar = ({ onClose }) => {
   const MASTER_MENU_ITEMS = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard', id: '/' },
     { path: '/job-vacancy', icon: FileText, label: 'Job Vacancy', id: 'indent' },
-    { path: '/employee_enquiry', icon: Search, label: 'Employee Enquiry', id: 'find-enquiry' },
-    { path: '/call-tracker', icon: Phone, label: 'Enquiry Status', id: 'call-tracker' },
+    { path: '/employee_enquiry', icon: Search, label: 'Job Applications', id: 'find-enquiry' },
+    // { path: '/call-tracker', icon: Phone, label: 'Enquiry Status', id: 'call-tracker' },
     { path: '/joining', icon: NotebookPen, label: 'Employee Joining', id: 'joining' },
     { path: '/after-joining-work', icon: UserCheck, label: 'After Joining Work', id: 'after-joining-work' },
     { path: '/leaving', icon: UserX, label: 'Employee Leaving', id: 'leaving' },

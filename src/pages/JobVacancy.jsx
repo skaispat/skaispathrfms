@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, X, Search, ChevronLeft, ChevronRight, ArrowUpDown, Edit, Trash2 } from 'lucide-react';
+import { Plus, X, Search, ChevronLeft, ChevronRight, ArrowUpDown, Edit, Trash2, CheckCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../supabaseClient';
 
@@ -13,12 +13,13 @@ const JobVacancy = () => {
     prefer: '',
     numberOfPost: '',
     competitionDate: '',
-    socialSite: '',
     indentNumber: '',
     timestamp: '',
     experience: '',
-    socialSiteTypes: [],
+    skills: [],
+    status: '',
   });
+  const [currentSkill, setCurrentSkill] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [indentData, setIndentData] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -27,6 +28,7 @@ const JobVacancy = () => {
 
   // Search, Sort, Pagination State
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeTab, setActiveTab] = useState('open');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
   const [sortConfig, setSortConfig] = useState({ key: 'timestamp', direction: 'desc' });
@@ -35,9 +37,11 @@ const JobVacancy = () => {
   const filteredAndSortedData = useMemo(() => {
     let data = indentData.filter(item => {
       const term = searchTerm.toLowerCase();
-      return ['post', 'indentNumber', 'department', 'prefer'].some(key =>
+      const matchesSearch = ['post', 'indentNumber', 'department', 'prefer'].some(key =>
         (item[key]?.toLowerCase() || '').includes(term)
       );
+      const matchesTab = activeTab === 'open' ? item.status !== 'Completed' : item.status === 'Completed';
+      return matchesSearch && matchesTab;
     });
 
     if (sortConfig.key) {
@@ -48,7 +52,7 @@ const JobVacancy = () => {
       });
     }
     return data;
-  }, [indentData, searchTerm, sortConfig]);
+  }, [indentData, searchTerm, sortConfig, activeTab]);
 
   // Pagination Logic
   const totalPages = Math.ceil(filteredAndSortedData.length / itemsPerPage);
@@ -64,9 +68,6 @@ const JobVacancy = () => {
   };
 
   const paginate = (pageNumber) => setCurrentPage(pageNumber);
-
-  // Social site options
-  const socialSiteOptions = ['Instagram', 'Facebook', 'LinkedIn', 'Referral', 'Job Consultancy'];
 
   useEffect(() => {
     const loadData = async () => {
@@ -100,9 +101,10 @@ const JobVacancy = () => {
         prefer: item.prefer,
         noOfPost: item.number_of_posts,
         completionDate: item.completion_date,
-        socialSite: item.social_site,
         experience: item.experience,
-        socialSiteTypes: item.social_site_types
+        status: item.status,
+        createdAt: item.created_at || item.timestamp,
+        skills: item.skill_required ? item.skill_required.split(',').map(s => s.trim()).filter(Boolean) : []
       }));
       setIndentData(processedData);
       return { success: true, data: processedData };
@@ -114,11 +116,20 @@ const JobVacancy = () => {
 
   const handleInputChange = (e) => setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
 
-  const handleSocialSiteTypeChange = (e) => {
-    const { value, checked } = e.target;
+  const handleAddSkill = () => {
+    if (currentSkill.trim() && !formData.skills.includes(currentSkill.trim())) {
+      setFormData(prev => ({
+        ...prev,
+        skills: [...prev.skills, currentSkill.trim()]
+      }));
+      setCurrentSkill('');
+    }
+  };
+
+  const handleRemoveSkill = (skillToRemove) => {
     setFormData(prev => ({
       ...prev,
-      socialSiteTypes: checked ? [...prev.socialSiteTypes, value] : prev.socialSiteTypes.filter(type => type !== value)
+      skills: prev.skills.filter(skill => skill !== skillToRemove)
     }));
   };
 
@@ -131,13 +142,34 @@ const JobVacancy = () => {
       prefer: item.prefer,
       numberOfPost: item.noOfPost,
       competitionDate: item.completionDate,
-      socialSite: item.socialSite,
       indentNumber: item.indentNumber,
       timestamp: item.timestamp,
       experience: item.experience || '',
-      socialSiteTypes: item.socialSiteTypes ? item.socialSiteTypes.split(', ').map(s => s.trim()) : [],
+      skills: item.skills || [],
+      status: item.status || 'NeedMore',
     });
+    setCurrentSkill('');
     setShowModal(true);
+  };
+
+  const handleComplete = async (id) => {
+    if (!window.confirm('Are you sure you want to mark this requirement as completed?')) return;
+
+    try {
+      setLoading(true);
+      const { error } = await supabase.from('job_vacancy').update({ status: 'Completed' }).eq('id', id);
+
+      if (error) {
+        toast.error('Failed to complete: ' + error.message);
+      } else {
+        toast.success('Requirement marked as completed!');
+        await fetchIndentDataFromSupabase();
+      }
+    } catch (error) {
+      toast.error('Something went wrong');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDelete = async (id) => {
@@ -162,9 +194,8 @@ const JobVacancy = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.post || !formData.gender || !formData.numberOfPost || !formData.competitionDate || !formData.socialSite ||
-      (formData.prefer === 'Experience' && !formData.experience) ||
-      (formData.socialSite === 'Yes' && formData.socialSiteTypes.length === 0)) {
+    if (!formData.post || !formData.gender || !formData.numberOfPost || !formData.competitionDate ||
+      (formData.prefer === 'Experience' && !formData.experience)) {
       toast.error('Please fill all required fields');
       return;
     }
@@ -174,9 +205,9 @@ const JobVacancy = () => {
       const payload = {
         post: formData.post, gender: formData.gender, prefer: formData.prefer,
         number_of_posts: parseInt(formData.numberOfPost), completion_date: formData.competitionDate,
-        social_site: formData.socialSite, department: formData.department, status: 'NeedMore',
+        department: formData.department, status: 'NeedMore',
         experience: formData.prefer === 'Experience' ? formData.experience : null,
-        social_site_types: formData.socialSite === 'Yes' ? formData.socialSiteTypes.join(', ') : null,
+        skill_required: formData.skills.length > 0 ? formData.skills.join(', ') : null,
       };
 
       const query = editingId
@@ -190,9 +221,10 @@ const JobVacancy = () => {
 
       setFormData({
         post: '', gender: '', department: '', prefer: '', numberOfPost: '',
-        competitionDate: '', socialSite: '', indentNumber: '', timestamp: '',
-        experience: '', socialSiteTypes: [],
+        competitionDate: '', indentNumber: '', timestamp: '',
+        experience: '', skills: [], status: '',
       });
+      setCurrentSkill('');
       setShowModal(false);
       setEditingId(null);
       setTableLoading(true);
@@ -206,14 +238,22 @@ const JobVacancy = () => {
   };
 
   const handleCancel = () => {
-    setFormData({ post: '', gender: '', department: '', prefer: '', numberOfPost: '', competitionDate: '', socialSite: '', indentNumber: '', timestamp: '', experience: '', socialSiteTypes: [] });
+    setFormData({ post: '', gender: '', department: '', prefer: '', numberOfPost: '', competitionDate: '', indentNumber: '', timestamp: '', experience: '', skills: [], status: '' });
+    setCurrentSkill('');
     setShowModal(false); setEditingId(null);
   };
+
+  const openCount = useMemo(() => indentData.filter(item => item.status !== 'Completed').length, [indentData]);
+  const closedCount = useMemo(() => indentData.filter(item => item.status === 'Completed').length, [indentData]);
+
   return (
-    <div className="p-3 sm:p-4 md:p-6 w-full space-y-4 sm:space-y-6 font-sans bg-slate-50/30 h-[calc(100vh-0rem)] flex flex-col">
+    <div className="h-[calc(100vh-11rem)] sm:h-full flex flex-col gap-4 sm:gap-6 overflow-hidden">
       {/* Header */}
       <div className="shrink-0 flex items-center justify-between gap-4">
-        <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight truncate">Job Vacancy</h1>
+        <div>
+          <h1 className="text-xl sm:text-2xl font-extrabold text-[#800000] tracking-tight truncate">Job Vacancy</h1>
+          <p className="text-slate-500 mt-1 text-sm">Manage open positions and recruitment needs</p>
+        </div>
         <button
           onClick={() => setShowModal(true)}
           className="inline-flex items-center justify-center px-3 py-2 sm:px-4 border border-transparent rounded-xl shadow-md text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-all duration-200 shrink-0"
@@ -247,125 +287,259 @@ const JobVacancy = () => {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={18} />
           </div>
         </div>
+        <div className="flex gap-2 bg-slate-100 p-1 rounded-lg self-start md:self-auto shrink-0">
+          <button
+            onClick={() => { setActiveTab('open'); setCurrentPage(1); }}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-2 ${activeTab === 'open' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+          >
+            Open Jobs
+            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${activeTab === 'open' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-500'}`}>{openCount}</span>
+          </button>
+          <button
+            onClick={() => { setActiveTab('closed'); setCurrentPage(1); }}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-2 ${activeTab === 'closed' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+          >
+            Closed Jobs
+            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${activeTab === 'closed' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-500'}`}>{closedCount}</span>
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 bg-white rounded-xl sm:rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px] max-w-full">
         {/* Table Area */}
         <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar relative">
-          <table className="min-w-full divide-y divide-slate-200">
-            <thead className="bg-slate-50 sticky top-0 z-10">
-              <tr>
-                {[
-                  { key: 'indentNumber', label: 'Indent Number' },
-                  { key: 'post', label: 'Post' },
-                  { key: 'gender', label: 'Gender' },
-                  { key: 'department', label: 'Department' },
-                  { key: 'prefer', label: 'Prefer' },
-                  { key: 'experience', label: 'Experience' },
-                  { key: 'noOfPost', label: 'No. of Post' },
-                  { key: 'completionDate', label: 'Completion Date' },
-                  { key: 'socialSite', label: 'Social Site' },
-                ].map((header) => (
-                  <th
-                    key={header.key}
-                    onClick={() => handleSort(header.key)}
-                    className="px-4 py-3 sm:px-6 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors group"
-                  >
-                    <div className="flex items-center gap-1">
-                      {header.label}
-                      <ArrowUpDown size={12} className={`text-slate-400 group-hover:text-indigo-600 ${sortConfig.key === header.key ? 'text-indigo-600' : ''}`} />
-                    </div>
+          <div className="hidden md:block">
+            <table className="min-w-full divide-y divide-slate-200">
+              <thead className="bg-slate-50 sticky top-0 z-10">
+                <tr>
+                  <th className="px-4 py-3 sm:px-6 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Complete
                   </th>
-                ))}
-                <th className="px-4 py-3 sm:px-6 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                  Social Types
-                </th>
-                <th className="px-4 py-3 sm:px-6 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider sticky right-0 bg-slate-50 shadow-[-4px_0_10px_-2px_rgba(0,0,0,0.05)] z-20">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 bg-white">
-              {tableLoading ? (
-                <tr>
-                  <td colSpan="11" className="px-6 py-12 text-center">
-                    <div className="flex justify-center flex-col items-center">
-                      <div className="w-6 h-6 border-4 border-indigo-500 border-dashed rounded-full animate-spin mb-2"></div>
-                      <span className="text-slate-500 text-sm">Loading indent data...</span>
-                    </div>
-                  </td>
-                </tr>
-              ) : indentData.length === 0 ? (
-                <tr>
-                  <td colSpan="11" className="px-6 py-12 text-center">
-                    <p className="text-slate-500">No indent data found.</p>
-                  </td>
-                </tr>
-              ) : (
-                currentItems.map((item, index) => (
-                  <tr key={index} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm font-medium text-slate-900">
-                      {item.indentNumber}
-                    </td>
-                    <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-600">
-                      {item.post}
-                    </td>
-                    <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-600">
-                      {item.gender}
-                    </td>
-                    <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-600">
-                      {item.department}
-                    </td>
-                    <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-600">
-                      {item.prefer || "Any"}
-                    </td>
-                    <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-600">
-                      {item.experience || "-"}
-                    </td>
-                    <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-600">
-                      {item.noOfPost}
-                    </td>
-                    <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-600">
-                      <div className="break-words">
-                        {(() => {
-                          const d = item.completionDate ? new Date(item.completionDate) : null;
-                          if (!d || isNaN(d.getTime())) return "—";
-                          return (
-                            <div>
-                              <div className="font-medium">{d.toLocaleDateString('en-GB')}</div>
-                              <div className="text-xs text-slate-400">{d.toLocaleTimeString('en-GB')}</div>
-                            </div>
-                          );
-                        })()}
+                  {[
+                    { key: 'post', label: 'Post' },
+                    { key: 'gender', label: 'Gender' },
+                    { key: 'department', label: 'Department' },
+                    { key: 'prefer', label: 'Prefer' },
+                    { key: 'experience', label: 'Experience' },
+                    { key: 'noOfPost', label: 'No. of Post' },
+                    { key: 'createdAt', label: 'Posted Date' },
+                    { key: 'completionDate', label: 'Completion Date' },
+                    { key: 'status', label: 'Status' },
+                  ].map((header) => (
+                    <th
+                      key={header.key}
+                      onClick={() => handleSort(header.key)}
+                      className="px-4 py-3 sm:px-6 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors group"
+                    >
+                      <div className="flex items-center gap-1">
+                        {header.label}
+                        <ArrowUpDown size={12} className={`text-slate-400 group-hover:text-indigo-600 ${sortConfig.key === header.key ? 'text-indigo-600' : ''}`} />
                       </div>
-                    </td>
-                    <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-600">
-                      {item.socialSite}
-                    </td>
-                    <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-600">
-                      {item.socialSiteTypes}
-                    </td>
-                    <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-right text-sm font-medium sticky right-0 bg-white group-hover:bg-slate-50 shadow-[-4px_0_10px_-2px_rgba(0,0,0,0.05)] z-10 transition-colors">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          onClick={() => handleEdit(item)}
-                          className="text-indigo-600 hover:text-indigo-900 bg-indigo-50 p-2 rounded-lg hover:bg-indigo-100 transition-colors"
-                        >
-                          <Edit size={16} />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(item.id)}
-                          className="text-red-600 hover:text-red-900 bg-red-50 p-2 rounded-lg hover:bg-red-100 transition-colors"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                    </th>
+                  ))}
+                  <th className="px-4 py-3 sm:px-6 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Skills Required
+                  </th>
+                  <th className="px-4 py-3 sm:px-6 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider sticky right-0 bg-slate-50 shadow-[-4px_0_10px_-2px_rgba(0,0,0,0.05)] z-20">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 bg-white">
+                {tableLoading ? (
+                  <tr>
+                    <td colSpan="11" className="px-6 py-12 text-center">
+                      <div className="flex justify-center flex-col items-center">
+                        <div className="w-6 h-6 border-4 border-indigo-500 border-dashed rounded-full animate-spin mb-2"></div>
+                        <span className="text-slate-500 text-sm">Loading indent data...</span>
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : indentData.length === 0 ? (
+                  <tr>
+                    <td colSpan="11" className="px-6 py-12 text-center">
+                      <p className="text-slate-500">No indent data found.</p>
+                    </td>
+                  </tr>
+                ) : (
+                  currentItems.map((item, index) => (
+                    <tr key={index} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-center text-sm">
+                        {item.status !== 'Completed' ? (
+                          <button
+                            onClick={() => handleComplete(item.id)}
+                            className="text-red-700 bg-red-50 px-3 py-1.5 rounded-lg hover:bg-red-100 transition-colors font-medium flex items-center gap-1.5 mx-auto"
+                          >
+                            <CheckCircle size={16} />
+                            Close Position
+                          </button>
+                        ) : (
+                          <span className="text-green-600 bg-green-50 px-3 py-1.5 rounded-lg font-medium flex items-center justify-center gap-1.5 opacity-80 mx-auto cursor-default">
+                            <CheckCircle size={16} />
+                            Completed
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-600">
+                        {item.post}
+                      </td>
+                      <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-600">
+                        {item.gender}
+                      </td>
+                      <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-600">
+                        {item.department}
+                      </td>
+                      <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-600">
+                        {item.prefer || "Any"}
+                      </td>
+                      <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-600">
+                        {item.experience || "-"}
+                      </td>
+                      <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-600">
+                        {item.noOfPost}
+                      </td>
+                      <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-600">
+                        <div className="break-words">
+                          {(() => {
+                            const d = item.createdAt ? new Date(item.createdAt) : null;
+                            if (!d || isNaN(d.getTime())) return "—";
+                            return (
+                              <div>
+                                <div className="font-medium">{d.toLocaleDateString('en-GB')}</div>
+                                <div className="text-xs text-slate-400">{d.toLocaleTimeString('en-GB')}</div>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-600">
+                        <div className="break-words">
+                          {(() => {
+                            const d = item.completionDate ? new Date(item.completionDate) : null;
+                            if (!d || isNaN(d.getTime())) return "—";
+                            return (
+                              <div>
+                                <div className="font-medium">{d.toLocaleDateString('en-GB')}</div>
+                                <div className="text-xs text-slate-400">{d.toLocaleTimeString('en-GB')}</div>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${item.status === 'Completed' ? 'bg-slate-100 text-slate-800' : 'bg-amber-100 text-amber-800'}`}>
+                          {item.status === 'Completed' ? 'Closed' : 'Open'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 sm:px-6 sm:py-4 text-sm text-slate-600">
+                        <div className="flex flex-wrap gap-1">
+                          {item.skills?.length > 0 ? (
+                            item.skills.map((skill, i) => (
+                              <span key={i} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
+                                {skill}
+                              </span>
+                            ))
+                          ) : (
+                            "-"
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-right text-sm font-medium sticky right-0 bg-white group-hover:bg-slate-50 shadow-[-4px_0_10px_-2px_rgba(0,0,0,0.05)] z-10 transition-colors">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => handleEdit(item)}
+                            disabled={item.status === 'Completed'}
+                            className={`p-2 rounded-lg transition-colors ${item.status === 'Completed' ? 'text-slate-400 bg-slate-100 cursor-not-allowed' : 'text-indigo-600 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100'}`}
+                          >
+                            <Edit size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(item.id)}
+                            disabled={item.status === 'Completed'}
+                            className={`p-2 rounded-lg transition-colors ${item.status === 'Completed' ? 'text-slate-400 bg-slate-100 cursor-not-allowed' : 'text-red-600 hover:text-red-900 bg-red-50 hover:bg-red-100'}`}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile Cards */}
+          <div className="md:hidden flex flex-col p-3 gap-3 bg-slate-50/50">
+            {tableLoading ? (
+              <div className="py-12 flex justify-center flex-col items-center">
+                <div className="w-6 h-6 border-4 border-indigo-500 border-dashed rounded-full animate-spin mb-2"></div>
+                <span className="text-slate-500 text-sm">Loading indent data...</span>
+              </div>
+            ) : indentData.length === 0 ? (
+              <div className="py-12 text-center text-slate-500 bg-white rounded-xl border border-slate-100">
+                <p>No indent data found.</p>
+              </div>
+            ) : (
+              currentItems.map((item, index) => (
+                <div key={index} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col gap-3">
+                  <div className="flex justify-between items-start gap-2">
+                    <div>
+                      <h3 className="font-bold text-slate-800">{item.post}</h3>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Posted: {item.createdAt ? new Date(item.createdAt).toLocaleDateString('en-GB') : "—"}
+                      </p>
+                    </div>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${item.status === 'Completed' ? 'bg-slate-100 text-slate-600' : 'bg-amber-100 text-amber-800'}`}>
+                      {item.status === 'Completed' ? 'Closed' : 'Open'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-sm bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] text-slate-500 font-bold uppercase">Dept</span>
+                      <span className="font-medium text-slate-800 text-xs mt-0.5">{item.department || '-'}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[10px] text-slate-500 font-bold uppercase">Posts</span>
+                      <span className="font-medium text-slate-800 text-xs mt-0.5">{item.noOfPost} ({item.gender})</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[10px] text-slate-500 font-bold uppercase">Experience</span>
+                      <span className="font-medium text-slate-800 text-xs mt-0.5">{item.experience || '-'}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[10px] text-slate-500 font-bold uppercase">Completion</span>
+                      <span className="font-medium text-slate-800 text-xs mt-0.5">{item.completionDate ? new Date(item.completionDate).toLocaleDateString('en-GB') : '-'}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between mt-1 pt-3 border-t border-slate-100">
+                    {item.status !== 'Completed' ? (
+                      <button
+                        onClick={() => handleComplete(item.id)}
+                        className="text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center"
+                      >
+                        <CheckCircle size={14} className="mr-1.5" /> Close Position
+                      </button>
+                    ) : (
+                      <span className="text-green-600 bg-green-50 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center opacity-80 cursor-default">
+                        <CheckCircle size={14} className="mr-1.5" /> Completed
+                      </span>
+                    )}
+                    <div className="flex gap-2">
+                      <button onClick={() => handleEdit(item)} disabled={item.status === 'Completed'} className={`p-1.5 rounded-lg transition-colors ${item.status === 'Completed' ? 'text-slate-400 bg-slate-100' : 'text-indigo-600 hover:bg-indigo-50'}`}>
+                        <Edit size={16} />
+                      </button>
+                      <button onClick={() => handleDelete(item.id)} disabled={item.status === 'Completed'} className={`p-1.5 rounded-lg transition-colors ${item.status === 'Completed' ? 'text-slate-400 bg-slate-100' : 'text-red-600 hover:bg-red-50'}`}>
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
 
 
@@ -406,25 +580,22 @@ const JobVacancy = () => {
 
       {/* Modal */}
       {showModal && createPortal(
-        <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[9999] p-4 transition-all"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              handleCancel();
-            }
-          }}
-        >
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl overflow-hidden transform transition-all flex flex-col max-h-[95vh] sm:max-h-[90vh]">
-            <div className="flex justify-between items-center px-4 py-3 sm:px-6 sm:py-4 border-b border-slate-100 bg-white shrink-0">
-              <h3 className="text-lg sm:text-xl font-bold text-slate-800 tracking-tight">
-                {editingId ? 'Edit Job Vacancy' : 'Create New Job'}
-              </h3>
-              <button
-                onClick={handleCancel}
-                className="p-1.5 sm:p-2 bg-slate-50 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors"
-              >
-                <X size={18} />
-              </button>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+          <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm transition-opacity" onClick={handleCancel}></div>
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-3xl overflow-hidden animate-fade-in-up border border-gray-100 flex flex-col max-h-[95vh] sm:max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="bg-[#800000] p-4 sm:p-6 text-white shrink-0">
+              <div className="flex justify-between items-start">
+                <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight text-white mb-1">
+                  {editingId ? 'Edit Job Vacancy' : 'Create New Job'}
+                </h2>
+                <button
+                  onClick={handleCancel}
+                  className="text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full p-2 transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
             </div>
 
             <div className="overflow-y-auto p-4 sm:p-6 flex-1 custom-scrollbar">
@@ -555,51 +726,52 @@ const JobVacancy = () => {
                   </div>
                 )}
 
-                <div className="md:col-span-2">
+                <div className="md:col-span-2 animate-fade-in-up">
                   <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1.5">
-                    Social Site (सोशल साइट) <span className="text-red-500">*</span>
+                    Skills Required (आवश्यक कौशल)
                   </label>
-                  <select
-                    name="socialSite"
-                    value={formData.socialSite}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 sm:px-4 sm:py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium text-slate-800 text-sm"
-                    required
-                  >
-                    <option value="">Select</option>
-                    <option value="Yes">Yes</option>
-                    <option value="No">No</option>
-                  </select>
-                </div>
-
-                {/* Social Site Types checklist */}
-                {formData.socialSite === "Yes" && (
-                  <div className="md:col-span-2 animate-fade-in-up">
-                    <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-2">
-                      Social Site Types (सोशल साइट प्रकार) <span className="text-red-500">*</span>
-                    </label>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 border border-slate-200 rounded-xl p-4 bg-slate-50">
-                      {socialSiteOptions.map((option) => (
-                        <div key={option} className="flex items-center space-x-2">
-                          <input
-                            type="checkbox"
-                            id={option}
-                            value={option}
-                            checked={formData.socialSiteTypes.includes(option)}
-                            onChange={handleSocialSiteTypeChange}
-                            className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-slate-300 rounded cursor-pointer"
-                          />
-                          <label
-                            htmlFor={option}
-                            className="text-sm text-slate-700 cursor-pointer select-none font-medium"
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={currentSkill}
+                      onChange={(e) => setCurrentSkill(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddSkill();
+                        }
+                      }}
+                      className="flex-1 px-3 py-2 sm:px-4 sm:py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium text-slate-800 text-sm"
+                      placeholder="Enter a skill (e.g. React, Python)"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddSkill}
+                      className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-xl font-medium hover:bg-indigo-200 transition-colors flex items-center justify-center shrink-0"
+                    >
+                      <Plus size={18} className="mr-1" /> Add
+                    </button>
+                  </div>
+                  {formData.skills.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                      {formData.skills.map((skill, index) => (
+                        <div
+                          key={index}
+                          className="flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full text-sm font-medium"
+                        >
+                          {skill}
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveSkill(skill)}
+                            className="hover:bg-indigo-200 p-0.5 rounded-full transition-colors text-indigo-500 hover:text-indigo-800"
                           >
-                            {option}
-                          </label>
+                            <X size={14} />
+                          </button>
                         </div>
                       ))}
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </form>
             </div>
 

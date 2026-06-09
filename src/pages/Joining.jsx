@@ -350,7 +350,7 @@ const JoiningForm = ({ existingData, onCancel, onSuccess }) => {
             <button onClick={onCancel} className="flex items-center text-slate-500 hover:text-slate-800 transition-colors gap-1 text-sm font-medium mb-4">
               <ChevronLeft size={16} /> Back to List
             </button>
-            <h1 className="text-3xl md:text-4xl font-bold text-slate-900 tracking-tight">Employee Joining Form</h1>
+            <h1 className="text-xl sm:text-2xl font-extrabold text-[#800000] tracking-tight">Employee Joining Form</h1>
             <p className="text-slate-500 mt-3 text-lg">Verify and fill in details.</p>
           </div>
 
@@ -630,7 +630,7 @@ const Joining = () => {
     <div className="h-full flex flex-col gap-6 overflow-hidden relative">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between shrink-0">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Employee Joining Data</h1>
+          <h1 className="text-xl sm:text-2xl font-extrabold text-[#800000] tracking-tight">Employee Joining Data</h1>
           <p className="text-slate-500 mt-1 text-sm">Manage and view detailed employee joining records</p>
         </div>
       </div>
@@ -656,7 +656,7 @@ const Joining = () => {
             <thead className="bg-slate-50 sticky top-0 z-10 border-b border-slate-200">
               <tr>
                 <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs first:pl-8">Action</th>
-                <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">Joining ID</th>
+                <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">EMP ID</th>
                 <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">Candidate Name</th>
                 <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">Department</th>
                 <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">Phone</th>
@@ -684,14 +684,7 @@ const Joining = () => {
                               <Edit size={14} className="text-indigo-600 group-hover:text-indigo-700 transition-colors" />
                               <span className="text-xs font-semibold text-indigo-600 group-hover:text-indigo-700">Update</span>
                             </button>
-                            <button
-                              onClick={() => handleShare(item)}
-                              className="group flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 hover:border-indigo-200 hover:bg-indigo-50 transition-all"
-                              title="Share Update Link"
-                            >
-                              <Share2 size={14} className="text-slate-400 group-hover:text-indigo-600 transition-colors" />
-                              <span className="text-xs font-semibold text-slate-600 group-hover:text-indigo-700">Share</span>
-                            </button>
+
                           </>
                         ) : (
                           <>
@@ -703,19 +696,12 @@ const Joining = () => {
                               <Eye size={14} className="text-slate-400 group-hover:text-blue-600 transition-colors" />
                               <span className="text-xs font-semibold text-slate-600 group-hover:text-blue-700">View</span>
                             </button>
-                            <button
-                              onClick={() => handleShare(item)}
-                              className="group flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 hover:border-indigo-200 hover:bg-indigo-50 transition-all"
-                              title="Share Form Link"
-                            >
-                              <Share2 size={14} className="text-slate-400 group-hover:text-indigo-600 transition-colors" />
-                              <span className="text-xs font-semibold text-slate-600 group-hover:text-indigo-700">Share</span>
-                            </button>
+
                           </>
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4"><span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">{item.joining_id}</span></td>
+                    <td className="px-6 py-4"><span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">{item.emp_id || 'N/A'}</span></td>
                     <td className="px-6 py-4 font-semibold text-slate-900">{item.name_as_per_aadhar}</td>
                     <td className="px-6 py-4"><span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">{item.department}</span></td>
                     <td className="px-6 py-4 text-slate-600">{item.mobile_no}</td>

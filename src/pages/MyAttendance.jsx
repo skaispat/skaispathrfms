@@ -337,7 +337,7 @@ const MyAttendance = () => {
       {/* Header & Controls */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 shrink-0 pt-2 lg:pt-0">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 drop-shadow-sm">My Attendance</h1>
+          <h1 className="text-xl sm:text-2xl font-extrabold text-[#800000] tracking-tight drop-shadow-sm">My Attendance</h1>
           <p className="mt-1 text-sm text-slate-500">Track your daily swipes and productivity</p>
         </div>
 

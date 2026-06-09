@@ -31,6 +31,7 @@ import GatePassRequest from './pages/GatePassRequest';
 import GatePassApproval from './pages/gatepassApproval';
 import Settings from './pages/Settings';
 import TotalLeaveDetails from './pages/TotalLeaveDetails';
+import JoiningForm from './pages/JoiningForm';
 
 
 function App() {
@@ -40,6 +41,10 @@ function App() {
         <Toaster position="top-right" containerStyle={{ zIndex: 99999 }} />
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/home" element={<Login />} />
+          <Route path="/career" element={<Login />} />
+          <Route path="/joining-form" element={<JoiningForm />} />
+          <Route path="/joining-form/:id" element={<JoiningForm />} />
           {/* <Route path="/leave-approve/:approverId/:id" element={<ApprovalForm />} /> */}
           {/* <Route path="/gatepass-approve/:approverId/:id" element={<GatePassApproval />} /> */}
 

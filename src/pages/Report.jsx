@@ -446,7 +446,7 @@ const Report = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Reports Dashboard</h1>
+        <h1 className="text-xl sm:text-2xl font-extrabold text-[#800000] tracking-tight">Reports Dashboard</h1>
         <div className="flex items-center space-x-4">
           <button className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
             <Download size={18} className="mr-2" />

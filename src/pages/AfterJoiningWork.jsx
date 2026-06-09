@@ -546,7 +546,7 @@ const AfterJoiningWork = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">After Joining Work</h1>
+          <h1 className="text-xl sm:text-2xl font-extrabold text-[#800000] tracking-tight">After Joining Work</h1>
           <p className="text-slate-500 mt-1 text-sm">Manage onboarding tasks and employee asset assignment</p>
         </div>
       </div>

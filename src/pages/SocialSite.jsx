@@ -45,7 +45,7 @@ const SocialSite = () => {
   return (
     <div className="space-y-6 page-content p-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-800">Social Site</h1>
+        <h1 className="text-xl sm:text-2xl font-extrabold text-[#800000] tracking-tight">Social Site</h1>
       </div>
 
       {/* Filter and Search */}

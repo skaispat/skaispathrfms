@@ -313,7 +313,7 @@ const Leaving = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Employee Leaving</h1>
+          <h1 className="text-xl sm:text-2xl font-extrabold text-[#800000] tracking-tight">Employee Leaving</h1>
           <p className="text-slate-500 mt-1 text-sm">Manage employee exits and leaving history</p>
         </div>
       </div>
