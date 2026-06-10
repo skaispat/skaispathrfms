@@ -67,7 +67,21 @@ const Login = () => {
             .select('*')
             .order('id', { ascending: false });
           if (error) throw error;
-          setJobVacancies(data || []);
+
+          if (data && data.length > 0) {
+            const jobsWithCounts = await Promise.all(
+              data.map(async (job) => {
+                const { count, error: countError } = await supabase
+                  .from('job_leads')
+                  .select('*', { count: 'exact', head: true })
+                  .eq('job_id', job.id);
+                return { ...job, applicantCount: countError ? 0 : (count || 0) };
+              })
+            );
+            setJobVacancies(jobsWithCounts);
+          } else {
+            setJobVacancies([]);
+          }
         } catch (err) {
           console.error('Error fetching jobs:', err);
         } finally {
@@ -182,7 +196,7 @@ const Login = () => {
           post: selectedJob.post,
           required_experience: selectedJob.experience || 'Fresher',
           candidate_name: candidateName,
-          candidate_experience: candidateExperience,
+          candidate_experience: candidateExperience ? (candidateExperience === '0' ? 'Fresher' : `${candidateExperience} ${candidateExperience === '1' ? 'Year' : 'Years'}`) : '',
           candidate_phone: candidatePhone,
           candidate_resume: resumeUrl,
           skills: JSON.stringify(selectedSkills),
@@ -225,7 +239,7 @@ const Login = () => {
         <div className="flex flex-row items-center gap-3 flex-wrap">
           <h2 className="text-xl sm:text-3xl font-extrabold text-[#800000] tracking-tight">{selectedJob.post}</h2>
           <span className="text-[10px] sm:text-xs font-bold text-[#1d4ed8] bg-[#eff6ff] px-2.5 py-1 rounded-full w-fit whitespace-nowrap border border-[#bfdbfe]">
-            {applicantCount} {applicantCount === 1 ? 'people applied' : 'people applied'}
+            {applicantCount} {applicantCount === 1 ? 'person applied' : 'people applied'}
           </span>
         </div>
       </div>
@@ -234,11 +248,11 @@ const Login = () => {
         {/* <h4 className="text-base sm:text-lg font-bold text-gray-900 mb-3">Job Overview</h4> */}
         <div className="grid grid-cols-3 gap-2 sm:gap-4 text-xs sm:text-sm">
           <div>
-            <span className="block text-gray-500 mb-1">Experience</span>
+            <span className="block text-gray-500 mb-1">Minimum Experience</span>
             <span className="font-semibold text-gray-800">{selectedJob.experience || 'Fresher'}</span>
           </div>
           <div>
-            <span className="block text-gray-500 mb-1">Vacancies</span>
+            <span className="block text-gray-500 mb-1">Number of Posts</span>
             <span className="font-semibold text-gray-800">{selectedJob.number_of_posts || 1}</span>
           </div>
           <div>
@@ -275,8 +289,12 @@ const Login = () => {
               <input type="tel" required value={candidatePhone} onChange={e => setCandidatePhone(e.target.value)} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#800000]/20 focus:border-[#800000] transition-colors text-sm" placeholder="+91 9876543210" />
             </div>
             <div className="space-y-1.5">
-              <label className="block text-sm font-bold text-gray-700">Total Experience *</label>
-              <input type="text" required value={candidateExperience} onChange={e => setCandidateExperience(e.target.value)} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#800000]/20 focus:border-[#800000] transition-colors text-sm" placeholder="e.g. 2 Years / Fresher" />
+              <label className="block text-sm font-bold text-gray-700">Total Experience (in years) *</label>
+              <input type="text" required value={candidateExperience} onChange={e => {
+                // Only allow numbers, dots, and hyphens (for ranges like 2-5)
+                const val = e.target.value.replace(/[^0-9.-]/g, '');
+                setCandidateExperience(val);
+              }} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#800000]/20 focus:border-[#800000] transition-colors text-sm" placeholder="e.g. 2 or 2-5 (Use 0 for Fresher)" />
             </div>
             <div className="pt-4 flex justify-end sm:col-span-2">
               <button type="button" onClick={() => {
@@ -460,17 +478,23 @@ const Login = () => {
             jobVacancies.map((job) => (
               <div key={job.id} className="relative flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-6 border border-gray-200 rounded-2xl hover:shadow-lg hover:border-[#800000]/30 transition-all bg-white group">
                 <div className="mb-3 sm:mb-0 w-full sm:w-auto flex-1 min-w-0">
-                  <div className="pr-20 sm:pr-0">
-                    <div className="flex items-center gap-2 sm:gap-3">
+                  <div className="pr-24 sm:pr-0">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-1.5 sm:gap-3">
                       <h4 className="text-base sm:text-lg font-bold text-gray-900 group-hover:text-[#800000] transition-colors">{job.post}</h4>
-                      <span className={`flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold ${job.status === 'Completed' ? 'bg-slate-100 text-slate-500' : 'bg-green-100 text-green-700'}`}>
-                        {job.status === 'Completed' ? 'Closed' : 'Open'}
-                      </span>
+                      {job.status === 'Completed' ? (
+                        <span className="flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold bg-slate-100 text-slate-500 w-fit">
+                          Closed
+                        </span>
+                      ) : (
+                        <span className="flex-shrink-0 inline-flex items-center px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-bold text-[#1d4ed8] bg-[#eff6ff] border border-[#bfdbfe] w-fit">
+                          {job.applicantCount || 0} {(job.applicantCount || 0) === 1 ? 'person applied' : 'people applied'}
+                        </span>
+                      )}
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-1.5 sm:mt-2 text-xs sm:text-sm text-gray-500 font-medium">
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-2 sm:mt-2 text-xs sm:text-sm text-gray-500 font-medium">
                       <span className="flex items-center"><Briefcase size={14} className="mr-1 text-gray-400" /> {job.experience || 'Fresher'}</span>
                       <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>
-                      <span>{job.number_of_posts || 1} Post(s)</span>
+                      <span>{job.number_of_posts || 1} Post</span>
                       <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>
                       <span>Posted: {new Date(job.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                     </div>
