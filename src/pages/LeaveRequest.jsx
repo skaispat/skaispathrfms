@@ -23,7 +23,6 @@ const LeaveRequest = () => {
     earned: { total: 24, used: 0, remaining: 24 },
     unpaid: { used: 0 }
   });
-  const [hasAppliedToday, setHasAppliedToday] = useState(false);
   const [isLeaveAllowedByAdmin, setIsLeaveAllowedByAdmin] = useState(true);
   const [hodDetails, setHodDetails] = useState({ name: 'Not Assigned', id: null });
   const [hrDetails, setHrDetails] = useState({ name: 'HR Department', id: null });
@@ -164,7 +163,6 @@ const LeaveRequest = () => {
     let earnedUsed = 0;
     let unpaidUsed = 0;
     let monthlyCount = 0;
-    let appliedToday = false;
 
     history.forEach(leave => {
       const leaveDate = new Date(leave.timestamp);
@@ -172,9 +170,6 @@ const LeaveRequest = () => {
 
       if (leaveDate.getMonth() === currentMonth && leaveDate.getFullYear() === currentYear) {
         monthlyCount++;
-        if (leaveDate.getDate() === currentDate) {
-          appliedToday = true;
-        }
       }
 
       if (!hasViewData && leave.status?.toLowerCase().includes('approved') && leaveYear === currentYear) {
@@ -200,7 +195,6 @@ const LeaveRequest = () => {
     }
 
     setCurrentMonthlyCount(monthlyCount);
-    setHasAppliedToday(appliedToday);
   };
 
   const calculateDays = (startDateStr, endDateStr) => {
@@ -245,8 +239,9 @@ const LeaveRequest = () => {
       return;
     }
 
-    if (hasAppliedToday) {
-      toast.error('You have already applied for leave today.');
+    const overlappingLeave = checkOverlap(formData.fromDate, formData.toDate);
+    if (overlappingLeave) {
+      toast.error('You have already applied for leave during these dates.');
       return;
     }
 
@@ -351,31 +346,29 @@ const LeaveRequest = () => {
           <p className="mt-1 text-sm text-slate-500">View your leave balance and application status</p>
         </div>
         <button
-          onClick={() => isLeaveAllowedByAdmin && !hasAppliedToday && setShowModal(true)}
-          disabled={!isLeaveAllowedByAdmin || hasAppliedToday}
+          onClick={() => isLeaveAllowedByAdmin && setShowModal(true)}
+          disabled={!isLeaveAllowedByAdmin}
           className={`inline-flex items-center justify-center px-6 py-3 rounded-2xl shadow-lg border border-transparent text-sm font-bold text-white transition-all transform active:scale-95 focus:outline-none focus:ring-4 focus:ring-offset-2 w-full lg:w-auto
-            ${!isLeaveAllowedByAdmin || hasAppliedToday
+            ${!isLeaveAllowedByAdmin
               ? 'bg-slate-400 cursor-not-allowed shadow-none'
               : 'bg-indigo-600 hover:bg-indigo-700 hover:shadow-indigo-200 ring-indigo-500'}`}
         >
           <Plus size={18} className="mr-2" />
-          {!isLeaveAllowedByAdmin ? 'Access Disabled' : hasAppliedToday ? 'Daily Limit Reached' : 'New Leave Request'}
+          {!isLeaveAllowedByAdmin ? 'Access Disabled' : 'New Leave Request'}
         </button>
       </div>
 
-      {(!isLeaveAllowedByAdmin || hasAppliedToday) && (
+      {!isLeaveAllowedByAdmin && (
         <div className="bg-white border border-orange-100 rounded-2xl p-4 flex items-center gap-4 shrink-0 shadow-sm animate-in fade-in slide-in-from-top-4 duration-300">
           <div className="p-2.5 bg-orange-50 rounded-xl text-orange-600 border border-orange-100/50">
             <AlertCircle size={22} />
           </div>
           <div>
             <h4 className="text-sm font-black text-orange-900 uppercase tracking-wide">
-              {!isLeaveAllowedByAdmin ? 'Access Revoked' : 'Submission Locked'}
+              Access Revoked
             </h4>
             <p className="text-xs text-orange-700/80 mt-1 font-medium leading-relaxed">
-              {!isLeaveAllowedByAdmin
-                ? 'Your ability to apply for new leaves has been disabled by the administrator.'
-                : 'You have already submitted a request today. Only one request is allowed per 24 hours.'}
+              Your ability to apply for new leaves has been disabled by the administrator.
             </p>
           </div>
         </div>
@@ -407,11 +400,11 @@ const LeaveRequest = () => {
                 <div className="flex flex-col items-center justify-center w-full">
                   {type === 'earned' && balance.carriedForward > 0 ? (
                     <>
-                      <h3 className="text-base sm:text-xl font-black text-slate-900 tracking-tight truncate">
-                        {balance.actualRemaining} + {balance.carriedForward} = {balance.remaining}
+                      <h3 className="text-[11px] sm:text-xl font-black text-slate-900 tracking-tighter sm:tracking-tight whitespace-nowrap">
+                        {balance.actualRemaining} <span className="text-slate-400 font-bold">+</span> {balance.carriedForward} <span className="text-slate-400 font-bold">=</span> <span className="text-xs sm:text-2xl">{balance.remaining}</span>
                       </h3>
-                      <p className="text-[9px] sm:text-[11px] font-bold text-indigo-600 uppercase mt-0.5 tracking-wide">
-                        ({balance.carriedForward} Previous Year)
+                      <p className="text-[7.5px] sm:text-[11px] font-bold text-indigo-600 uppercase mt-0.5 tracking-tighter sm:tracking-wide whitespace-nowrap">
+                        ({balance.carriedForward} Prev Year)
                       </p>
                     </>
                   ) : (
