@@ -926,8 +926,9 @@ const LeaveManagement = () => {
     }
   };
 
-  const handleLeaveAction = async (action) => {
-    if (!selectedRow) {
+  const handleLeaveAction = async (action, item) => {
+    const targetRow = item || selectedRow;
+    if (!targetRow) {
       toast.error("Please select a leave request");
       return;
     }
@@ -939,7 +940,7 @@ const LeaveManagement = () => {
       // Determine new status and notification message
       let newStatus = "";
       let notificationMessage = "";
-      const currentStatus = selectedRow.status;
+      const currentStatus = targetRow.status;
 
       const isHod = user?.is_hod || false;
       const isHr =
@@ -978,20 +979,20 @@ const LeaveManagement = () => {
         throw new Error("Invalid status transition.");
       }
 
-      const rowRemarks = remarksInputs[selectedRow.id] || {};
-      const rowDates = editableDates[selectedRow.id] || {};
-      const rowCounts = leaveCounts[selectedRow.id] || { casual: 0, earned: 0, unpaid: 0 };
+      const rowRemarks = remarksInputs[targetRow.id] || {};
+      const rowDates = editableDates[targetRow.id] || {};
+      const rowCounts = leaveCounts[targetRow.id] || { casual: 0, earned: 0, unpaid: 0 };
 
       const updateData = {
         timestamp: new Date().toISOString(),
         leave_date_start:
-          rowDates.from && rowDates.from !== selectedRow.startDate
+          rowDates.from && rowDates.from !== targetRow.startDate
             ? rowDates.from
-            : selectedRow.startDate,
+            : targetRow.startDate,
         leave_date_end:
-          rowDates.to && rowDates.to !== selectedRow.endDate
+          rowDates.to && rowDates.to !== targetRow.endDate
             ? rowDates.to
-            : selectedRow.endDate,
+            : targetRow.endDate,
         status: newStatus,
         casual: newStatus === "Rejected" ? 0 : rowCounts.casual,
         earned: newStatus === "Rejected" ? 0 : rowCounts.earned,
@@ -1012,7 +1013,7 @@ const LeaveManagement = () => {
       const { error: updateError } = await supabase
         .from("leave_management")
         .update(updateData)
-        .eq("id", selectedRow.id);
+        .eq("id", targetRow.id);
 
       if (updateError) throw new Error(updateError.message);
 
@@ -1037,13 +1038,13 @@ const LeaveManagement = () => {
       await supabase
         .from("logs")
         .update(logUpdate)
-        .eq("request_id", selectedRow.id)
+        .eq("request_id", targetRow.id)
         .eq("request_type", "Leave");
 
       // Update yearly_quota when leave is approved
       if (newStatus === "Approved") {
         const currentYear = getFiscalYear();
-        const employeeId = selectedRow.employeeId;
+        const employeeId = targetRow.employeeId;
         const updates = [
           { type: "Casual", count: rowCounts.casual, column: "casual_leave_used" },
           { type: "Earned", count: rowCounts.earned, column: "earned_leave_used" },
@@ -1074,7 +1075,7 @@ const LeaveManagement = () => {
                   cfUsed = carriedForward;
                 }
                 // Save consumption to the request record
-                await supabase.from("leave_management").update({ cf_el_used: cfUsed }).eq("id", selectedRow.id);
+                await supabase.from("leave_management").update({ cf_el_used: cfUsed }).eq("id", targetRow.id);
               } else {
                 updatePayload[column] = (existingQuota[column] || 0) + count;
               }
@@ -1100,43 +1101,43 @@ const LeaveManagement = () => {
         }
       }
 
-      toast.success(`Leave ${notificationMessage} for ${selectedRow.employeeName || "employee"}`);
+      toast.success(`Leave ${notificationMessage} for ${targetRow.employeeName || "employee"}`);
 
       // WhatsApp
       (async () => {
         try {
-          const leaveDays = calculateDays(editableDates.from || selectedRow.startDate, editableDates.to || selectedRow.endDate);
+          const leaveDays = calculateDays(editableDates.from || targetRow.startDate, editableDates.to || targetRow.endDate);
           const mdNumber = import.meta.env.VITE_MD_MOBILE_NUMBER;
           const specialEmpIds = ["1", "175", "53", "219", "3", "233", "245", "341", "16", "294", "217", "152", "527", "501", "235", "504", "180", "321", "519", "242", "246", "518"];
 
           if (newStatus === "Pending HR") {
             await sendWhatsappMessageToHr({
-              employeId: selectedRow.employeeId, empId: selectedRow.employeeId, tableid: selectedRow.id,
-              employeeName: selectedRow.employeeName, leaveType: selectedRow.leaveType,
-              fromDate: formatDate(editableDates.from || selectedRow.startDate),
-              toDate: formatDate(editableDates.to || selectedRow.endDate),
-              totalDays: leaveDays, reason: selectedRow.reason,
+              employeId: targetRow.employeeId, empId: targetRow.employeeId, tableid: targetRow.id,
+              employeeName: targetRow.employeeName, leaveType: targetRow.leaveType,
+              fromDate: formatDate(editableDates.from || targetRow.startDate),
+              toDate: formatDate(editableDates.to || targetRow.endDate),
+              totalDays: leaveDays, reason: targetRow.reason,
             });
           } else if (newStatus === "Approved") {
             await sendApprovedMessageToEmployee({
-              employeePhone: selectedRow.employeePhone, employeeName: selectedRow.employeeName, leaveType: selectedRow.leaveType,
-              fromDate: formatDate(editableDates.from || selectedRow.startDate),
-              toDate: formatDate(editableDates.to || selectedRow.endDate),
-              totalDays: leaveDays, reason: selectedRow.reason,
+              employeePhone: targetRow.employeePhone, employeeName: targetRow.employeeName, leaveType: targetRow.leaveType,
+              fromDate: formatDate(editableDates.from || targetRow.startDate),
+              toDate: formatDate(editableDates.to || targetRow.endDate),
+              totalDays: leaveDays, reason: targetRow.reason,
             });
-            if (specialEmpIds.includes(String(selectedRow.employeeId))) {
+            if (specialEmpIds.includes(String(targetRow.employeeId))) {
               await sendApprovedMessageToEmployee({
-                employeePhone: mdNumber, employeeName: `${selectedRow.employeeName} (ID: ${selectedRow.employeeId})`,
-                leaveType: selectedRow.leaveType, fromDate: formatDate(editableDates.from || selectedRow.startDate),
-                toDate: formatDate(editableDates.to || selectedRow.endDate),
-                totalDays: leaveDays, reason: selectedRow.reason,
+                employeePhone: mdNumber, employeeName: `${targetRow.employeeName} (ID: ${targetRow.employeeId})`,
+                leaveType: targetRow.leaveType, fromDate: formatDate(editableDates.from || targetRow.startDate),
+                toDate: formatDate(editableDates.to || targetRow.endDate),
+                totalDays: leaveDays, reason: targetRow.reason,
               });
             }
           } else if (newStatus === "Rejected") {
             await sendRejectedMessageToEmployee({
-              employeePhone: selectedRow.employeePhone, employeeName: selectedRow.employeeName, leaveType: selectedRow.leaveType,
-              fromDate: formatDate(editableDates.from || selectedRow.startDate),
-              toDate: formatDate(editableDates.to || selectedRow.endDate),
+              employeePhone: targetRow.employeePhone, employeeName: targetRow.employeeName, leaveType: targetRow.leaveType,
+              fromDate: formatDate(editableDates.from || targetRow.startDate),
+              toDate: formatDate(editableDates.to || targetRow.endDate),
               totalDays: leaveDays, hrRemarks: rowRemarks.hr || rowRemarks.hod || "Decision by management",
             });
           }
@@ -1144,7 +1145,7 @@ const LeaveManagement = () => {
       })();
 
       fetchLeaveData();
-      setSelectedRow(null);
+      if (!item) setSelectedRow(null); // only clear selectedRow if we were using it
       setEditableDates({ from: "", to: "" });
     } catch (error) {
       console.error("Update error:", error);
@@ -1328,6 +1329,135 @@ const LeaveManagement = () => {
       toast.success(`Successfully approved ${successCount} leave requests`);
     } else {
       toast.error(`Approved ${successCount} requests, but ${failCount} failed`);
+    }
+  };
+
+  const handleRejectAll = async () => {
+    if (selectedIds.length === 0) {
+      toast.error("Please select at least one leave request");
+      return;
+    }
+
+    const pendingLeavesToReject = leaves.filter(leaf =>
+      selectedIds.includes(leaf.id) &&
+      (leaf.status === "Pending" || leaf.status === "Pending HOD" || leaf.status === "Pending HR")
+    );
+
+    if (pendingLeavesToReject.length === 0) {
+      toast.error("No valid pending leaves selected for rejection");
+      return;
+    }
+
+    setBulkLoading(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const row of pendingLeavesToReject) {
+      try {
+        let newStatus = "Rejected";
+        let notificationMessage = "";
+        const currentStatus = row.status;
+
+        const isHodUser = user?.is_hod || false;
+        const isHrUser =
+          user?.role === "hr" ||
+          user?.role === "HR" ||
+          user?.role === "admin" ||
+          user?.role === "Admin" ||
+          user?.Admin === "Yes";
+
+        // Determine transition
+        if (currentStatus === "Pending" || currentStatus === "Pending HOD") {
+          if (isHodUser || isHrUser) {
+            notificationMessage = "Rejected by HOD";
+          } else continue;
+        } else if (currentStatus === "Pending HR") {
+          if (isHrUser) {
+            notificationMessage = "Rejected by HR";
+          } else continue;
+        } else continue;
+
+        // Use edited values if available, otherwise original values
+        const rowRemarks = remarksInputs[row.id] || {};
+        const rowDates = editableDates[row.id] || {};
+
+        const updateData = {
+          timestamp: new Date().toISOString(),
+          leave_date_start: rowDates.from || row.startDate,
+          leave_date_end: rowDates.to || row.endDate,
+          status: newStatus,
+          casual: 0,
+          earned: 0,
+          unpaid: 0,
+          hod_id: isHodUser ? user.emp_id : row.hodId,
+          hod_name: isHodUser ? (user.full_name || user.Name) : row.hodName,
+          ...(isHodUser && {
+            hod_remarks: rowRemarks.hod || "",
+          }),
+          ...(isHrUser && {
+            hr_id: user.emp_id,
+            hr_name: user.full_name || user.Name,
+            hr_remarks: rowRemarks.hr || "",
+          }),
+        };
+
+        const { error: updateError } = await supabase
+          .from("leave_management")
+          .update(updateData)
+          .eq("id", row.id);
+
+        if (updateError) throw updateError;
+
+        // Log
+        const logUpdate = {
+          status: newStatus,
+          ...(isHodUser && {
+            hod_name: user.full_name || user.Name,
+            hod_id: user.emp_id,
+            hod_action: "Rejected",
+            hod_approval_time: new Date().toISOString(),
+            hod_remarks: rowRemarks.hod || "",
+          }),
+          ...(isHrUser && {
+            hr_name: user.full_name || user.Name,
+            hr_id: user.emp_id,
+            hr_action: "Rejected",
+            hr_approval_time: new Date().toISOString(),
+            hr_remarks: rowRemarks.hr || "",
+          }),
+        };
+        await supabase
+          .from("logs")
+          .update(logUpdate)
+          .eq("request_id", row.id)
+          .eq("request_type", "Leave");
+
+        // WhatsApp
+        try {
+          await sendRejectedMessageToEmployee({
+            employeePhone: row.employeePhone, employeeName: row.employeeName, leaveType: row.leaveType,
+            fromDate: formatDate(rowDates.from || row.startDate),
+            toDate: formatDate(rowDates.to || row.endDate),
+            totalDays: calculateDays(rowDates.from || row.startDate, rowDates.to || row.endDate),
+            hrRemarks: rowRemarks.hr || rowRemarks.hod || "Decision by management",
+          });
+        } catch (waE) { console.error("WA Error:", waE); }
+
+        successCount++;
+      } catch (err) {
+        console.error("Bulk Item Error:", err);
+        failCount++;
+      }
+    }
+
+    setBulkLoading(false);
+    setSelectedIds([]);
+    fetchLeaveData();
+
+    if (failCount === 0) {
+      toast.success(`Successfully rejected ${successCount} leave requests`);
+    } else {
+      toast.error(`Rejected ${successCount} requests, but ${failCount} failed`);
     }
   };
 
@@ -1868,17 +1998,16 @@ const LeaveManagement = () => {
                         item.status === "Pending HOD")) ? (
                     <>
                       <button
-                        onClick={() => handleLeaveAction("accept")}
+                        onClick={() => handleLeaveAction("accept", item)}
                         disabled={
-                          !selectedRow || selectedRow.id !== item.id || loading
+                          !selectedIds.includes(item.id) || loading
                         }
-                        className={`px-3 py-1.5 text-xs font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-sm ${!selectedRow || selectedRow.id !== item.id || loading
+                        className={`px-3 py-1.5 text-xs font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-sm ${!selectedIds.includes(item.id) || loading
                           ? "opacity-75 cursor-not-allowed"
                           : ""
                           }`}
                       >
                         {loading &&
-                          selectedRow?.id === item.id &&
                           actionInProgress === "accept" ? (
                           <span className="flex items-center">
                             <svg
@@ -1906,16 +2035,15 @@ const LeaveManagement = () => {
                         )}
                       </button>
                       <button
-                        onClick={() => handleLeaveAction("rejected")}
-                        disabled={selectedRow?.id !== item.id || loading}
-                        className={`px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors shadow-sm ${selectedRow?.id !== item.id ||
+                        onClick={() => handleLeaveAction("rejected", item)}
+                        disabled={!selectedIds.includes(item.id) || loading}
+                        className={`px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors shadow-sm ${!selectedIds.includes(item.id) ||
                           (loading && actionInProgress === "accept")
                           ? "opacity-75 cursor-not-allowed"
                           : ""
                           }`}
                       >
                         {loading &&
-                          selectedRow?.id === item.id &&
                           actionInProgress === "rejected" ? (
                           <span className="flex items-center">
                             <svg
@@ -2388,81 +2516,103 @@ const LeaveManagement = () => {
             Manage employee leave requests and history
           </p>
         </div>
-        <div className="flex flex-col gap-3 w-full md:flex-row md:w-auto md:items-center md:justify-end">
+        <div className="flex flex-col-2 gap-3 w-full md:flex-row md:w-auto md:items-center md:justify-end">
           {selectedIds.length > 0 && (
-            <button
-              onClick={handleAcceptAll}
-              disabled={bulkLoading}
-              className="inline-flex items-center justify-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed w-full md:w-auto"
-            >
-              {bulkLoading ? (
-                <>
-                  <svg className="w-4 h-4 mr-2 text-white animate-spin" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Accepting ({selectedIds.length})
-                </>
-              ) : (
-                <>
-                  <Check size={18} className="mr-2" />
-                  Accept All ({selectedIds.length})
-                </>
-              )}
-            </button>
+            <>
+              <button
+                onClick={handleAcceptAll}
+                disabled={bulkLoading}
+                className="inline-flex items-center justify-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed w-full md:w-auto"
+              >
+                {bulkLoading ? (
+                  <>
+                    <svg className="w-4 h-4 mr-2 text-white animate-spin" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Accepting ({selectedIds.length})
+                  </>
+                ) : (
+                  <>
+                    <Check size={18} className="mr-2" />
+                    Accept All ({selectedIds.length})
+                  </>
+                )}
+              </button>
+              <button
+                onClick={handleRejectAll}
+                disabled={bulkLoading}
+                className="inline-flex items-center justify-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed w-full md:w-auto"
+              >
+                {bulkLoading ? (
+                  <>
+                    <svg className="w-4 h-4 mr-2 text-white animate-spin" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Rejecting ({selectedIds.length})
+                  </>
+                ) : (
+                  <>
+                    <X size={18} className="mr-2" />
+                    Reject All ({selectedIds.length})
+                  </>
+                )}
+              </button>
+            </>
           )}
 
-          <div className="grid grid-cols-2 gap-2 w-full md:flex md:w-auto md:items-center">
-            {activeTab === "approved" && isHr ? (
-              <div className="flex items-center gap-1 p-1 border rounded-lg bg-emerald-50 border-emerald-200 shadow-sm overflow-hidden h-[42px]">
-                <div className="flex items-center gap-1.5 px-2 border-r border-emerald-200 shrink-0">
-                  <div className="flex flex-col">
-                    <span className="text-[8px] font-bold text-emerald-600 uppercase leading-none">From</span>
-                    <input
-                      type="date"
-                      value={exportFromDate}
-                      onChange={(e) => setExportFromDate(e.target.value)}
-                      className="bg-transparent border-none focus:ring-0 text-[10px] sm:text-xs font-bold text-emerald-800 cursor-pointer p-0 w-24 sm:w-28 h-4"
-                    />
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-[8px] font-bold text-emerald-600 uppercase leading-none">To</span>
-                    <input
-                      type="date"
-                      value={exportToDate}
-                      onChange={(e) => setExportToDate(e.target.value)}
-                      className="bg-transparent border-none focus:ring-0 text-[10px] sm:text-xs font-bold text-emerald-800 cursor-pointer p-0 w-24 sm:w-28 h-4"
-                    />
-                  </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2 w-full md:flex md:w-auto md:items-center">
+          {activeTab === "approved" && isHr ? (
+            <div className="flex items-center gap-1 p-1 border rounded-lg bg-emerald-50 border-emerald-200 shadow-sm overflow-hidden h-[42px]">
+              <div className="flex items-center gap-1.5 px-2 border-r border-emerald-200 shrink-0">
+                <div className="flex flex-col">
+                  <span className="text-[8px] font-bold text-emerald-600 uppercase leading-none">From</span>
+                  <input
+                    type="date"
+                    value={exportFromDate}
+                    onChange={(e) => setExportFromDate(e.target.value)}
+                    className="bg-transparent border-none focus:ring-0 text-[10px] sm:text-xs font-bold text-emerald-800 cursor-pointer p-0 w-24 sm:w-28 h-4"
+                  />
                 </div>
-                <button
-                  onClick={handleExportToExcel}
-                  disabled={exportLoading}
-                  className="inline-flex items-center justify-center px-2 py-1 text-[10px] sm:text-xs font-bold text-emerald-700 hover:text-emerald-900 transition-all disabled:opacity-50 group whitespace-nowrap"
-                  title="Export approved leaves for selected range"
-                >
-                  {exportLoading ? (
-                    <Clock size={12} className="mr-1 animate-spin text-emerald-600" />
-                  ) : (
-                    <FileSpreadsheet
-                      size={12}
-                      className="mr-1 text-emerald-600 group-hover:scale-110 transition-transform"
-                    />
-                  )}
-                  {exportLoading ? "..." : "Export"}
-                </button>
+                <div className="flex flex-col">
+                  <span className="text-[8px] font-bold text-emerald-600 uppercase leading-none">To</span>
+                  <input
+                    type="date"
+                    value={exportToDate}
+                    onChange={(e) => setExportToDate(e.target.value)}
+                    className="bg-transparent border-none focus:ring-0 text-[10px] sm:text-xs font-bold text-emerald-800 cursor-pointer p-0 w-24 sm:w-28 h-4"
+                  />
+                </div>
               </div>
-            ) : (
-              <div className="hidden md:block"></div> // Spacer for grid if export hidden
-            )}
-            <button
-              onClick={() => setShowModal(true)}
-              className="inline-flex items-center justify-center px-3 py-2.5 border border-transparent rounded-lg shadow-sm text-xs sm:text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 h-[42px] whitespace-nowrap"
-            >
-              <Plus size={16} className="mr-1.5" />
-              New Request
-            </button>
-          </div>
+              <button
+                onClick={handleExportToExcel}
+                disabled={exportLoading}
+                className="inline-flex items-center justify-center px-2 py-1 text-[10px] sm:text-xs font-bold text-emerald-700 hover:text-emerald-900 transition-all disabled:opacity-50 group whitespace-nowrap"
+                title="Export approved leaves for selected range"
+              >
+                {exportLoading ? (
+                  <Clock size={12} className="mr-1 animate-spin text-emerald-600" />
+                ) : (
+                  <FileSpreadsheet
+                    size={12}
+                    className="mr-1 text-emerald-600 group-hover:scale-110 transition-transform"
+                  />
+                )}
+                {exportLoading ? "..." : "Export"}
+              </button>
+            </div>
+          ) : (
+            <div className="hidden md:block"></div> // Spacer for grid if export hidden
+          )}
+          <button
+            onClick={() => setShowModal(true)}
+            className="inline-flex items-center justify-center px-3 py-2.5 border border-transparent rounded-lg shadow-sm text-xs sm:text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 h-[42px] whitespace-nowrap"
+          >
+            <Plus size={16} className="mr-1.5" />
+            New Request
+          </button>
         </div>
       </div>
 
