@@ -50,6 +50,7 @@ const Settings = () => {
         { id: 'gate-pass-request', label: 'Gate Pass Request' },
         { id: 'attendance', label: 'Attendance' },
         { id: 'attendancedaily', label: 'Attendance Daily' },
+        { id: 'visitors', label: 'Visitors Log' },
         { id: 'report', label: 'Reports' },
         { id: 'payroll', label: 'Payroll' },
         { id: 'misreport', label: 'MIS Report' },

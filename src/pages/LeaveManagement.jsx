@@ -7,6 +7,7 @@ import {
   Search,
   X,
   Check,
+  CheckCircle,
   Clock,
   Calendar,
   Plus,
@@ -132,6 +133,48 @@ const LeaveManagement = () => {
     // fetchLeaveData is now handled by useInfiniteQuery
   }, [user]);
 
+  const getAutoLeaveSplits = (leaveType, startDate, endDate, empId) => {
+    const appliedDays = calculateDays(startDate, endDate);
+    if (!startDate || !endDate) return { casual: 0, earned: 0, unpaid: appliedDays };
+
+    const targetDate = new Date(startDate);
+    const fyMonthIndex = targetDate.getMonth() >= 3 ? targetDate.getMonth() - 2 : targetDate.getMonth() + 10;
+
+    const maxAccEL = fyMonthIndex * 2;
+    const maxAccCL = fyMonthIndex * 1;
+
+    const quota = rowQuotas[empId] || {};
+    const usedEL = quota.earned_leave_used || 0;
+    const usedCL = quota.casual_leave_used || 0;
+    const carriedForwardEL = quota.carried_forward_el || 0;
+
+    const availableAccEL = Math.max(0, maxAccEL + carriedForwardEL - usedEL);
+    const availableAccCL = Math.max(0, maxAccCL - usedCL);
+
+    if (leaveType === 'UnPaid Leave') {
+      return { casual: 0, earned: 0, unpaid: appliedDays };
+    } else {
+      const effectiveCL = Math.min(3, availableAccCL);
+      const maxPaidPossible = Math.min(10, effectiveCL + availableAccEL);
+
+      if (appliedDays > maxPaidPossible) {
+        const lwpDays = appliedDays - maxPaidPossible;
+        const paidDays = maxPaidPossible;
+
+        let clToUse = Math.min(paidDays, effectiveCL);
+        let elToUse = paidDays - clToUse;
+
+        return { casual: clToUse, earned: elToUse, unpaid: lwpDays };
+      } else {
+        const paidDays = appliedDays;
+        let clToUse = Math.min(paidDays, effectiveCL);
+        let elToUse = paidDays - clToUse;
+
+        return { casual: clToUse, earned: elToUse, unpaid: 0 };
+      }
+    }
+  };
+
   const handleCheckboxChange = (leaveId, rowData) => {
     // Single selection for editing (keep existing behavior)
     if (selectedRow?.id === leaveId) {
@@ -151,11 +194,7 @@ const LeaveManagement = () => {
       if (!editableDates[leaveId]) {
         const from = formatForInput(rowData.startDate);
         const to = formatForInput(rowData.endDate);
-        const days = calculateDays(from, to);
-        const initialCounts = { casual: 0, earned: 0, unpaid: 0 };
-        if (rowData.leaveType === "Casual Leave") initialCounts.casual = days;
-        else if (rowData.leaveType === "Earned Leave") initialCounts.earned = days;
-        else if (rowData.leaveType === "UnPaid Leave") initialCounts.unpaid = days;
+        const initialCounts = getAutoLeaveSplits(rowData.leaveType, from, to, rowData.employeeId);
 
         setEditableDates(prev => ({ ...prev, [leaveId]: { from, to } }));
         setLeaveCounts(prev => ({ ...prev, [leaveId]: initialCounts }));
@@ -176,11 +215,7 @@ const LeaveManagement = () => {
           };
           const from = formatForInput(rowData.startDate);
           const to = formatForInput(rowData.endDate);
-          const days = calculateDays(from, to);
-          const initialCounts = { casual: 0, earned: 0, unpaid: 0 };
-          if (rowData.leaveType === "Casual Leave") initialCounts.casual = days;
-          else if (rowData.leaveType === "Earned Leave") initialCounts.earned = days;
-          else if (rowData.leaveType === "UnPaid Leave") initialCounts.unpaid = days;
+          const initialCounts = getAutoLeaveSplits(rowData.leaveType, from, to, rowData.employeeId);
 
           setEditableDates(prevDates => ({ ...prevDates, [leaveId]: { from, to } }));
           setLeaveCounts(prevCounts => ({ ...prevCounts, [leaveId]: initialCounts }));
@@ -211,11 +246,7 @@ const LeaveManagement = () => {
           };
           const from = formatForInput(leaf.startDate);
           const to = formatForInput(leaf.endDate);
-          const days = calculateDays(from, to);
-          const initialCounts = { casual: 0, earned: 0, unpaid: 0 };
-          if (leaf.leaveType === "Casual Leave") initialCounts.casual = days;
-          else if (leaf.leaveType === "Earned Leave") initialCounts.earned = days;
-          else if (leaf.leaveType === "UnPaid Leave") initialCounts.unpaid = days;
+          const initialCounts = getAutoLeaveSplits(leaf.leaveType, from, to, leaf.employeeId);
 
           newDates[leaf.id] = { from, to };
           newCounts[leaf.id] = initialCounts;
@@ -238,12 +269,8 @@ const LeaveManagement = () => {
       };
 
       // Recalculate and reset counts for this specific row when dates change
-      const days = calculateDays(newDates.from, newDates.to);
       const row = leaves.find(l => l.id === id);
-      const initialCounts = { casual: 0, earned: 0, unpaid: 0 };
-      if (row?.leaveType === "Casual Leave") initialCounts.casual = days;
-      else if (row?.leaveType === "Earned Leave") initialCounts.earned = days;
-      else if (row?.leaveType === "UnPaid Leave") initialCounts.unpaid = days;
+      const initialCounts = getAutoLeaveSplits(row?.leaveType, newDates.from, newDates.to, row?.employeeId);
 
       setLeaveCounts(prevCounts => ({
         ...prevCounts,
@@ -1876,9 +1903,9 @@ const LeaveManagement = () => {
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex flex-col">
                         <span className="text-[10px] font-bold text-slate-500 uppercase">CL:</span>
-                        {rowQuotas[item.employeeId] && (
-                          <span className="text-[8px] text-indigo-600 font-black">Rem: {(rowQuotas[item.employeeId].casual_leave_limit || 12) - (rowQuotas[item.employeeId].casual_leave_used || 0)}</span>
-                        )}
+                        <span className="text-[8px] text-indigo-600 font-black">
+                          Rem: {(rowQuotas[item.employeeId]?.casual_leave_limit || 12) - (rowQuotas[item.employeeId]?.casual_leave_used || 0)}
+                        </span>
                       </div>
                       <input
                         type="number"
@@ -1892,9 +1919,9 @@ const LeaveManagement = () => {
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex flex-col">
                         <span className="text-[10px] font-bold text-slate-500 uppercase">EL:</span>
-                        {rowQuotas[item.employeeId] && (
-                          <span className="text-[8px] text-emerald-600 font-black">Rem: {((rowQuotas[item.employeeId].earned_leave_limit || 24) - (rowQuotas[item.employeeId].earned_leave_used || 0)) + (rowQuotas[item.employeeId].carried_forward_el || 0)}</span>
-                        )}
+                        <span className="text-[8px] text-emerald-600 font-black">
+                          Rem: {((rowQuotas[item.employeeId]?.earned_leave_limit || 24) - (rowQuotas[item.employeeId]?.earned_leave_used || 0)) + (rowQuotas[item.employeeId]?.carried_forward_el || 0)}
+                        </span>
                       </div>
                       <input
                         type="number"
@@ -3012,8 +3039,71 @@ const LeaveManagement = () => {
                       </div>
                     </div>
 
+                    {(() => {
+                      let leaveWarning = null;
+                      let leaveNote = null;
+
+                      if (formData.fromDate && formData.toDate && formData.leaveType) {
+                        const appliedDays = calculateDays(formData.fromDate, formData.toDate);
+                        const targetDate = new Date(formData.fromDate);
+                        const fyMonthIndex = targetDate.getMonth() >= 3 ? targetDate.getMonth() - 2 : targetDate.getMonth() + 10;
+
+                        const maxAccEL = fyMonthIndex * 2;
+                        const maxAccCL = fyMonthIndex * 1;
+
+                        const usedEL = leaveBalances.earned.used || 0;
+                        const usedCL = leaveBalances.casual.used || 0;
+                        const carriedForwardEL = leaveBalances.carriedForward || 0;
+
+                        const availableAccEL = Math.max(0, maxAccEL + carriedForwardEL - usedEL);
+                        const availableAccCL = Math.max(0, maxAccCL - usedCL);
+
+                        if (formData.leaveType === 'UnPaid Leave') {
+                          leaveWarning = `आपने कुल ${appliedDays} दिन की छुट्टी के लिए आवेदन किया है। आपने LWP (बिना वेतन की छुट्टी) का चयन किया है। आपके पूरे ${appliedDays} दिन का वेतन काटा जाएगा।`;
+                        } else {
+                          const effectiveCL = Math.min(3, availableAccCL);
+                          const maxPaidPossible = Math.min(10, effectiveCL + availableAccEL);
+                          const totalAvailable = availableAccEL + availableAccCL;
+
+                          if (appliedDays > maxPaidPossible) {
+                            const lwpDays = appliedDays - maxPaidPossible;
+                            if (totalAvailable > maxPaidPossible) {
+                              leaveWarning = `आपने कुल ${appliedDays} दिन की छुट्टी के लिए आवेदन किया है। आपके पास कुल ${totalAvailable} छुट्टियां (EL: ${availableAccEL}, CL: ${availableAccCL}) हैं, लेकिन आप एक बार में अधिकतम 10 दिन (जिसमें अधिकतम 3 CL शामिल हो सकते हैं) की ही सवेतन छुट्टी ले सकते हैं। अतः आपके अतिरिक्त ${lwpDays} दिन LWP (बिना वेतन) माने जाएंगे।`;
+                            } else {
+                              leaveWarning = `आपने कुल ${appliedDays} दिन की छुट्टी के लिए आवेदन किया है। आपके पास केवल ${totalAvailable} छुट्टियां (EL: ${availableAccEL}, CL: ${availableAccCL}) उपलब्ध हैं। आपके अतिरिक्त ${lwpDays} दिन LWP (बिना वेतन) माने जाएंगे।`;
+                            }
+                          } else {
+                            leaveNote = `आपने कुल ${appliedDays} दिन की छुट्टी के लिए आवेदन किया है। आपके पास पर्याप्त छुट्टियां (कुल: ${totalAvailable} -> EL: ${availableAccEL}, CL: ${availableAccCL}) उपलब्ध हैं। आपके वेतन से कोई कटौती नहीं होगी।`;
+                          }
+                        }
+                      }
+
+                      if (leaveWarning) {
+                        return (
+                          <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 flex gap-3 items-start animate-in fade-in zoom-in duration-300">
+                            <AlertCircle className="text-rose-600 shrink-0 mt-0.5" size={20} />
+                            <div>
+                              <p className="text-sm font-bold text-rose-900 leading-snug">छुट्टी अलर्ट (Leave Alert)</p>
+                              <p className="text-xs text-rose-700 mt-1 font-medium leading-relaxed">{leaveWarning}</p>
+                            </div>
+                          </div>
+                        );
+                      } else if (leaveNote) {
+                        return (
+                          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex gap-3 items-start animate-in fade-in zoom-in duration-300">
+                            <CheckCircle className="text-emerald-600 shrink-0 mt-0.5" size={20} />
+                            <div>
+                              <p className="text-sm font-bold text-emerald-900 leading-snug">छुट्टी विवरण (Leave Details)</p>
+                              <p className="text-xs text-emerald-700 mt-1 font-medium leading-relaxed">{leaveNote}</p>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+
                     {/* Duration Display */}
-                    <div className="flex items-center justify-between p-3 border border-indigo-100 bg-indigo-50 rounded-xl">
+                    <div className="flex items-center justify-between p-3 border border-indigo-100 bg-indigo-50 rounded-xl mt-4">
                       <span className="text-sm font-medium text-indigo-900">
                         Total Duration:
                       </span>

@@ -466,7 +466,7 @@ const Report = () => {
             <Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
           </div>
         </div>
-        
+
         <div className="flex flex-col md:flex-row space-y-2 md:space-y-0 md:space-x-2">
           <div className="flex items-center border border-gray-300 rounded-lg px-3 py-2">
             <Calendar size={18} className="text-gray-400 mr-2" />
@@ -486,7 +486,7 @@ const Report = () => {
               className="border-none focus:outline-none text-sm"
             />
           </div>
-          
+
           <div className="flex items-center border border-gray-300 rounded-lg px-3 py-2">
             <Filter size={18} className="text-gray-400 mr-2" />
             <select
@@ -509,71 +509,64 @@ const Report = () => {
           <nav className="flex flex-wrap -mb-px">
             <button
               onClick={() => setActiveReport('attendanceDayEnd')}
-              className={`py-4 px-4 text-center font-medium text-sm ${
-                activeReport === 'attendanceDayEnd' 
-                  ? 'border-b-2 border-indigo-500 text-indigo-600' 
+              className={`py-4 px-4 text-center font-medium text-sm ${activeReport === 'attendanceDayEnd'
+                  ? 'border-b-2 border-indigo-500 text-indigo-600'
                   : 'text-gray-500 hover:text-gray-700'
-              }`}
+                }`}
             >
               Attendance Day End
             </button>
             <button
               onClick={() => setActiveReport('attendanceAnalysis')}
-              className={`py-4 px-4 text-center font-medium text-sm ${
-                activeReport === 'attendanceAnalysis' 
-                  ? 'border-b-2 border-indigo-500 text-indigo-600' 
+              className={`py-4 px-4 text-center font-medium text-sm ${activeReport === 'attendanceAnalysis'
+                  ? 'border-b-2 border-indigo-500 text-indigo-600'
                   : 'text-gray-500 hover:text-gray-700'
-              }`}
+                }`}
             >
               Attendance Analysis
             </button>
             <button
               onClick={() => setActiveReport('monthlyAttendance')}
-              className={`py-4 px-4 text-center font-medium text-sm ${
-                activeReport === 'monthlyAttendance' 
-                  ? 'border-b-2 border-indigo-500 text-indigo-600' 
+              className={`py-4 px-4 text-center font-medium text-sm ${activeReport === 'monthlyAttendance'
+                  ? 'border-b-2 border-indigo-500 text-indigo-600'
                   : 'text-gray-500 hover:text-gray-700'
-              }`}
+                }`}
             >
               Monthly Attendance
             </button>
             <button
               onClick={() => setActiveReport('whatsappDayEnd')}
-              className={`py-4 px-4 text-center font-medium text-sm ${
-                activeReport === 'whatsappDayEnd' 
-                  ? 'border-b-2 border-indigo-500 text-indigo-600' 
+              className={`py-4 px-4 text-center font-medium text-sm ${activeReport === 'whatsappDayEnd'
+                  ? 'border-b-2 border-indigo-500 text-indigo-600'
                   : 'text-gray-500 hover:text-gray-700'
-              }`}
+                }`}
             >
               WhatsApp Day End
             </button>
             <button
               onClick={() => setActiveReport('leaveReport')}
-              className={`py-4 px-4 text-center font-medium text-sm ${
-                activeReport === 'leaveReport' 
-                  ? 'border-b-2 border-indigo-500 text-indigo-600' 
+              className={`py-4 px-4 text-center font-medium text-sm ${activeReport === 'leaveReport'
+                  ? 'border-b-2 border-indigo-500 text-indigo-600'
                   : 'text-gray-500 hover:text-gray-700'
-              }`}
+                }`}
             >
               Leave Report
             </button>
             <button
               onClick={() => setActiveReport('lateCutoff')}
-              className={`py-4 px-4 text-center font-medium text-sm ${
-                activeReport === 'lateCutoff' 
-                  ? 'border-b-2 border-indigo-500 text-indigo-600' 
+              className={`py-4 px-4 text-center font-medium text-sm ${activeReport === 'lateCutoff'
+                  ? 'border-b-2 border-indigo-500 text-indigo-600'
                   : 'text-gray-500 hover:text-gray-700'
-              }`}
+                }`}
             >
               Late/Early Cutoff
             </button>
             <button
               onClick={() => setActiveReport('overtimeReport')}
-              className={`py-4 px-4 text-center font-medium text-sm ${
-                activeReport === 'overtimeReport' 
-                  ? 'border-b-2 border-indigo-500 text-indigo-600' 
+              className={`py-4 px-4 text-center font-medium text-sm ${activeReport === 'overtimeReport'
+                  ? 'border-b-2 border-indigo-500 text-indigo-600'
                   : 'text-gray-500 hover:text-gray-700'
-              }`}
+                }`}
             >
               Overtime Report
             </button>

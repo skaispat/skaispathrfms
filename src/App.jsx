@@ -32,6 +32,7 @@ import GatePassApproval from './pages/gatepassApproval';
 import Settings from './pages/Settings';
 import TotalLeaveDetails from './pages/TotalLeaveDetails';
 import JoiningForm from './pages/JoiningForm';
+import Visitors from './pages/Visitors';
 
 
 function App() {
@@ -78,6 +79,7 @@ function App() {
             <Route path="payroll" element={<Payroll />} />
             <Route path="misreport" element={<MisReport />} />
             <Route path="settings" element={<Settings />} />
+            <Route path="visitors" element={<Visitors />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />

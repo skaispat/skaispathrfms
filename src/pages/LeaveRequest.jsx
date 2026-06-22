@@ -483,9 +483,18 @@ const LeaveRequest = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="font-bold text-slate-700 bg-slate-100/50 px-2.5 py-1 rounded-lg">
-                        {calculateDays(item.leave_date_start, item.leave_date_end)} Days
-                      </span>
+                      <div className="flex flex-col gap-1.5 items-start">
+                        <span className="font-bold text-slate-700 bg-slate-100/50 px-2.5 py-1 rounded-lg w-max">
+                          {calculateDays(item.leave_date_start, item.leave_date_end)} Days
+                        </span>
+                        {(Number(item.casual) > 0 || Number(item.earned) > 0 || Number(item.unpaid) > 0) && (
+                          <div className="flex gap-1.5">
+                            {Number(item.casual) > 0 && <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[10px] font-bold border border-indigo-100/50">CL: {item.casual}</span>}
+                            {Number(item.earned) > 0 && <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold border border-emerald-100/50">EL: {item.earned}</span>}
+                            {Number(item.unpaid) > 0 && <span className="px-1.5 py-0.5 bg-rose-50 text-rose-600 rounded text-[10px] font-bold border border-rose-100/50">LOP: {item.unpaid}</span>}
+                          </div>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-widest border ${colorClass}`}>
@@ -557,8 +566,17 @@ const LeaveRequest = () => {
                       <span className="text-[10px] text-slate-400 font-bold uppercase">Applied:</span>
                       <span className="text-[10px] text-slate-600 font-medium">{formatDate(item.timestamp)}</span>
                     </div>
-                    <div className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-lg text-[10px] font-bold">
-                      {calculateDays(item.leave_date_start, item.leave_date_end)} Days
+                    <div className="flex flex-col items-end gap-1.5">
+                      <div className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-lg text-[10px] font-bold">
+                        {calculateDays(item.leave_date_start, item.leave_date_end)} Days
+                      </div>
+                      {(Number(item.casual) > 0 || Number(item.earned) > 0 || Number(item.unpaid) > 0) && (
+                        <div className="flex gap-1">
+                          {Number(item.casual) > 0 && <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[9px] font-bold border border-indigo-100/50">CL: {item.casual}</span>}
+                          {Number(item.earned) > 0 && <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[9px] font-bold border border-emerald-100/50">EL: {item.earned}</span>}
+                          {Number(item.unpaid) > 0 && <span className="px-1.5 py-0.5 bg-rose-50 text-rose-600 rounded text-[9px] font-bold border border-rose-100/50">LOP: {item.unpaid}</span>}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -641,6 +659,69 @@ const LeaveRequest = () => {
                       <input type="date" name="toDate" value={formData.toDate} min={formData.fromDate} onChange={handleInputChange} className="block w-full rounded-2xl border-slate-200 py-4 px-4 bg-slate-50/50 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all font-bold text-slate-700 shadow-sm" required />
                     </div>
                   </div>
+
+                  {(() => {
+                    let leaveWarning = null;
+                    let leaveNote = null;
+
+                    if (formData.fromDate && formData.toDate && formData.leaveType) {
+                      const appliedDays = calculateDays(formData.fromDate, formData.toDate);
+                      const targetDate = new Date(formData.fromDate);
+                      const fyMonthIndex = targetDate.getMonth() >= 3 ? targetDate.getMonth() - 2 : targetDate.getMonth() + 10;
+
+                      const maxAccEL = fyMonthIndex * 2;
+                      const maxAccCL = fyMonthIndex * 1;
+
+                      const usedEL = leaveBalances.earned.used || 0;
+                      const usedCL = leaveBalances.casual.used || 0;
+                      const carriedForwardEL = leaveBalances.earned.carriedForward || 0;
+
+                      const availableAccEL = Math.max(0, maxAccEL + carriedForwardEL - usedEL);
+                      const availableAccCL = Math.max(0, maxAccCL - usedCL);
+
+                      if (formData.leaveType === 'UnPaid Leave') {
+                        leaveWarning = `आपने कुल ${appliedDays} दिन की छुट्टी के लिए आवेदन किया है। आपने LWP (बिना वेतन की छुट्टी) का चयन किया है। आपके पूरे ${appliedDays} दिन का वेतन काटा जाएगा।`;
+                      } else {
+                        const effectiveCL = Math.min(3, availableAccCL);
+                        const maxPaidPossible = Math.min(10, effectiveCL + availableAccEL);
+                        const totalAvailable = availableAccEL + availableAccCL;
+
+                        if (appliedDays > maxPaidPossible) {
+                          const lwpDays = appliedDays - maxPaidPossible;
+                          if (totalAvailable > maxPaidPossible) {
+                            leaveWarning = `आपने कुल ${appliedDays} दिन की छुट्टी के लिए आवेदन किया है। आपके पास कुल ${totalAvailable} छुट्टियां (EL: ${availableAccEL}, CL: ${availableAccCL}) हैं, लेकिन आप एक बार में अधिकतम 10 दिन (जिसमें अधिकतम 3 CL शामिल हो सकते हैं) की ही सवेतन छुट्टी ले सकते हैं। अतः आपके अतिरिक्त ${lwpDays} दिन LWP (बिना वेतन) माने जाएंगे।`;
+                          } else {
+                            leaveWarning = `आपने कुल ${appliedDays} दिन की छुट्टी के लिए आवेदन किया है। आपके पास केवल ${totalAvailable} छुट्टियां (EL: ${availableAccEL}, CL: ${availableAccCL}) उपलब्ध हैं। आपके अतिरिक्त ${lwpDays} दिन LWP (बिना वेतन) माने जाएंगे।`;
+                          }
+                        } else {
+                          leaveNote = `आपने कुल ${appliedDays} दिन की छुट्टी के लिए आवेदन किया है। आपके पास पर्याप्त छुट्टियां (कुल: ${totalAvailable} -> EL: ${availableAccEL}, CL: ${availableAccCL}) उपलब्ध हैं। आपके वेतन से कोई कटौती नहीं होगी।`;
+                        }
+                      }
+                    }
+
+                    if (leaveWarning) {
+                      return (
+                        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 flex gap-3 items-start animate-in fade-in zoom-in duration-300">
+                          <AlertCircle className="text-rose-600 shrink-0 mt-0.5" size={20} />
+                          <div>
+                            <p className="text-sm font-bold text-rose-900 leading-snug">छुट्टी अलर्ट (Leave Alert)</p>
+                            <p className="text-xs text-rose-700 mt-1 font-medium leading-relaxed">{leaveWarning}</p>
+                          </div>
+                        </div>
+                      );
+                    } else if (leaveNote) {
+                      return (
+                        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex gap-3 items-start animate-in fade-in zoom-in duration-300">
+                          <CheckCircle className="text-emerald-600 shrink-0 mt-0.5" size={20} />
+                          <div>
+                            <p className="text-sm font-bold text-emerald-900 leading-snug">छुट्टी विवरण (Leave Details)</p>
+                            <p className="text-xs text-emerald-700 mt-1 font-medium leading-relaxed">{leaveNote}</p>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
 
                   <div className="space-y-2">
                     <label className="text-xs font-black text-slate-500 uppercase tracking-widest pl-1">Detailed Reason</label>
