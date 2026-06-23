@@ -112,6 +112,7 @@ const LeaveManagement = () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
+  const [activePopupId, setActivePopupId] = useState(null);
   const [formData, setFormData] = useState({
     employeeId: "",
     employeeName: "",
@@ -1899,7 +1900,15 @@ const LeaveManagement = () => {
               </td>
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
                 {isHr && (item.status === "Pending HR" || item.status === "Pending" || item.status === "Pending HOD") && (selectedRow?.id === item.id || selectedIds.includes(item.id)) ? (
-                  <div className="flex flex-col gap-1.5 p-2 bg-slate-50 rounded-lg border border-slate-200 min-w-[140px]">
+                  <div
+                    className="relative flex flex-col gap-1.5 p-2 bg-slate-50 rounded-lg border border-slate-200 min-w-[140px]"
+                    onFocus={() => setActivePopupId(item.id)}
+                    onBlur={(e) => {
+                      if (!e.currentTarget.contains(e.relatedTarget)) {
+                        setActivePopupId(null);
+                      }
+                    }}
+                  >
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex flex-col">
                         <span className="text-[10px] font-bold text-slate-500 uppercase">CL:</span>
@@ -1950,6 +1959,79 @@ const LeaveManagement = () => {
                       <span>Total:</span>
                       <span>{((leaveCounts[item.id]?.casual || 0) + (leaveCounts[item.id]?.earned || 0) + (leaveCounts[item.id]?.unpaid || 0)).toFixed(0)} / {calculateDays(editableDates[item.id]?.from, editableDates[item.id]?.to)}</span>
                     </div>
+
+                    {/* Leave Detail Popup (Inline) */}
+                    {activePopupId === item.id && (() => {
+                      const from = editableDates[item.id]?.from;
+                      const to = editableDates[item.id]?.to;
+                      const leaveType = item.leaveType;
+
+                      if (!from || !to || !leaveType) return null;
+
+                      let leaveWarning = null;
+                      let leaveNote = null;
+
+                      const appliedDays = calculateDays(from, to);
+                      const targetDate = new Date(from);
+                      const fyMonthIndex = targetDate.getMonth() >= 3 ? targetDate.getMonth() - 2 : targetDate.getMonth() + 10;
+
+                      const maxAccEL = fyMonthIndex * 2;
+                      const maxAccCL = fyMonthIndex * 1;
+
+                      const quota = rowQuotas[item.employeeId] || {};
+                      const usedEL = quota.earned_leave_used || 0;
+                      const usedCL = quota.casual_leave_used || 0;
+                      const carriedForwardEL = quota.carried_forward_el || 0;
+
+                      const availableAccEL = Math.max(0, maxAccEL + carriedForwardEL - usedEL);
+                      const availableAccCL = Math.max(0, maxAccCL - usedCL);
+
+                      if (leaveType === 'UnPaid Leave') {
+                        leaveWarning = `आपने कुल ${appliedDays} दिन की छुट्टी के लिए आवेदन किया है। आपने LWP (बिना वेतन की छुट्टी) का चयन किया है। आपके पूरे ${appliedDays} दिन का वेतन काटा जाएगा।`;
+                      } else {
+                        const effectiveCL = Math.min(3, availableAccCL);
+                        const maxPaidPossible = Math.min(10, effectiveCL + availableAccEL);
+                        const totalAvailable = availableAccEL + availableAccCL;
+
+                        if (appliedDays > maxPaidPossible) {
+                          const lwpDays = appliedDays - maxPaidPossible;
+                          if (totalAvailable > maxPaidPossible) {
+                            leaveWarning = `आपने कुल ${appliedDays} दिन की छुट्टी के लिए आवेदन किया है। आपके पास कुल ${totalAvailable} छुट्टियां (EL: ${availableAccEL}, CL: ${availableAccCL}) हैं, लेकिन आप एक बार में अधिकतम 10 दिन (जिसमें अधिकतम 3 CL शामिल हो सकते हैं) की ही सवेतन छुट्टी ले सकते हैं। अतः आपके अतिरिक्त ${lwpDays} दिन LWP (बिना वेतन) माने जाएंगे।`;
+                          } else {
+                            leaveWarning = `आपने कुल ${appliedDays} दिन की छुट्टी के लिए आवेदन किया है। आपके पास केवल ${totalAvailable} छुट्टियां (EL: ${availableAccEL}, CL: ${availableAccCL}) उपलब्ध हैं। आपके अतिरिक्त ${lwpDays} दिन LWP (बिना वेतन) माने जाएंगे।`;
+                          }
+                        } else {
+                          leaveNote = `आपने कुल ${appliedDays} दिन की छुट्टी के लिए आवेदन किया है। आपके पास पर्याप्त छुट्टियां (कुल: ${totalAvailable} -> EL: ${availableAccEL}, CL: ${availableAccCL}) उपलब्ध हैं। आपके वेतन से कोई कटौती नहीं होगी।`;
+                        }
+                      }
+
+                      if (leaveWarning) {
+                        return (
+                          <div className="absolute z-[60] bottom-full mb-2 left-1/2 -translate-x-1/2 w-[280px] sm:top-1/2 sm:-translate-y-1/2 sm:right-full sm:mr-3 sm:left-auto sm:translate-x-0 sm:bottom-auto sm:mb-0 sm:w-80 bg-rose-50 border border-rose-200 rounded-xl p-3 shadow-2xl animate-in fade-in zoom-in duration-200">
+                            <div className="flex gap-2 items-start">
+                              <AlertCircle className="text-rose-600 shrink-0 mt-0.5" size={16} />
+                              <div>
+                                <p className="text-xs font-bold text-rose-900 leading-snug">छुट्टी अलर्ट</p>
+                                <p className="text-[10px] text-rose-700 mt-0.5 font-medium leading-relaxed whitespace-normal text-left">{leaveWarning}</p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      } else if (leaveNote) {
+                        return (
+                          <div className="absolute z-[60] bottom-full mb-2 left-1/2 -translate-x-1/2 w-[280px] sm:top-1/2 sm:-translate-y-1/2 sm:right-full sm:mr-3 sm:left-auto sm:translate-x-0 sm:bottom-auto sm:mb-0 sm:w-80 bg-emerald-50 border border-emerald-200 rounded-xl p-3 shadow-2xl animate-in fade-in zoom-in duration-200">
+                            <div className="flex gap-2 items-start">
+                              <CheckCircle className="text-emerald-600 shrink-0 mt-0.5" size={16} />
+                              <div>
+                                <p className="text-xs font-bold text-emerald-900 leading-snug">छुट्टी विवरण</p>
+                                <p className="text-[10px] text-emerald-700 mt-0.5 font-medium leading-relaxed whitespace-normal text-left">{leaveNote}</p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
                 ) : (
                   <div className="flex flex-col">

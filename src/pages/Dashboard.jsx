@@ -28,7 +28,8 @@ import {
   Activity,
   Layers,
   MapPin,
-  Clock3
+  Clock3,
+  Search
 } from 'lucide-react';
 
 const Dashboard = () => {
@@ -49,10 +50,27 @@ const Dashboard = () => {
   const [leftEmployee, setLeftEmployee] = useState(0);
   const [leftThisMonth, setLeftThisMonth] = useState(0);
   const [monthlyHiringData, setMonthlyHiringData] = useState([]);
-  const [designationData, setDesignationData] = useState([]);
-  const [leaveStatusData, setLeaveStatusData] = useState([]);
   const [departmentData, setDepartmentData] = useState([]);
   const [vacancies, setVacancies] = useState([]);
+
+  // Operational widget state
+  const [recentLeaves, setRecentLeaves] = useState([]);
+  const [recentGatepasses, setRecentGatepasses] = useState([]);
+  const [recentApplicants, setRecentApplicants] = useState([]);
+
+  // Attendance state
+  const [presentList, setPresentList] = useState([]);
+  const [lateList, setLateList] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  const [selectedDepartment, setSelectedDepartment] = useState('All Departments');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [presentLimit, setPresentLimit] = useState(10);
+  const [lateLimit, setLateLimit] = useState(10);
+
+  useEffect(() => {
+    setPresentLimit(10);
+    setLateLimit(10);
+  }, [searchQuery, selectedDepartment]);
 
   // Helper to process distribution data
   const getDistribution = (data, key) => {
@@ -80,7 +98,7 @@ const Dashboard = () => {
         // 1. Fetch Users Data (Active & Total)
         const { data: usersData, error: usersError } = await supabase
           .from('users')
-          .select('emp_id, is_active, department, designation, joining_date');
+          .select('emp_id, is_active, department, designation, joining_date, full_name, profile_picture');
 
         if (usersError) throw usersError;
 
@@ -95,9 +113,54 @@ const Dashboard = () => {
         const depts = getDistribution(usersData.filter(u => u.is_active), 'department');
         setDepartmentData(depts);
 
-        // Designation Distribution
-        const desigs = getDistribution(usersData.filter(u => u.is_active), 'designation');
-        setDesignationData(desigs.sort((a, b) => b.value - a.value).slice(0, 8));
+        // Fetch Biometric API for today
+        const y = today.getFullYear();
+        const m = String(today.getMonth() + 1).padStart(2, '0');
+        const d = String(today.getDate()).padStart(2, '0');
+        const todayStr = `${y}-${m}-${d}`;
+        const response = await fetch(`https://sohcm.com/SmartApp_ess/api/SwipeDetails/GetDeviceLogs?APIKey=341813122509&AccountName=SKAISPAT&FromDate=${todayStr}&ToDate=${todayStr}`);
+        const apiData = await response.json();
+
+        const groupedApiData = {};
+        if (Array.isArray(apiData)) {
+          apiData.forEach((log) => {
+            if (!groupedApiData[log.UserId]) groupedApiData[log.UserId] = [];
+            groupedApiData[log.UserId].push(log.LogDate);
+          });
+        }
+
+        const presentArr = [];
+        const lateArr = [];
+        const uniqueDepts = new Set();
+
+        usersData.filter(u => u.is_active).forEach(u => {
+          if (u.department) uniqueDepts.add(u.department.trim());
+          const logs = groupedApiData[u.emp_id] || [];
+          if (logs.length > 0) {
+            logs.sort();
+            const firstLog = logs[0];
+            const inTime = firstLog.split('T')[1].substring(0, 5); // HH:MM
+
+            const [hr, min] = inTime.split(':').map(Number);
+            const isLate = (hr > 10) || (hr === 10 && min > 5);
+
+            if (isLate) {
+              const lateMins = (hr * 60 + min) - (10 * 60 + 5);
+              let lateStr = `${lateMins} Min`;
+              if (lateMins >= 60) lateStr = `${Math.floor(lateMins / 60)}h ${lateMins % 60}m`;
+              lateArr.push({ ...u, inTime, lateStr });
+            } else {
+              presentArr.push({ ...u, inTime });
+            }
+          }
+        });
+
+        presentArr.sort((a, b) => a.inTime.localeCompare(b.inTime));
+        lateArr.sort((a, b) => b.inTime.localeCompare(a.inTime));
+
+        setPresentList(presentArr);
+        setLateList(lateArr);
+        setDepartments([...uniqueDepts].sort());
 
 
         // 2. Fetch Employee Leaving Data
@@ -150,38 +213,30 @@ const Dashboard = () => {
         setMonthlyHiringData(months);
 
 
-        // 4. Leave Management Stats (Fetch all records bypassing 1000 limit)
-        let allLeaveData = [];
-        let leavePage = 0;
-        const leavePageSize = 1000;
-        let hasMoreLeaves = true;
+        // 4. Fetch Recent Operational Data
+        const [leavesRes, gatepassRes, applicantsRes] = await Promise.all([
+          supabase.from('leave_management')
+            .select('id, employee_name, leave_type, status, leave_date_start, created_at')
+            .order('created_at', { ascending: false })
+            .limit(5),
+          supabase.from('gate_pass')
+            .select('id, emp_name, place_reason_to_visit, status, timestamp')
+            .order('timestamp', { ascending: false })
+            .limit(5),
+          supabase.from('job_leads')
+            .select('id, candidate_name, post, candidate_experience, created_at')
+            .order('created_at', { ascending: false })
+            .limit(5)
+        ]);
 
-        while (hasMoreLeaves) {
-          const { data: leaveDataChunk, error: leaveError } = await supabase
-            .from('leave_management')
-            .select('status')
-            .range(leavePage * leavePageSize, (leavePage + 1) * leavePageSize - 1);
+        if (leavesRes.error) console.error(leavesRes.error);
+        else setRecentLeaves(leavesRes.data || []);
 
-          if (leaveError) throw leaveError;
+        if (gatepassRes.error) console.error(gatepassRes.error);
+        else setRecentGatepasses(gatepassRes.data || []);
 
-          if (leaveDataChunk && leaveDataChunk.length > 0) {
-            allLeaveData = [...allLeaveData, ...leaveDataChunk];
-            if (leaveDataChunk.length < leavePageSize) {
-              hasMoreLeaves = false;
-            } else {
-              leavePage++;
-            }
-          } else {
-            hasMoreLeaves = false;
-          }
-        }
-
-        const leaveStats = getDistribution(allLeaveData, 'status');
-        setLeaveStatusData(leaveStats);
-
-
-
-        // 6. Fetch Recent Job Vacancies
+        if (applicantsRes.error) console.error(applicantsRes.error);
+        else setRecentApplicants(applicantsRes.data || []);        // 6. Fetch Recent Job Vacancies
         const { data: jobs, error: jobsError } = await supabase
           .from('job_vacancy')
           .select('*')
@@ -211,6 +266,34 @@ const Dashboard = () => {
     'Reject': '#EF4444',
     'Cancelled': '#6B7280',
     'Unknown': '#9CA3AF'
+  };
+
+  const filteredPresent = presentList.filter(u => {
+    const matchDept = selectedDepartment === 'All Departments' || u.department === selectedDepartment;
+    const matchSearch = u.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.emp_id?.toString().toLowerCase().includes(searchQuery.toLowerCase());
+    return matchDept && matchSearch;
+  });
+
+  const filteredLate = lateList.filter(u => {
+    const matchDept = selectedDepartment === 'All Departments' || u.department === selectedDepartment;
+    const matchSearch = u.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.emp_id?.toString().toLowerCase().includes(searchQuery.toLowerCase());
+    return matchDept && matchSearch;
+  });
+
+  const handlePresentScroll = (e) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.target;
+    if (scrollHeight - scrollTop <= clientHeight + 50) {
+      setPresentLimit(prev => Math.min(prev + 10, filteredPresent.length));
+    }
+  };
+
+  const handleLateScroll = (e) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.target;
+    if (scrollHeight - scrollTop <= clientHeight + 50) {
+      setLateLimit(prev => Math.min(prev + 10, filteredLate.length));
+    }
   };
 
   if (loading) {
@@ -273,127 +356,123 @@ const Dashboard = () => {
         />
       </div>
 
-      {/* Main Grid: Hiring Trend, Leave Status */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-1.5 sm:gap-6">
+      {/* Main Grid: Attendance */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-1.5 sm:gap-6">
 
-        {/* Hiring Trend - 2 Cols */}
-        <div className="bg-white p-3 sm:p-8 rounded-2xl sm:rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hover:shadow-md transition-shadow duration-300">
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h3 className="text-base sm:text-lg font-bold text-slate-800 tracking-tight">Recruitment Analytics</h3>
-              <p className="text-xs sm:text-sm text-slate-600 font-semibold mt-1">Hiring vs Attrition</p>
+        {/* Today's In UI - 1 Col */}
+        <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-slate-100 flex flex-col">
+          <div className="mb-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base sm:text-lg font-extrabold text-slate-800 tracking-tight">Today's In</h3>
+              <select
+                value={selectedDepartment}
+                onChange={(e) => setSelectedDepartment(e.target.value)}
+                className="text-xs font-semibold bg-white border border-slate-200 text-slate-700 py-1.5 px-2 sm:px-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer shadow-sm hover:bg-slate-50 transition-colors"
+              >
+                <option value="All Departments">All Departments</option>
+                {departments.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
             </div>
-            <div className="flex items-center gap-6 bg-slate-50 px-4 py-2 rounded-xl border border-slate-100">
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-emerald-500 shadow shadow-emerald-200"></span>
-                <span className="text-xs font-semibold text-slate-600">Hired</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-rose-500 shadow shadow-rose-200"></span>
-                <span className="text-xs font-semibold text-slate-600">Left</span>
-              </div>
+            <div className="relative mt-3">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search ID or Name"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 text-slate-700 py-2 pl-9 pr-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm"
+              />
             </div>
           </div>
-          <div className="h-[320px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={monthlyHiringData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorHired" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="colorLeft" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#f43f5e" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                <XAxis
-                  dataKey="name"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: '#64748b', fontSize: 12, fontWeight: 500 }}
-                  dy={10}
-                />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: '#64748b', fontSize: 12, fontWeight: 500 }}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                    borderRadius: '16px',
-                    border: '1px solid #f1f5f9',
-                    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
-                    backdropFilter: 'blur(10px)',
-                    padding: '12px 16px'
-                  }}
-                  itemStyle={{ fontSize: '13px', fontWeight: 600, padding: '2px 0' }}
-                  labelStyle={{ fontSize: '12px', fontWeight: 500, color: '#94a3b8', marginBottom: '8px' }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="hired"
-                  stroke="#10b981"
-                  strokeWidth={4}
-                  fillOpacity={1}
-                  fill="url(#colorHired)"
-                />
-                <Area
-                  type="monotone"
-                  dataKey="left"
-                  stroke="#f43f5e"
-                  strokeWidth={4}
-                  fillOpacity={1}
-                  fill="url(#colorLeft)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+
+          <div
+            className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-3"
+            style={{ maxHeight: '420px' }}
+            onScroll={handlePresentScroll}
+          >
+            {/* On Time Present List */}
+            {filteredPresent.slice(0, presentLimit).map(emp => (
+              <div key={emp.emp_id} className="p-3 bg-white border border-slate-100 border-dashed rounded-xl flex items-center justify-between hover:shadow-sm transition-shadow gap-2">
+                <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                  {emp.profile_picture ? (
+                    <img src={emp.profile_picture} alt={emp.full_name} className="w-10 h-10 rounded-full object-cover shadow-sm flex-shrink-0" />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 font-bold text-sm shadow-sm flex-shrink-0">
+                      {emp.full_name?.charAt(0) || 'U'}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <h4 className="text-sm font-bold text-slate-800 truncate">{emp.full_name}</h4>
+                    <p className="text-xs text-slate-500 font-medium truncate">{emp.designation}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                  <Clock3 size={14} className="text-slate-400 hidden sm:block" />
+                  <span className="px-2 py-1 bg-emerald-500 text-white text-[11px] font-bold rounded flex items-center gap-1 shadow-sm whitespace-nowrap">
+                    <span className="w-1 h-1 bg-white rounded-full flex-shrink-0"></span>
+                    {emp.inTime}
+                  </span>
+                </div>
+              </div>
+            ))}
+
+            {filteredPresent.length === 0 && (
+              <div className="text-center py-12 text-slate-400 text-sm font-medium">
+                <Clock3 size={32} className="mx-auto mb-2 opacity-30" />
+                No punctual logs found
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Leave Status - 1 Col */}
+        {/* Late UI - 1 Col */}
         <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-slate-100 flex flex-col">
-          <div className="mb-2">
-            <h3 className="text-base sm:text-lg font-bold text-slate-800">Leave Requests</h3>
-            <p className="text-xs sm:text-sm text-slate-600 font-semibold">Current status distribution</p>
+          <div className="mb-4">
+            <h3 className="text-base sm:text-lg font-extrabold text-slate-800 tracking-tight">Late Today</h3>
           </div>
-          <div className="flex-1 min-h-[200px] sm:min-h-[220px] relative">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={leaveStatusData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={55}
-                  outerRadius={75}
-                  paddingAngle={5}
-                  dataKey="value"
-                  stroke="none"
-                >
-                  {leaveStatusData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={STATUS_COLORS[entry.name] || '#CBD5E1'} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                  itemStyle={{ fontSize: '12px', fontWeight: 600 }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-2xl sm:text-3xl font-bold text-slate-800">{leaveStatusData.reduce((a, b) => a + b.value, 0)}</span>
-              <p className="text-[10px] sm:text-xs font-semibold text-slate-400 uppercase tracking-wider">Requests</p>
-            </div>
-          </div>
-          <div className="flex flex-wrap justify-center gap-2 mt-2">
-            {leaveStatusData.map((entry, index) => (
-              <div key={index} className="flex items-center gap-1.5 text-[10px] sm:text-xs font-medium text-slate-600 bg-slate-50 px-2 sm:px-2.5 py-1 rounded-md border border-slate-100">
-                <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full" style={{ backgroundColor: STATUS_COLORS[entry.name] || '#CBD5E1' }}></span>
-                {entry.name}
+
+          <div
+            className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-3"
+            style={{ maxHeight: '420px' }}
+            onScroll={handleLateScroll}
+          >
+            {/* Late Section */}
+            {filteredLate.slice(0, lateLimit).map(emp => (
+              <div key={emp.emp_id} className="p-3 bg-white border border-slate-100 border-dashed rounded-xl flex items-center justify-between hover:shadow-sm transition-shadow gap-2">
+                <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                  {emp.profile_picture ? (
+                    <img src={emp.profile_picture} alt={emp.full_name} className="w-10 h-10 rounded-full object-cover shadow-sm flex-shrink-0" />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 font-bold text-sm shadow-sm flex-shrink-0">
+                      {emp.full_name?.charAt(0) || 'U'}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 sm:gap-2">
+                      <h4 className="text-sm font-bold text-slate-800 truncate">{emp.full_name}</h4>
+                      <span className="px-1.5 py-0.5 bg-rose-600 text-white text-[9px] font-bold rounded flex items-center gap-0.5 shadow-sm whitespace-nowrap flex-shrink-0">
+                        <Clock size={10} className="flex-shrink-0" /> {emp.lateStr}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 font-medium mt-0.5 truncate">{emp.designation}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                  <Clock3 size={14} className="text-slate-400 hidden sm:block" />
+                  <span className="px-2 py-1 bg-emerald-500 text-white text-[11px] font-bold rounded flex items-center gap-1 shadow-sm whitespace-nowrap">
+                    <span className="w-1 h-1 bg-white rounded-full flex-shrink-0"></span>
+                    {emp.inTime}
+                  </span>
+                </div>
               </div>
             ))}
+
+            {filteredLate.length === 0 && (
+              <div className="text-center py-12 text-slate-400 text-sm font-medium">
+                <Clock3 size={32} className="mx-auto mb-2 opacity-30" />
+                No late logs found
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -439,59 +518,90 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Secondary Grid: Top Designations, Job Vacancies */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-1.5 sm:gap-6">
-
-        {/* Designations Chart - Converted to Pie */}
+      {/* Grid 1: Recent Leaves & Gate Passes */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mt-6">
+        {/* Recent Leaves Card */}
         <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-slate-100 flex flex-col">
-          <div className="mb-4 flex items-center gap-2">
-            <div className="p-1.5 sm:p-2 bg-teal-50 rounded-lg">
-              <Briefcase size={16} className="text-teal-600" />
-            </div>
-            <div>
-              <h3 className="text-base sm:text-lg font-bold text-slate-800">Top Designations</h3>
-              <p className="text-xs sm:text-sm text-slate-600 font-semibold">Headcount by role</p>
-            </div>
-          </div>
-          <div className="flex-1 w-full min-h-[250px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={designationData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={90}
-                  paddingAngle={3}
-                  dataKey="value"
-                  labelLine={false}
-                >
-                  {designationData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                  itemStyle={{ fontSize: '12px', fontWeight: 600 }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="flex flex-wrap justify-center gap-2 mt-2 max-h-[100px] overflow-y-auto custom-scrollbar">
-            {designationData.map((entry, index) => (
-              <div key={index} className="flex items-center gap-1.5 text-[10px] font-medium text-slate-600 bg-slate-50 px-2 py-1 rounded border border-slate-100 hover:bg-slate-100 transition-colors">
-                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></span>
-                <span className="truncate max-w-[100px]" title={entry.name}>{entry.name}</span>
-                <span className="text-slate-400">({entry.value})</span>
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 sm:p-2 bg-indigo-50 rounded-lg">
+                <Calendar size={18} className="text-indigo-600" />
               </div>
-            ))}
+              <div>
+                <h3 className="text-base sm:text-lg font-bold text-slate-800">Recent Leaves</h3>
+                <p className="text-xs sm:text-sm text-slate-600 font-semibold">Latest leave requests</p>
+              </div>
+            </div>
           </div>
+          <div className="flex-1 space-y-3">
+            {recentLeaves.length > 0 ? (
+              recentLeaves.map((leave, index) => (
+                <div key={index} className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-between hover:shadow-sm transition-shadow">
+                  <div className="min-w-0 pr-2">
+                    <h4 className="text-sm font-bold text-slate-800 truncate">{leave.employee_name}</h4>
+                    <p className="text-xs text-slate-500 font-medium truncate">{leave.leave_type} • {leave.leave_date_start ? new Date(leave.leave_date_start).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'N/A'}</p>
+                  </div>
+                  <span className={`px-2 py-1 flex-shrink-0 text-[10px] font-bold rounded-full ${leave.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' :
+                    leave.status?.includes('Reject') ? 'bg-rose-100 text-rose-700' :
+                      'bg-amber-100 text-amber-700'
+                    }`}>
+                    {leave.status === 'Pending' || leave.status === 'Pending HOD' ? 'Pending HOD' : leave.status}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-slate-500 text-center py-4">No recent leaves</p>
+            )}
+          </div>
+          <button onClick={() => navigate('/leave-management')} className="w-full mt-4 py-2.5 text-xs font-bold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors">
+            View All Leaves
+          </button>
         </div>
 
+        {/* Recent Gate Passes Card */}
+        <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-slate-100 flex flex-col">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 sm:p-2 bg-emerald-50 rounded-lg">
+                <MapPin size={18} className="text-emerald-600" />
+              </div>
+              <div>
+                <h3 className="text-base sm:text-lg font-bold text-slate-800">Recent Gate Passes</h3>
+                <p className="text-xs sm:text-sm text-slate-600 font-semibold">Latest out-of-office logs</p>
+              </div>
+            </div>
+          </div>
+          <div className="flex-1 space-y-3">
+            {recentGatepasses.length > 0 ? (
+              recentGatepasses.map((gp, index) => (
+                <div key={index} className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-between hover:shadow-sm transition-shadow">
+                  <div className="min-w-0 pr-2">
+                    <h4 className="text-sm font-bold text-slate-800 truncate">{gp.emp_name}</h4>
+                    <p className="text-xs text-slate-500 font-medium truncate">{gp.place_reason_to_visit} • {gp.timestamp ? new Date(gp.timestamp).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'N/A'}</p>
+                  </div>
+                  <span className={`px-2 py-1 flex-shrink-0 text-[10px] font-bold rounded-full ${gp.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' :
+                    gp.status?.includes('Reject') ? 'bg-rose-100 text-rose-700' :
+                      'bg-amber-100 text-amber-700'
+                    }`}>
+                    {gp.status === 'Pending' || gp.status === 'Pending HOD' ? 'Pending HOD' : gp.status}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-slate-500 text-center py-4">No recent gate passes</p>
+            )}
+          </div>
+          <button onClick={() => navigate('/gate-pass')} className="w-full mt-4 py-2.5 text-xs font-bold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors">
+            View All Gate Passes
+          </button>
+        </div>
+      </div>
 
+      {/* Grid 2: Job Vacancies & Applicants */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mt-6">
 
         {/* Job Vacancies Widget */}
-        <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-slate-100">
+        <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-slate-100 flex flex-col">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-2">
               <div className="p-1.5 sm:p-2 bg-blue-50 rounded-lg">
@@ -504,7 +614,7 @@ const Dashboard = () => {
             </div>
           </div>
 
-          <div className="space-y-3">
+          <div className="flex-1 space-y-3">
             {vacancies.length > 0 ? (
               vacancies.map((job, index) => (
                 <div key={index} className="p-4 rounded-2xl border border-slate-100/50 bg-slate-50/50 flex justify-between items-center hover:bg-white hover:shadow-md hover:shadow-slate-200/50 hover:border-slate-100 transition-all cursor-default">
@@ -533,6 +643,41 @@ const Dashboard = () => {
               View All Jobs
             </button>
           )}
+        </div>
+
+        {/* Recent Applicants Card */}
+        <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-slate-100 flex flex-col">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 sm:p-2 bg-purple-50 rounded-lg">
+                <Users size={18} className="text-purple-600" />
+              </div>
+              <div>
+                <h3 className="text-base sm:text-lg font-bold text-slate-800">Recent Applicants</h3>
+                <p className="text-xs sm:text-sm text-slate-600 font-semibold">Latest job inquiries</p>
+              </div>
+            </div>
+          </div>
+          <div className="flex-1 space-y-3">
+            {recentApplicants.length > 0 ? (
+              recentApplicants.map((applicant, index) => (
+                <div key={index} className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-between hover:shadow-sm transition-shadow">
+                  <div className="min-w-0 pr-2">
+                    <h4 className="text-sm font-bold text-slate-800 truncate">{applicant.candidate_name}</h4>
+                    <p className="text-xs text-slate-500 font-medium truncate">{applicant.post} • {applicant.candidate_experience || 'Fresher'}</p>
+                  </div>
+                  <span className={`px-2 py-1 flex-shrink-0 text-[10px] font-bold rounded-full bg-slate-200 text-slate-700`}>
+                    Pending
+                  </span>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-slate-500 text-center py-4">No recent applicants</p>
+            )}
+          </div>
+          <button onClick={() => navigate('/employee-enquiry')} className="w-full mt-4 py-2.5 text-xs font-bold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors">
+            View All Applicants
+          </button>
         </div>
 
       </div>
