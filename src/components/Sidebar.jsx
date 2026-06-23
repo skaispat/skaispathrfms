@@ -28,7 +28,8 @@ import {
   BadgeDollarSign,
   BookPlus,
   Settings,
-  UserPlus
+  UserPlus,
+  Gift
 } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 
@@ -413,6 +414,7 @@ const Sidebar = ({ onClose }) => {
     { path: '/leave-request', icon: LeaveIcon, label: 'Leave Request', id: 'leave-request' },
     { path: '/gate-pass-request', icon: DoorOpen, label: 'Gate-Pass Request', id: 'gate-pass-request' },
     { path: '/visitors', icon: UserPlus, label: 'Visitors Log', id: 'visitors' },
+    { path: '/birthday', icon: Gift, label: 'Birthdays', id: 'birthday' },
     // { path: '/my-salary', icon: DollarSign, label: 'My Salary', id: 'my-salary' },
     // { path: '/company-calendar', icon: Calendar, label: 'Company Calendar', id: 'company-calendar' },
 
@@ -464,7 +466,7 @@ const Sidebar = ({ onClose }) => {
 
     // If no page_access defined (legacy users), fallback to basic employee pages
     if (!user?.page_access || !Array.isArray(user?.page_access)) {
-      const DEFAULT_ACCESS = ['my-profile', 'my-attendance', 'leave-request', 'gate-pass-request', 'visitors', 'my-salary', 'company-calendar'];
+      const DEFAULT_ACCESS = ['my-profile', 'my-attendance', 'leave-request', 'gate-pass-request', 'visitors', 'birthday', 'my-salary', 'company-calendar'];
       return DEFAULT_ACCESS.includes(pageId);
     }
 

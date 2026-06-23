@@ -33,6 +33,7 @@ import Settings from './pages/Settings';
 import TotalLeaveDetails from './pages/TotalLeaveDetails';
 import JoiningForm from './pages/JoiningForm';
 import Visitors from './pages/Visitors';
+import Birthday from './pages/Birthday';
 
 
 function App() {
@@ -80,6 +81,7 @@ function App() {
             <Route path="misreport" element={<MisReport />} />
             <Route path="settings" element={<Settings />} />
             <Route path="visitors" element={<Visitors />} />
+            <Route path="birthday" element={<Birthday />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />
