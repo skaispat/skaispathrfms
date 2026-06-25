@@ -29,7 +29,7 @@ const GatePass = () => {
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('pending');
   const [actionInProgress, setActionInProgress] = useState(null);
-  const [selectedRow, setSelectedRow] = useState(null);
+  const [selectedRows, setSelectedRows] = useState([]);
   const [remarksInputs, setRemarksInputs] = useState({});
   const [exportLoading, setExportLoading] = useState(false);
   const [exportMonth, setExportMonth] = useState(dayjs().month());
@@ -164,11 +164,23 @@ const GatePass = () => {
     }
   };
 
-  const handleCheckboxChange = (leaveId, rowData) => {
-    if (selectedRow?.id === leaveId) {
-      setSelectedRow(null);
+  const handleCheckboxChange = (leaveId) => {
+    setSelectedRows(prev => {
+      if (prev.includes(leaveId)) {
+        return prev.filter(id => id !== leaveId);
+      } else {
+        return [...prev, leaveId];
+      }
+    });
+  };
+
+  const handleSelectAll = (applicableItems) => {
+    if (selectedRows.length === applicableItems.length && applicableItems.length > 0) {
+      // Deselect all
+      setSelectedRows([]);
     } else {
-      setSelectedRow(rowData);
+      // Select all applicable
+      setSelectedRows(applicableItems.map(item => item.id));
     }
   };
 
@@ -384,6 +396,25 @@ const GatePass = () => {
       fetchGatePassData();
     } catch (error) {
       toast.error(`Error: ${error.message}`);
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const handleBulkAction = async (action) => {
+    if (selectedRows.length === 0) return;
+    setActionInProgress('bulk');
+    try {
+      const requestsToProcess = pendingPasses.filter(p => selectedRows.includes(p.id));
+      // Process sequentially to ensure logs and WhatsApp go out smoothly
+      for (const req of requestsToProcess) {
+        await handleAction(action, req);
+      }
+      setSelectedRows([]);
+      toast.success(`Bulk ${action === 'approve' ? 'approval' : 'rejection'} completed`);
+    } catch (error) {
+      console.error("Bulk action error", error);
+      toast.error("Some requests failed during bulk action");
     } finally {
       setActionInProgress(null);
     }
@@ -664,150 +695,167 @@ const GatePass = () => {
     return new Date(dateString).toLocaleString('en-GB', { timeZone: 'UTC', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   };
 
-  const renderTable = (data) => (
-    <div className="overflow-auto flex-1 custom-scrollbar">
-      <table className="min-w-full divide-y divide-slate-100">
-        <thead className="bg-slate-50 sticky top-0 z-10 border-b border-slate-200">
-          <tr>
-            <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Select</th>
-            <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Employee</th>
-            <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Time</th>
-            <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Details</th>
-            <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">HOD</th>
-            {showHodColumn && <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">HOD Remarks</th>}
-            {showHrColumn && <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">HR Remarks</th>}
-            <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
-            <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Attachment</th>
-            {activeTab === 'pending' && (
-              <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
-            )}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100 bg-white">
-          {data.length > 0 ? (
-            data.map((item) => (
-              <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
-                  {((user?.is_hod && (item.status === 'Pending' || item.status === 'Pending HOD') && (item.hod_name === user?.full_name || item.hod_name === user?.Name)) ||
-                    ((user?.role === 'hr' || user?.role === 'HR' || user?.role === 'admin' || user?.role === 'Admin' || user?.Admin === 'Yes') && item.status === 'Pending HR')) && (
-                      <input
-                        type="checkbox"
-                        checked={selectedRow?.id === item.id}
-                        onChange={() => handleCheckboxChange(item.id, item)}
-                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-slate-300 rounded"
-                      />
-                    )}
-                </td>
-                <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
-                  <div className="flex flex-col">
-                    <span className="font-semibold text-slate-900 text-sm">{item.employee_name}</span>
-                    <span className="text-xs text-slate-500">{item.emp_id}</span>
-                  </div>
-                </td>
-                <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
-                  <div className="flex flex-col text-sm text-slate-600">
-                    <span>Out: {formatDate(item.departure_from_plant)}</span>
-                    {item.arrival_at_plant && <span>In: {formatDate(item.arrival_at_plant)}</span>}
-                  </div>
-                </td>
-                <td className="px-4 py-3 sm:px-6 sm:py-4">
-                  <p className="text-sm text-slate-500 max-w-xs truncate" title={item.place_reason_to_visit}>{item.place_reason_to_visit}</p>
-                  <a href={`tel:${item.employee_whatsapp_number}`} className="text-xs text-indigo-500 hover:underline">{item.employee_whatsapp_number}</a>
-                </td>
-                <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-500">{item.hod_name}</td>
-                {showHodColumn && (
-                  <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-500">
-                    {user?.is_hod && (item.status === 'Pending' || item.status === 'Pending HOD') && selectedRow?.id === item.id ? (
-                      <input
-                        type="text"
-                        placeholder="HOD Remarks"
-                        value={remarksInputs[item.id]?.hod || ''}
-                        onChange={(e) => handleRemarkChange(item.id, 'hod', e.target.value)}
-                        className="w-full min-w-[200px] px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent shadow-sm transition-all"
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    ) : (
-                      item.hod_remarks || '-'
-                    )}
-                  </td>
-                )}
-                {showHrColumn && (
-                  <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-500">
-                    {isHr && item.status === 'Pending HR' && selectedRow?.id === item.id ? (
-                      <input
-                        type="text"
-                        placeholder="HR Remarks"
-                        value={remarksInputs[item.id]?.hr || ''}
-                        onChange={(e) => handleRemarkChange(item.id, 'hr', e.target.value)}
-                        className="w-full min-w-[200px] px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent shadow-sm transition-all"
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    ) : (
-                      item.hr_remarks || '-'
-                    )}
-                  </td>
-                )}
-                <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
-                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${item.status === 'Approved' ? 'bg-green-100 text-green-800' :
-                    item.status?.includes('Rejected') ? 'bg-red-100 text-red-800' :
-                      'bg-yellow-100 text-yellow-800'
-                    }`}>
-                    {(item.status === 'Pending' || item.status === 'Pending HOD') ? 'Pending HOD' : (item.status?.includes('Rejected') ? 'Rejected' : item.status)}
-                  </span>
-                </td>
-                <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-500">
-                  {item.image_gate_pass ? (
-                    <a href={item.image_gate_pass} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:text-indigo-800"><ImageIcon size={18} /></a>
-                  ) : '-'}
-                </td>
-                {activeTab === 'pending' && (
-                  <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm font-medium">
-                    {/* Only show actions if not final status AND user has authority for current status */}
-                    {item.status !== 'Approved' && !item.status?.includes('Rejected') && (
-                      // Authorization Logic for Button Visibility
-                      (
-                        // If Pending: Visible for Assigned HOD OR HR/Admin
-                        ((item.status === 'Pending' || item.status === 'Pending HOD') && (
-                          (user?.is_hod && (item.hod_name === user?.full_name || item.hod_name === user?.Name)) ||
-                          (user?.role === 'hr' || user?.role === 'HR' || user?.role === 'admin' || user?.role === 'Admin')
-                        )) ||
-                        // If Pending HR: Visible ONLY for HR/Admin
-                        (item.status === 'Pending HR' && (
-                          user?.role === 'hr' || user?.role === 'HR' || user?.role === 'admin' || user?.role === 'Admin'
-                        ))
-                      ) && (
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={() => handleAction('approve', item)}
-                            disabled={actionInProgress === item.id || selectedRow?.id !== item.id}
-                            className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            Accept
-                          </button>
-                          <button
-                            onClick={() => handleAction('reject', item)}
-                            disabled={actionInProgress === item.id || selectedRow?.id !== item.id}
-                            className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            Reject
-                          </button>
-                        </div>
-                      )
-                    )}
-                    {/* Visual feedback removed as HOD is bypassed */}
-                  </td>
-                )}
-              </tr>
-            ))
-          ) : (
+  const renderTable = (data) => {
+    const applicableItems = data.filter(item => {
+      return (user?.is_hod && (item.status === 'Pending' || item.status === 'Pending HOD') && (item.hod_name === user?.full_name || item.hod_name === user?.Name)) ||
+        ((user?.role === 'hr' || user?.role === 'HR' || user?.role === 'admin' || user?.role === 'Admin' || user?.Admin === 'Yes') && item.status === 'Pending HR');
+    });
+
+    return (
+      <div className="overflow-auto flex-1 custom-scrollbar">
+        <table className="min-w-full divide-y divide-slate-100">
+          <thead className="bg-slate-50 sticky top-0 z-10 border-b border-slate-200">
             <tr>
-              <td colSpan={activeTab === 'pending' ? "11" : "10"} className="px-6 py-12 text-center text-slate-500">No requests found</td>
+              <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                {activeTab === 'pending' && applicableItems.length > 0 && (
+                  <input
+                    type="checkbox"
+                    checked={selectedRows.length === applicableItems.length && applicableItems.length > 0}
+                    onChange={() => handleSelectAll(applicableItems)}
+                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-slate-300 rounded"
+                    title="Select All Applicable"
+                  />
+                )}
+              </th>
+              <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Employee</th>
+              <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Time</th>
+              <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Details</th>
+              <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">HOD</th>
+              {showHodColumn && <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">HOD Remarks</th>}
+              {showHrColumn && <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">HR Remarks</th>}
+              <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+              <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Attachment</th>
+              {activeTab === 'pending' && (
+                <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
+              )}
             </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
+          </thead>
+          <tbody className="divide-y divide-slate-100 bg-white">
+            {data.length > 0 ? (
+              data.map((item) => (
+                <tr key={item.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
+                    {((user?.is_hod && (item.status === 'Pending' || item.status === 'Pending HOD') && (item.hod_name === user?.full_name || item.hod_name === user?.Name)) ||
+                      ((user?.role === 'hr' || user?.role === 'HR' || user?.role === 'admin' || user?.role === 'Admin' || user?.Admin === 'Yes') && item.status === 'Pending HR')) && (
+                        <input
+                          type="checkbox"
+                          checked={selectedRows.includes(item.id)}
+                          onChange={() => handleCheckboxChange(item.id)}
+                          className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-slate-300 rounded"
+                        />
+                      )}
+                  </td>
+                  <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
+                    <div className="flex flex-col">
+                      <span className="font-semibold text-slate-900 text-sm">{item.employee_name}</span>
+                      <span className="text-xs text-slate-500">{item.emp_id}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
+                    <div className="flex flex-col text-sm text-slate-600">
+                      <span>Out: {formatDate(item.departure_from_plant)}</span>
+                      {item.arrival_at_plant && <span>In: {formatDate(item.arrival_at_plant)}</span>}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 sm:px-6 sm:py-4">
+                    <p className="text-sm text-slate-500 max-w-xs truncate" title={item.place_reason_to_visit}>{item.place_reason_to_visit}</p>
+                    <a href={`tel:${item.employee_whatsapp_number}`} className="text-xs text-indigo-500 hover:underline">{item.employee_whatsapp_number}</a>
+                  </td>
+                  <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-500">{item.hod_name}</td>
+                  {showHodColumn && (
+                    <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-500">
+                      {user?.is_hod && (item.status === 'Pending' || item.status === 'Pending HOD') && selectedRows.includes(item.id) ? (
+                        <input
+                          type="text"
+                          placeholder="HOD Remarks"
+                          value={remarksInputs[item.id]?.hod || ''}
+                          onChange={(e) => handleRemarkChange(item.id, 'hod', e.target.value)}
+                          className="w-full min-w-[200px] px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent shadow-sm transition-all"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      ) : (
+                        item.hod_remarks || '-'
+                      )}
+                    </td>
+                  )}
+                  {showHrColumn && (
+                    <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-500">
+                      {isHr && item.status === 'Pending HR' && selectedRows.includes(item.id) ? (
+                        <input
+                          type="text"
+                          placeholder="HR Remarks"
+                          value={remarksInputs[item.id]?.hr || ''}
+                          onChange={(e) => handleRemarkChange(item.id, 'hr', e.target.value)}
+                          className="w-full min-w-[200px] px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent shadow-sm transition-all"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      ) : (
+                        item.hr_remarks || '-'
+                      )}
+                    </td>
+                  )}
+                  <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
+                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${item.status === 'Approved' ? 'bg-green-100 text-green-800' :
+                      item.status?.includes('Rejected') ? 'bg-red-100 text-red-800' :
+                        'bg-yellow-100 text-yellow-800'
+                      }`}>
+                      {(item.status === 'Pending' || item.status === 'Pending HOD') ? 'Pending HOD' : (item.status?.includes('Rejected') ? 'Rejected' : item.status)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-500">
+                    {item.image_gate_pass ? (
+                      <a href={item.image_gate_pass} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:text-indigo-800"><ImageIcon size={18} /></a>
+                    ) : '-'}
+                  </td>
+                  {activeTab === 'pending' && (
+                    <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm font-medium">
+                      {/* Only show actions if not final status AND user has authority for current status */}
+                      {item.status !== 'Approved' && !item.status?.includes('Rejected') && (
+                        // Authorization Logic for Button Visibility
+                        (
+                          // If Pending: Visible for Assigned HOD OR HR/Admin
+                          ((item.status === 'Pending' || item.status === 'Pending HOD') && (
+                            (user?.is_hod && (item.hod_name === user?.full_name || item.hod_name === user?.Name)) ||
+                            (user?.role === 'hr' || user?.role === 'HR' || user?.role === 'admin' || user?.role === 'Admin')
+                          )) ||
+                          // If Pending HR: Visible ONLY for HR/Admin
+                          (item.status === 'Pending HR' && (
+                            user?.role === 'hr' || user?.role === 'HR' || user?.role === 'admin' || user?.role === 'Admin'
+                          ))
+                        ) && (
+                          <div className="flex space-x-2">
+                            <button
+                              onClick={() => handleAction('approve', item)}
+                              disabled={actionInProgress === item.id || !selectedRows.includes(item.id)}
+                              className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              Accept
+                            </button>
+                            <button
+                              onClick={() => handleAction('reject', item)}
+                              disabled={actionInProgress === item.id || !selectedRows.includes(item.id)}
+                              className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        )
+                      )}
+                      {/* Visual feedback removed as HOD is bypassed */}
+                    </td>
+                  )}
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={activeTab === 'pending' ? "11" : "10"} className="px-6 py-12 text-center text-slate-500">No requests found</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
 
   return (
     <div className="h-full flex flex-col gap-4 sm:gap-6 overflow-hidden">
@@ -900,7 +948,25 @@ const GatePass = () => {
           </div>
 
           <div className="flex flex-col gap-3 w-full md:w-auto md:flex-row md:items-center">
-            {/* Status Legend or other controls can go here */}
+            {activeTab === 'pending' && selectedRows.length > 0 && (
+              <div className="flex items-center gap-2 mr-2 animate-in fade-in slide-in-from-right-4 duration-200">
+                <span className="text-sm text-slate-500 font-medium px-2 py-1 bg-indigo-50 text-indigo-700 rounded-md border border-indigo-100">{selectedRows.length} selected</span>
+                <button
+                  onClick={() => handleBulkAction('approve')}
+                  disabled={actionInProgress === 'bulk'}
+                  className="px-3 py-1.5 text-xs font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition-all shadow-sm flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Check size={14} /> Approve All
+                </button>
+                <button
+                  onClick={() => handleBulkAction('reject')}
+                  disabled={actionInProgress === 'bulk'}
+                  className="px-3 py-1.5 text-xs font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition-all shadow-sm flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <X size={14} /> Reject All
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Search */}
@@ -923,7 +989,20 @@ const GatePass = () => {
               <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
             </div>
           ) : (
-            renderTable(activeTab === 'pending' ? pendingPasses : activeTab === 'approved' ? approvedPasses : rejectedPasses)
+            renderTable(
+              (activeTab === 'pending' ? pendingPasses : activeTab === 'approved' ? approvedPasses : rejectedPasses)
+                .filter(p => {
+                  if (!searchTerm) return true;
+                  const lowerSearch = searchTerm.toLowerCase();
+                  const outDate = formatDate(p.departure_from_plant).toLowerCase();
+                  const inDate = p.arrival_at_plant ? formatDate(p.arrival_at_plant).toLowerCase() : '';
+                  return p.employee_name?.toLowerCase().includes(lowerSearch) ||
+                    p.emp_id?.toLowerCase().includes(lowerSearch) ||
+                    p.place_reason_to_visit?.toLowerCase().includes(lowerSearch) ||
+                    outDate.includes(lowerSearch) ||
+                    inDate.includes(lowerSearch);
+                })
+            )
           )}
         </div>
       </div>

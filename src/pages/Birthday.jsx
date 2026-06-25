@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import useAuthStore from '../store/authStore';
-import { Search, Image as ImageIcon, Cake, Calendar, Gift, X, Plus, Trash2, Edit2, Upload, Check } from 'lucide-react';
+import { Search, Image as ImageIcon, Cake, Calendar, Gift, X, Plus, Trash2, Edit2, Upload, Check, PartyPopper } from 'lucide-react';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
 
@@ -11,7 +11,7 @@ const Birthday = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [employees, setEmployees] = useState([]);
-  const [activeTab, setActiveTab] = useState('today');
+  const [showManageModal, setShowManageModal] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState(null);
 
   // Modals state
@@ -22,6 +22,61 @@ const Birthday = () => {
   // Bulk add state
   const [newEntries, setNewEntries] = useState([]);
   const [uploading, setUploading] = useState(false);
+  const [currentSlide, setCurrentSlide] = useState(0);
+
+  const getUpcomingEvents = () => {
+    const today = dayjs().startOf('day');
+    const upcoming = [];
+
+    records.forEach(record => {
+      const empName = employees.find(emp => String(emp.emp_id) === String(record.emp_id))?.full_name || 'Unknown Employee';
+
+      if (record.date_of_birth) {
+        const dobMonth = dayjs(record.date_of_birth).month();
+        const dobDate = dayjs(record.date_of_birth).date();
+        let thisYearDob = dayjs().month(dobMonth).date(dobDate).startOf('day');
+
+        if (thisYearDob.isBefore(today)) {
+          thisYearDob = thisYearDob.add(1, 'year');
+        }
+
+        const diffDays = thisYearDob.diff(today, 'day');
+        if (diffDays >= 0 && diffDays <= 7) {
+          upcoming.push({ ...record, type: 'Birthday', targetDate: thisYearDob, diffDays, empName });
+        }
+      }
+
+      if (record.aniversary) {
+        const annMonth = dayjs(record.aniversary).month();
+        const annDate = dayjs(record.aniversary).date();
+        let thisYearAnn = dayjs().month(annMonth).date(annDate).startOf('day');
+
+        if (thisYearAnn.isBefore(today)) {
+          thisYearAnn = thisYearAnn.add(1, 'year');
+        }
+
+        const diffDays = thisYearAnn.diff(today, 'day');
+        if (diffDays >= 0 && diffDays <= 7) {
+          upcoming.push({ ...record, type: 'Anniversary', targetDate: thisYearAnn, diffDays, empName });
+        }
+      }
+    });
+
+    return upcoming.sort((a, b) => a.diffDays - b.diffDays);
+  };
+
+  const upcomingEvents = getUpcomingEvents();
+
+  const futureEventsCount = upcomingEvents.filter(e => e.diffDays > 0).length;
+
+  useEffect(() => {
+    if (futureEventsCount > 1) {
+      const timer = setInterval(() => {
+        setCurrentSlide((prev) => (prev + 1) % futureEventsCount);
+      }, 2000);
+      return () => clearInterval(timer);
+    }
+  }, [futureEventsCount]);
 
   const isAdmin = user?.role === 'admin' || user?.role === 'Admin' || user?.Admin === 'Yes' || user?.role === 'hr' || user?.role === 'HR';
 
@@ -256,20 +311,9 @@ const Birthday = () => {
   const todayMonthDate = today.format('MM-DD');
 
   const filteredRecords = records.filter(record => {
-    const employeeName = employees.find(emp => String(emp.emp_id) === String(record.emp_id))?.full_name || '';
-    const searchLower = searchTerm.toLowerCase();
-
-    const matchesSearch = employeeName.toLowerCase().includes(searchLower) || String(record.emp_id).includes(searchLower);
-
-    if (!matchesSearch) return false;
-
-    if (activeTab === 'today') {
-      const isBirthdayToday = record.date_of_birth && dayjs(record.date_of_birth).format('MM-DD') === todayMonthDate;
-      const isAnniversaryToday = record.aniversary && dayjs(record.aniversary).format('MM-DD') === todayMonthDate;
-      return isBirthdayToday || isAnniversaryToday;
-    }
-
-    return true; // For 'all' tab
+    const isBirthdayToday = record.date_of_birth && dayjs(record.date_of_birth).format('MM-DD') === todayMonthDate;
+    const isAnniversaryToday = record.aniversary && dayjs(record.aniversary).format('MM-DD') === todayMonthDate;
+    return isBirthdayToday || isAnniversaryToday;
   });
 
   const getEventTags = (record) => {
@@ -277,13 +321,9 @@ const Birthday = () => {
     const isBirthdayToday = record.date_of_birth && dayjs(record.date_of_birth).format('MM-DD') === todayMonthDate;
     const isAnniversaryToday = record.aniversary && dayjs(record.aniversary).format('MM-DD') === todayMonthDate;
 
-    if (activeTab === 'today') {
-      if (isBirthdayToday) tags.push({ label: "Today's Birthday", color: "bg-purple-100 text-purple-700 border-purple-200" });
-      if (isAnniversaryToday) tags.push({ label: "Today's Anniversary", color: "bg-pink-100 text-pink-700 border-pink-200" });
-    } else {
-      if (record.date_of_birth) tags.push({ label: "Birthday", color: "bg-indigo-50 text-indigo-700 border-indigo-100" });
-      if (record.aniversary) tags.push({ label: "Anniversary", color: "bg-rose-50 text-rose-700 border-rose-100" });
-    }
+    if (isBirthdayToday) tags.push({ label: "Today's Birthday", color: "bg-purple-100 text-purple-700 border-purple-200" });
+    if (isAnniversaryToday) tags.push({ label: "Today's Anniversary", color: "bg-pink-100 text-pink-700 border-pink-200" });
+
     return tags;
   };
 
@@ -295,70 +335,26 @@ const Birthday = () => {
   return (
     <div className="h-full flex flex-col gap-3 overflow-hidden">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0 px-4 sm:px-6 pt-2">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-extrabold text-[#800000] tracking-tight">Birthdays & Anniversaries</h1>
-          <p className="text-slate-500 mt-1 text-sm">Celebrate special moments with the team</p>
+      <div className="flex items-start sm:items-center justify-between gap-4 shrink-0 px-4 sm:px-6 pt-2">
+        <div className="flex-1 min-w-0">
+          <h1 className="text-xl sm:text-2xl font-extrabold text-[#800000] tracking-tight leading-tight truncate sm:whitespace-normal">Birthdays & Anniversaries</h1>
+          <p className="text-slate-500 mt-1 text-xs sm:text-sm truncate">Celebrate special moments with the team</p>
         </div>
         {isAdmin && (
           <button
-            onClick={openAddModal}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm font-medium text-sm"
+            onClick={() => setShowManageModal(true)}
+            className="flex items-center justify-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm font-medium text-xs sm:text-sm shrink-0 mt-0.5 sm:mt-0"
           >
-            <Plus size={16} />
-            Add Records
+            <Calendar size={16} />
+            <span className="hidden sm:inline">Manage Records</span>
+            <span className="sm:hidden">Manage</span>
           </button>
         )}
       </div>
 
       {/* Main Content Card */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex-1 flex flex-col mx-4 sm:mx-6 mb-4 sm:mb-6">
-        {/* Toolbar: Tabs & Search */}
-        <div className="p-4 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
-          {/* Tabs */}
-          <div className="flex items-center gap-2 p-1 bg-slate-100/50 rounded-lg border border-slate-200/50 w-max">
-            <button
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${activeTab === "today"
-                ? "bg-white text-indigo-600 shadow-sm border border-slate-100"
-                : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
-                }`}
-              onClick={() => setActiveTab("today")}
-            >
-              <Gift size={16} className="inline mr-2" />
-              Today's Events
-              <span className={`ml-2 py-0.5 px-2 rounded-full text-xs ${activeTab === "today" ? "bg-indigo-50 text-indigo-700" : "bg-slate-200 text-slate-600"
-                }`}>
-                {records.filter(r => (r.date_of_birth && dayjs(r.date_of_birth).format('MM-DD') === todayMonthDate) || (r.aniversary && dayjs(r.aniversary).format('MM-DD') === todayMonthDate)).length}
-              </span>
-            </button>
-            <button
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${activeTab === "all"
-                ? "bg-white text-indigo-600 shadow-sm border border-slate-100"
-                : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
-                }`}
-              onClick={() => setActiveTab("all")}
-            >
-              <Calendar size={16} className="inline mr-2" />
-              All Records
-              <span className={`ml-2 py-0.5 px-2 rounded-full text-xs ${activeTab === "all" ? "bg-indigo-50 text-indigo-700" : "bg-slate-200 text-slate-600"
-                }`}>
-                {records.length}
-              </span>
-            </button>
-          </div>
 
-          {/* Search */}
-          <div className="relative max-w-sm w-full">
-            <input
-              type="text"
-              placeholder="Search by name or Employee ID..."
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-900 placeholder-slate-400 transition-all text-sm"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-            <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
-          </div>
-        </div>
 
         {/* Content Area */}
         <div className="flex-1 overflow-hidden relative bg-slate-50/30">
@@ -367,71 +363,142 @@ const Birthday = () => {
               <div className="flex justify-center items-center h-full">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
               </div>
-            ) : filteredRecords.length === 0 ? (
+            ) : filteredRecords.length === 0 && upcomingEvents.filter(e => e.diffDays > 0).length === 0 ? (
               <div className="text-center py-12 text-slate-500 bg-white rounded-xl shadow-sm border border-slate-200 mx-auto max-w-lg mt-10">
                 <Cake size={48} className="mx-auto text-slate-300 mb-4" />
                 <h3 className="text-lg font-medium text-slate-900 mb-1">No events found</h3>
-                <p className="text-sm">There are no matching records for the current view.</p>
+                <p className="text-sm">There are no birthdays or anniversaries to show today or upcoming.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {filteredRecords.map((record) => {
-                  const empName = employees.find(emp => String(emp.emp_id) === String(record.emp_id))?.full_name || 'Unknown Employee';
-                  const tags = getEventTags(record);
+              <div className="flex flex-col xl:flex-row gap-6 xl:gap-8 items-start">
 
-                  return (
-                    <div key={record.id} className="bg-white rounded-2xl shadow-sm hover:shadow-md transition-shadow border border-slate-200 overflow-hidden flex flex-col group relative">
-                      {isAdmin && (
-                        <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                          <button onClick={() => openEditModal(record)} className="p-1.5 bg-white/90 backdrop-blur rounded-md text-slate-600 hover:text-indigo-600 shadow-sm border border-slate-200 transition-colors" title="Edit">
-                            <Edit2 size={14} />
-                          </button>
-                          <button onClick={() => handleDelete(record.id)} className="p-1.5 bg-white/90 backdrop-blur rounded-md text-slate-600 hover:text-red-600 shadow-sm border border-slate-200 transition-colors" title="Delete">
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      )}
+                {/* Main Grid */}
+                <div className={`w-full ${upcomingEvents.filter(e => e.diffDays > 0).length > 0 ? 'xl:flex-[6]' : ''}`}>
+                  {filteredRecords.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-800 mb-4 px-1">Today's Events</h3>
+                      <div className="flex flex-col gap-6">
+                        {filteredRecords.map((record) => {
+                          const empName = employees.find(emp => String(emp.emp_id) === String(record.emp_id))?.full_name || 'Unknown Employee';
+                          const tags = getEventTags(record);
 
-                      <div className="h-24 bg-gradient-to-r from-indigo-500 to-purple-600"></div>
-                      <div className="px-5 pb-5 flex-1 flex flex-col items-center -mt-12 relative">
-                        {record.photo ? (
-                          <img
-                            src={record.photo}
-                            alt={empName}
-                            onClick={() => setSelectedPhoto(record.photo)}
-                            className="w-24 h-24 rounded-full border-4 border-white shadow-md object-cover bg-white cursor-pointer"
-                          />
-                        ) : (
-                          <div className="w-24 h-24 rounded-full border-4 border-white shadow-md bg-slate-100 flex items-center justify-center text-slate-400">
-                            <ImageIcon size={32} />
-                          </div>
-                        )}
+                          return (
+                            <div key={record.id} className="bg-white rounded-2xl shadow-sm hover:shadow-md transition-shadow border border-slate-200 overflow-hidden flex flex-col md:flex-row group relative">
+                              {isAdmin && (
+                                <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                  <button onClick={() => openEditModal(record)} className="p-1.5 bg-white/90 backdrop-blur rounded-md text-slate-600 hover:text-indigo-600 shadow-sm border border-slate-200 transition-colors" title="Edit">
+                                    <Edit2 size={14} />
+                                  </button>
+                                  <button onClick={() => handleDelete(record.id)} className="p-1.5 bg-white/90 backdrop-blur rounded-md text-slate-600 hover:text-red-600 shadow-sm border border-slate-200 transition-colors" title="Delete">
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              )}
 
-                        <h3 className="mt-3 font-bold text-slate-900 text-lg text-center leading-tight">{empName}</h3>
-                        <p className="text-xs font-medium text-slate-500 mt-1">ID: {record.emp_id}</p>
+                              {/* LEFT SIDE: Photo */}
+                              <div className="w-full md:w-[40%] shrink-0 bg-slate-50 relative flex items-center justify-center border-b md:border-b-0 md:border-r border-slate-100 min-h-[200px]" onClick={() => record.photo && setSelectedPhoto(record.photo)}>
+                                {record.photo ? (
+                                  <img
+                                    src={record.photo}
+                                    alt={empName}
+                                    className="w-full h-64 md:h-full md:absolute md:inset-0 object-contain p-4 cursor-pointer hover:scale-[1.02] transition-transform"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full absolute inset-0 bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+                                    <div className="w-24 h-24 rounded-full border-4 border-white shadow-md bg-white/20 flex items-center justify-center text-white backdrop-blur-sm">
+                                      <ImageIcon size={32} />
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
 
-                        <div className="flex flex-wrap justify-center gap-1.5 mt-3">
-                          {tags.map((tag, idx) => (
-                            <span key={idx} className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold ${tag.color}`}>
-                              {tag.label}
-                            </span>
-                          ))}
-                        </div>
+                              {/* RIGHT SIDE: Details */}
+                              <div className="p-6 md:p-8 flex-1 flex flex-col justify-center">
+                                <h2 className="text-3xl md:text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-violet-600 mb-2 tracking-tight">
+                                  {tags.some(t => t.label.includes('Birthday')) ? "Today's Birthday!" : "Today's Anniversary!"}
+                                </h2>
+                                <h3 className="font-bold text-slate-800 text-2xl leading-tight">{empName}</h3>
+                                <p className="text-sm font-medium text-slate-500 mt-1">ID: {record.emp_id}</p>
 
-                        <div className="w-full mt-4 pt-4 border-t border-slate-100 flex flex-col gap-2">
-                          <div className="flex justify-between items-center text-sm">
-                            <span className="text-slate-500 flex items-center gap-1.5"><Cake size={14} className="text-purple-400" /> Date of Birth</span>
-                            <span className="font-medium text-slate-900">{formatDate(record.date_of_birth)}</span>
-                          </div>
-                          <div className="flex justify-between items-center text-sm">
-                            <span className="text-slate-500 flex items-center gap-1.5"><Gift size={14} className="text-pink-400" /> Anniversary</span>
-                            <span className="font-medium text-slate-900">{formatDate(record.aniversary)}</span>
-                          </div>
-                        </div>
+
+
+                                <div className="w-full mt-6 pt-6 border-t border-slate-100 flex flex-col gap-3">
+                                  <div className="flex justify-between items-center text-base">
+                                    <span className="text-slate-500 flex items-center gap-2"><Cake size={16} className="text-purple-400" /> Date of Birth</span>
+                                    <span className="font-medium text-slate-900">{formatDate(record.date_of_birth)}</span>
+                                  </div>
+                                  <div className="flex justify-between items-center text-base">
+                                    <span className="text-slate-500 flex items-center gap-2"><Gift size={16} className="text-pink-400" /> Anniversary</span>
+                                    <span className="font-medium text-slate-900">{formatDate(record.aniversary)}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
                       </div>
                     </div>
-                  )
-                })}
+                  )}
+                  {filteredRecords.length === 0 && (
+                    <div className="text-center py-8 text-slate-500 bg-white rounded-xl shadow-sm border border-slate-200 mx-auto max-w-lg mt-6">
+                      <Cake size={40} className="mx-auto text-slate-300 mb-3" />
+                      <p className="text-sm">No events today.</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Upcoming Events Section (40%) */}
+                {upcomingEvents.filter(e => e.diffDays > 0).length > 0 && (
+                  <div className="w-full xl:flex-[4] border-t xl:border-t-0 xl:border-l border-slate-200/60 pt-4 sm:pt-6 xl:pt-0 xl:pl-8">
+                    <h3 className="text-lg font-bold text-slate-800 mb-4 sm:mb-6 px-1 flex items-center gap-2">
+                      <Calendar size={18} className="text-indigo-600" />
+                      Upcoming Events
+                    </h3>
+
+                    {/* Auto-Slider Card */}
+                    <div className="w-full sm:max-w-md xl:max-w-none">
+                      {(() => {
+                        const futureEvents = upcomingEvents.filter(e => e.diffDays > 0);
+                        const record = futureEvents[currentSlide] || futureEvents[0];
+
+                        return (
+                          <React.Fragment key={currentSlide}>
+                            <style>{`@keyframes fadeSlideIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }`}</style>
+                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center gap-4 relative overflow-hidden transition-all duration-300" style={{ animation: 'fadeSlideIn 0.6s cubic-bezier(0.16, 1, 0.3, 1)' }}>
+                              {record.photo ? (
+                                <img src={record.photo} alt={record.empName} className="w-12 h-12 rounded-full border border-slate-100 shadow-sm object-cover shrink-0" />
+                              ) : (
+                                <div className="w-12 h-12 rounded-full border border-slate-100 shadow-sm bg-slate-50 flex items-center justify-center text-slate-400 shrink-0">
+                                  <ImageIcon size={20} />
+                                </div>
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider mb-0.5">{record.type === 'Birthday' ? 'Upcoming Birthday' : 'Upcoming Anniversary'}</p>
+                                <h4 className="font-bold text-slate-900 text-sm truncate">{record.empName}</h4>
+                                <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5">
+                                  <Calendar size={12} className="text-slate-400" />
+                                  {dayjs(record.targetDate).format('DD MMM')} • In {record.diffDays} Days
+                                </p>
+                              </div>
+                            </div>
+                          </React.Fragment>
+                        );
+                      })()}
+
+                      {upcomingEvents.filter(e => e.diffDays > 0).length > 1 && (
+                        <div className="flex items-center gap-1.5 mt-4 px-1">
+                          {upcomingEvents.filter(e => e.diffDays > 0).map((_, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => setCurrentSlide(idx)}
+                              className={`h-1.5 rounded-full transition-all duration-300 ${currentSlide === idx ? 'bg-indigo-600 w-4' : 'bg-slate-200 w-1.5 hover:bg-slate-300'}`}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -650,6 +717,100 @@ const Birthday = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Manage Records Modal */}
+      {showManageModal && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-xl max-w-5xl w-full h-[90vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between p-5 border-b border-slate-100 gap-4 shrink-0">
+              <div className="flex items-center gap-4">
+                <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                  <Calendar size={20} className="text-indigo-600" />
+                  Manage Records
+                  <span className="bg-slate-100 text-slate-600 py-0.5 px-2 rounded-full text-sm font-semibold ml-2">{records.length}</span>
+                </h2>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Search records..."
+                    className="w-full sm:w-64 pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                  <Search size={14} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
+                </div>
+                <button
+                  onClick={() => {
+                    setShowManageModal(false);
+                    openAddModal();
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm text-sm font-medium shrink-0"
+                >
+                  <Plus size={16} /> Add New
+                </button>
+                <button onClick={() => setShowManageModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors p-1.5 rounded-full hover:bg-slate-100 shrink-0 border border-slate-200">
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Content - List of Users */}
+            <div className="flex-1 overflow-y-auto p-5 custom-scrollbar bg-slate-50/50">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {records.filter(record => {
+                  const employeeName = employees.find(emp => String(emp.emp_id) === String(record.emp_id))?.full_name || '';
+                  const searchLower = searchTerm.toLowerCase();
+                  return employeeName.toLowerCase().includes(searchLower) || String(record.emp_id).includes(searchLower);
+                }).map((record) => {
+                  const empName = employees.find(emp => String(emp.emp_id) === String(record.emp_id))?.full_name || 'Unknown Employee';
+                  return (
+                    <div key={record.id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-row group relative p-4 gap-4 items-center hover:border-indigo-300 transition-colors">
+                      <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                        <button onClick={() => { setShowManageModal(false); openEditModal(record); }} className="p-1.5 bg-white backdrop-blur rounded-md text-slate-600 hover:text-indigo-600 shadow-sm border border-slate-200 transition-colors" title="Edit">
+                          <Edit2 size={12} />
+                        </button>
+                        <button onClick={() => handleDelete(record.id)} className="p-1.5 bg-white backdrop-blur rounded-md text-slate-600 hover:text-red-600 shadow-sm border border-slate-200 transition-colors" title="Delete">
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+
+                      <div className="w-14 h-14 shrink-0 bg-slate-100 rounded-full flex items-center justify-center overflow-hidden border border-slate-200" onClick={() => record.photo && setSelectedPhoto(record.photo)}>
+                        {record.photo ? (
+                          <img src={record.photo} alt={empName} className="w-full h-full object-cover cursor-pointer" />
+                        ) : (
+                          <ImageIcon size={20} className="text-slate-400" />
+                        )}
+                      </div>
+
+                      <div className="flex-1 min-w-0 pr-10">
+                        <h4 className="font-bold text-slate-900 text-sm truncate">{empName}</h4>
+                        <p className="text-xs text-slate-500 mt-0.5">ID: {record.emp_id}</p>
+                        <div className="mt-2 flex flex-col gap-1">
+                          {record.date_of_birth && <p className="text-[11px] text-slate-600 flex items-center gap-1.5"><Cake size={10} className="text-purple-400 shrink-0" /> <span className="truncate">{formatDate(record.date_of_birth)}</span></p>}
+                          {record.aniversary && <p className="text-[11px] text-slate-600 flex items-center gap-1.5"><Gift size={10} className="text-pink-400 shrink-0" /> <span className="truncate">{formatDate(record.aniversary)}</span></p>}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+                {records.filter(record => {
+                  const employeeName = employees.find(emp => String(emp.emp_id) === String(record.emp_id))?.full_name || '';
+                  const searchLower = searchTerm.toLowerCase();
+                  return employeeName.toLowerCase().includes(searchLower) || String(record.emp_id).includes(searchLower);
+                }).length === 0 && (
+                    <div className="col-span-full py-16 text-center text-slate-500 bg-white rounded-xl border border-slate-200 border-dashed">
+                      <Search size={32} className="mx-auto text-slate-300 mb-3" />
+                      <p>No records found matching "{searchTerm}".</p>
+                    </div>
+                  )}
+              </div>
+            </div>
           </div>
         </div>
       )}
