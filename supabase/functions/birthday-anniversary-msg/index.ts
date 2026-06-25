@@ -129,10 +129,10 @@ serve(async (req) => {
         }
 
         // Hardcoded HR Number
-        const hrPhone = "919407916514";
+        const hrPhone = "919630606237";
         const results = { birthdays: 0, anniversaries: 0, errors: [] };
 
-        const messagePromises: Promise<void>[] = [];
+        const messagesQueue: any[] = [];
 
         for (const record of records || []) {
             const user = Array.isArray(record.users) ? record.users[0] : record.users;
@@ -140,52 +140,52 @@ serve(async (req) => {
 
             const employeeName = user.full_name || 'Team Member';
             const department = user.department || 'Our';
-            const employeePhone = user.phone_number;
+            let employeePhone = user.phone_number;
+
+            // Explicitly force country code addition here so you can see it
+            if (employeePhone && typeof employeePhone === 'string') {
+                let clean = employeePhone.replace(/\D/g, '');
+                if (!clean.startsWith('91') && clean.length === 10) {
+                    employeePhone = '91' + clean;
+                }
+            }
 
             // Check Birthday Match
             if (isTodayMatch(record.date_of_birth)) {
                 results.birthdays++;
-                // WhatsApp API rejects the message if the template requires an image but none is provided.
-                const bdayImage = record.photo || "https://images.unsplash.com/photo-1558636508-e0db3814bd1d?q=80&w=600&auto=format&fit=crop";
+                const isValidUrl = (url: any) => typeof url === 'string' && url.startsWith('http');
+                const bdayImage = isValidUrl(record.photo) ? record.photo : "https://images.unsplash.com/photo-1558636508-e0db3814bd1d";
 
                 if (employeePhone) {
-                    messagePromises.push(
-                        sendWhatsAppMessage(employeePhone, 'birthday_wish', [employeeName, department], bdayImage)
-                            .catch(e => { results.errors.push(`Employee Birthday Error (${employeeName}): ${e.message}`); })
-                    );
+                    messagesQueue.push({ phone: employeePhone, template: 'birthday_wish', params: [employeeName, department], image: bdayImage, name: employeeName, type: 'Birthday' });
                 }
-                messagePromises.push(
-                    sendWhatsAppMessage(hrPhone, 'birthday_wish', [employeeName, department], bdayImage)
-                        .catch(e => { results.errors.push(`HR Birthday Error for ${employeeName}: ${e.message}`); })
-                );
-            }
-
-            // Small delay to prevent Meta from rejecting simultaneous messages to the exact same number
-            if (isTodayMatch(record.date_of_birth) && isTodayMatch(record.aniversary)) {
-                await new Promise(r => setTimeout(r, 200));
+                messagesQueue.push({ phone: hrPhone, template: 'birthday_wish', params: [employeeName, department], image: bdayImage, name: `HR (for ${employeeName})`, type: 'Birthday' });
             }
 
             // Check Anniversary Match
             if (isTodayMatch(record.aniversary)) {
                 results.anniversaries++;
                 if (employeePhone) {
-                    messagePromises.push(
-                        sendWhatsAppMessage(employeePhone, 'anniversary_wish', [employeeName, department])
-                            .catch(e => { results.errors.push(`Employee Anniversary Error (${employeeName}): ${e.message}`); })
-                    );
+                    messagesQueue.push({ phone: employeePhone, template: 'anniversary_wish', params: [employeeName, department], image: undefined, name: employeeName, type: 'Anniversary' });
                 }
-                messagePromises.push(
-                    sendWhatsAppMessage(hrPhone, 'anniversary_wish', [employeeName, department])
-                        .catch(e => { results.errors.push(`HR Anniversary Error for ${employeeName}: ${e.message}`); })
-                );
+                messagesQueue.push({ phone: hrPhone, template: 'anniversary_wish', params: [employeeName, department], image: undefined, name: `HR (for ${employeeName})`, type: 'Anniversary' });
             }
-
-            // Small delay between processing different employees to ensure the HR number isn't rate-limited
-            await new Promise(r => setTimeout(r, 200));
         }
 
-        // Wait for all messages to finish sending concurrently
-        await Promise.allSettled(messagePromises);
+        // Process queue sequentially with a strict 1-second delay between EVERY message
+        // This prevents Meta's anti-spam system from silently dropping burst messages
+        for (const msg of messagesQueue) {
+            console.log(`[${msg.type}] Attempting to send to ${msg.name} at ${msg.phone}`);
+            try {
+                await sendWhatsAppMessage(msg.phone, msg.template, msg.params, msg.image);
+                console.log(`[${msg.type}] Success for ${msg.name}`);
+            } catch (e: any) {
+                console.error(`[${msg.type}] API Error for ${msg.name}:`, e.message);
+                results.errors.push(`${msg.type} Error (${msg.name}): ${e.message}`);
+            }
+            // Strict 1000ms delay to ensure Meta processes each message individually
+            await new Promise(r => setTimeout(r, 1000));
+        }
 
         return new Response(
             JSON.stringify({

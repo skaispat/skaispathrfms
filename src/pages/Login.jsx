@@ -492,7 +492,7 @@ const Login = () => {
                       )}
                     </div>
                     <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-2 sm:mt-2 text-xs sm:text-sm text-gray-500 font-medium">
-                      <span className="flex items-center"><Briefcase size={14} className="mr-1 text-gray-400" /> {job.experience || 'Fresher'}</span>
+                      <span className="flex items-center"><Briefcase size={14} className="mr-1 text-gray-400" /> {job.experience + ' Experience' || 'Fresher'}</span>
                       <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>
                       <span>{job.number_of_posts || 1} Post</span>
                       <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>
@@ -636,9 +636,15 @@ const Login = () => {
           </Link>
           <Link
             to="/career"
-            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all duration-200 ${activeTab === 'career' ? 'bg-white text-[#800000] shadow-md' : 'text-white/90 hover:bg-white/10 hover:text-white'}`}
+            className={`relative px-4 py-2 rounded-xl text-sm font-bold transition-all duration-200 flex items-center ${activeTab === 'career' ? 'bg-white text-[#800000] shadow-md' : 'text-white/90 hover:bg-white/10 hover:text-white'}`}
           >
             Career
+            {activeTab !== 'career' && (
+              <span className="absolute top-0 right-0 -mt-1 -mr-1 flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500 border border-[#800000]"></span>
+              </span>
+            )}
           </Link>
           <Link
             to="/login"

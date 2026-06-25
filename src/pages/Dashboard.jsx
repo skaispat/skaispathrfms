@@ -29,8 +29,13 @@ import {
   Layers,
   MapPin,
   Clock3,
-  Search
+  Search,
+  Cake,
+  Gift,
+  Image as ImageIcon,
+  PartyPopper
 } from 'lucide-react';
+import dayjs from 'dayjs';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -57,6 +62,11 @@ const Dashboard = () => {
   const [recentLeaves, setRecentLeaves] = useState([]);
   const [recentGatepasses, setRecentGatepasses] = useState([]);
   const [recentApplicants, setRecentApplicants] = useState([]);
+
+  // Birthday & Anniversary state
+  const [usersData, setUsersData] = useState([]);
+  const [birthdayRecords, setBirthdayRecords] = useState([]);
+  const [currentSlide, setCurrentSlide] = useState(0);
 
   // Attendance state
   const [presentList, setPresentList] = useState([]);
@@ -102,6 +112,8 @@ const Dashboard = () => {
 
         if (usersError) throw usersError;
 
+        setUsersData(usersData || []);
+
         const total = usersData.length;
         const active = usersData.filter(u => u.is_active).length;
         const inactive = total - active;
@@ -118,7 +130,7 @@ const Dashboard = () => {
         const m = String(today.getMonth() + 1).padStart(2, '0');
         const d = String(today.getDate()).padStart(2, '0');
         const todayStr = `${y}-${m}-${d}`;
-        const response = await fetch(`https://sohcm.com/SmartApp_ess/api/SwipeDetails/GetDeviceLogs?APIKey=341813122509&AccountName=SKAISPAT&FromDate=${todayStr}&ToDate=${todayStr}`);
+        const response = await fetch(`${import.meta.env.VITE_BIOMETRIC_API_URL}&FromDate=${todayStr}&ToDate=${todayStr}`);
         const apiData = await response.json();
 
         const groupedApiData = {};
@@ -214,7 +226,7 @@ const Dashboard = () => {
 
 
         // 4. Fetch Recent Operational Data
-        const [leavesRes, gatepassRes, applicantsRes] = await Promise.all([
+        const [leavesRes, gatepassRes, applicantsRes, birthdaysRes] = await Promise.all([
           supabase.from('leave_management')
             .select('id, employee_name, leave_type, status, leave_date_start, created_at')
             .order('created_at', { ascending: false })
@@ -226,7 +238,10 @@ const Dashboard = () => {
           supabase.from('job_leads')
             .select('id, candidate_name, post, candidate_experience, created_at')
             .order('created_at', { ascending: false })
-            .limit(5)
+            .limit(5),
+          supabase.from('birthday')
+            .select('*')
+            .order('created_at', { ascending: false })
         ]);
 
         if (leavesRes.error) console.error(leavesRes.error);
@@ -236,14 +251,26 @@ const Dashboard = () => {
         else setRecentGatepasses(gatepassRes.data || []);
 
         if (applicantsRes.error) console.error(applicantsRes.error);
-        else setRecentApplicants(applicantsRes.data || []);        // 6. Fetch Recent Job Vacancies
+        else setRecentApplicants(applicantsRes.data || []);
+
+        if (birthdaysRes.error) console.error(birthdaysRes.error);
+        else setBirthdayRecords(birthdaysRes.data || []);        // 6. Fetch Recent Job Vacancies
         const { data: jobs, error: jobsError } = await supabase
           .from('job_vacancy')
           .select('*')
           .order('id', { ascending: false })
           .limit(3);
 
-        if (!jobsError && jobs) setVacancies(jobs);
+        if (!jobsError && jobs) {
+          const jobsWithCounts = await Promise.all(jobs.map(async (job) => {
+            const { count } = await supabase
+              .from('job_leads')
+              .select('*', { count: 'exact', head: true })
+              .eq('post', job.post);
+            return { ...job, applied_count: count || 0 };
+          }));
+          setVacancies(jobsWithCounts);
+        }
 
       } catch (error) {
         // console.error("Error fetching dashboard data:", error);
@@ -254,6 +281,66 @@ const Dashboard = () => {
 
     fetchDashboardData();
   }, []);
+
+  // Birthday logic
+  const getUpcomingEvents = () => {
+    const today = dayjs().startOf('day');
+    const upcoming = [];
+
+    birthdayRecords.forEach(record => {
+      const userObj = usersData.find(emp => String(emp.emp_id) === String(record.emp_id));
+      const empName = userObj?.full_name || 'Unknown Employee';
+
+      if (record.date_of_birth) {
+        const dobMonth = dayjs(record.date_of_birth).month();
+        const dobDate = dayjs(record.date_of_birth).date();
+        let thisYearDob = dayjs().month(dobMonth).date(dobDate).startOf('day');
+
+        if (thisYearDob.isBefore(today)) {
+          thisYearDob = thisYearDob.add(1, 'year');
+        }
+
+        const diffDays = thisYearDob.diff(today, 'day');
+        if (diffDays >= 0 && diffDays <= 7) {
+          upcoming.push({ ...record, type: 'Birthday', targetDate: thisYearDob, diffDays, empName });
+        }
+      }
+
+      if (record.aniversary) {
+        const annMonth = dayjs(record.aniversary).month();
+        const annDate = dayjs(record.aniversary).date();
+        let thisYearAnn = dayjs().month(annMonth).date(annDate).startOf('day');
+
+        if (thisYearAnn.isBefore(today)) {
+          thisYearAnn = thisYearAnn.add(1, 'year');
+        }
+
+        const diffDays = thisYearAnn.diff(today, 'day');
+        if (diffDays >= 0 && diffDays <= 7) {
+          upcoming.push({ ...record, type: 'Anniversary', targetDate: thisYearAnn, diffDays, empName });
+        }
+      }
+    });
+
+    return upcoming.sort((a, b) => a.diffDays - b.diffDays);
+  };
+
+  const upcomingEvents = getUpcomingEvents();
+  const futureEventsCount = upcomingEvents.filter(e => e.diffDays > 0).length;
+
+  useEffect(() => {
+    if (futureEventsCount > 1) {
+      const timer = setInterval(() => {
+        setCurrentSlide((prev) => (prev + 1) % futureEventsCount);
+      }, 2000);
+      return () => clearInterval(timer);
+    }
+  }, [futureEventsCount]);
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '';
+    return dayjs(dateStr).format('D MMMM YYYY');
+  };
 
   // Colors
   const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#10b981', '#3b82f6', '#f59e0b', '#06b6d4'];
@@ -296,6 +383,9 @@ const Dashboard = () => {
     }
   };
 
+  const todaysEvents = upcomingEvents.filter(e => e.diffDays === 0);
+  const futureEvents = upcomingEvents.filter(e => e.diffDays > 0);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
@@ -305,7 +395,7 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="p-1 sm:p-8 max-w-[1600px] mx-auto space-y-4 sm:space-y-8 min-h-screen font-sans">
+    <div className="p-2 sm:p-4 md:p-6 max-w-[1600px] mx-auto space-y-3 sm:space-y-5 min-h-screen font-sans bg-slate-50/30">
       {/* Header */}
       <div className="flex items-center justify-between gap-1.5 mb-1 sm:mb-4 px-1 sm:px-0">
         <div className="text-left">
@@ -360,7 +450,7 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-1.5 sm:gap-6">
 
         {/* Today's In UI - 1 Col */}
-        <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-slate-100 flex flex-col">
+        <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-md border border-slate-200 flex flex-col">
           <div className="mb-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base sm:text-lg font-extrabold text-slate-800 tracking-tight">Today's In</h3>
@@ -426,7 +516,7 @@ const Dashboard = () => {
         </div>
 
         {/* Late UI - 1 Col */}
-        <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-slate-100 flex flex-col">
+        <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-md border border-slate-200 flex flex-col">
           <div className="mb-4">
             <h3 className="text-base sm:text-lg font-extrabold text-slate-800 tracking-tight">Late Today</h3>
           </div>
@@ -478,7 +568,7 @@ const Dashboard = () => {
       </div>
 
       {/* Department Chart - Full Width */}
-      <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-slate-100">
+      <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-md border border-slate-200">
         <div className="mb-6 flex items-center gap-2">
           <div className="p-2 bg-purple-50 rounded-lg">
             <Layers size={18} className="text-purple-600" />
@@ -521,7 +611,7 @@ const Dashboard = () => {
       {/* Grid 1: Recent Leaves & Gate Passes */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mt-6">
         {/* Recent Leaves Card */}
-        <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-slate-100 flex flex-col">
+        <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-md border border-slate-200 flex flex-col">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-2">
               <div className="p-1.5 sm:p-2 bg-indigo-50 rounded-lg">
@@ -559,7 +649,7 @@ const Dashboard = () => {
         </div>
 
         {/* Recent Gate Passes Card */}
-        <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-slate-100 flex flex-col">
+        <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-md border border-slate-200 flex flex-col">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-2">
               <div className="p-1.5 sm:p-2 bg-emerald-50 rounded-lg">
@@ -601,7 +691,7 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mt-6">
 
         {/* Job Vacancies Widget */}
-        <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-slate-100 flex flex-col">
+        <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-md border border-slate-200 flex flex-col">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-2">
               <div className="p-1.5 sm:p-2 bg-blue-50 rounded-lg">
@@ -623,9 +713,12 @@ const Dashboard = () => {
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-[10px] font-medium text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-100">{job.department}</span>
                       <span className="text-[10px] font-medium text-slate-400">{job.number_of_posts} posts</span>
+                      <span className="text-[10px] font-medium text-slate-400">• {job.timestamp ? new Date(job.timestamp).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'N/A'}</span>
                     </div>
                   </div>
-                  <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_0_3px_rgba(59,130,246,0.1)]"></div>
+                  <div className="flex flex-col items-end gap-1.5">
+                    <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">{job.applied_count} Applied</span>
+                  </div>
                 </div>
               ))
             ) : (
@@ -646,7 +739,7 @@ const Dashboard = () => {
         </div>
 
         {/* Recent Applicants Card */}
-        <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-slate-100 flex flex-col">
+        <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-md border border-slate-200 flex flex-col">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-2">
               <div className="p-1.5 sm:p-2 bg-purple-50 rounded-lg">
@@ -664,7 +757,7 @@ const Dashboard = () => {
                 <div key={index} className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-between hover:shadow-sm transition-shadow">
                   <div className="min-w-0 pr-2">
                     <h4 className="text-sm font-bold text-slate-800 truncate">{applicant.candidate_name}</h4>
-                    <p className="text-xs text-slate-500 font-medium truncate">{applicant.post} • {applicant.candidate_experience || 'Fresher'}</p>
+                    <p className="text-xs text-slate-500 font-medium truncate">{applicant.post} • {applicant.candidate_experience || 'Fresher'} • {applicant.created_at ? new Date(applicant.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'N/A'}</p>
                   </div>
                   <span className={`px-2 py-1 flex-shrink-0 text-[10px] font-bold rounded-full bg-slate-200 text-slate-700`}>
                     Pending
@@ -681,6 +774,131 @@ const Dashboard = () => {
         </div>
 
       </div>
+
+      {/* Grid 3: Birthdays & Anniversaries */}
+      {(todaysEvents.length > 0 || futureEvents.length > 0) && (
+        <div className="bg-white p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-md border border-slate-200 mt-6 flex flex-col xl:flex-row gap-6 xl:gap-8">
+
+          {/* Today's Events */}
+          <div className={`w-full ${futureEvents.length > 0 ? 'xl:flex-[6]' : ''}`}>
+            {todaysEvents.length > 0 ? (
+              <div>
+                <h3 className="text-lg font-bold text-slate-800 mb-4 px-1">Today's Events</h3>
+                <div className="flex flex-col gap-4 sm:gap-6">
+                  {todaysEvents.map((record, index) => {
+                    const isBirthday = record.type === 'Birthday';
+                    return (
+                      <div key={index} className="bg-white rounded-2xl shadow-sm hover:shadow-md transition-shadow border border-slate-200 overflow-hidden flex flex-col sm:flex-row group relative">
+                        {/* LEFT SIDE: Photo */}
+                        <div className="w-full sm:w-[35%] shrink-0 bg-slate-50 relative flex items-center justify-center border-b sm:border-b-0 sm:border-r border-slate-100 min-h-[160px] sm:min-h-[200px]">
+                          {record.photo ? (
+                            <img
+                              src={record.photo}
+                              alt={record.empName}
+                              className="w-full h-48 sm:h-full sm:absolute sm:inset-0 object-contain p-4 cursor-default transition-transform"
+                            />
+                          ) : (
+                            <div className="w-full h-full absolute inset-0 bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+                              <div className="w-20 h-20 rounded-full border-4 border-white shadow-md bg-white/20 flex items-center justify-center text-white backdrop-blur-sm">
+                                <ImageIcon size={28} />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* RIGHT SIDE: Details */}
+                        <div className="p-4 sm:p-6 flex-1 flex flex-col justify-center">
+                          <h2 className="text-2xl sm:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-violet-600 mb-1 sm:mb-2 tracking-tight">
+                            {isBirthday ? "Today's Birthday!" : "Today's Anniversary!"}
+                          </h2>
+                          <h3 className="font-bold text-slate-800 text-xl sm:text-2xl leading-tight">{record.empName}</h3>
+
+                          <div className="w-full mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-slate-100 flex flex-col gap-2 sm:gap-3">
+                            {record.date_of_birth && (
+                              <div className="flex justify-between items-center text-sm sm:text-base">
+                                <span className="text-slate-500 flex items-center gap-2"><Cake size={16} className="text-purple-400" /> Date of Birth</span>
+                                <span className="font-medium text-slate-900">{formatDate(record.date_of_birth)}</span>
+                              </div>
+                            )}
+                            {record.aniversary && (
+                              <div className="flex justify-between items-center text-sm sm:text-base">
+                                <span className="text-slate-500 flex items-center gap-2"><Gift size={16} className="text-pink-400" /> Anniversary</span>
+                                <span className="font-medium text-slate-900">{formatDate(record.aniversary)}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-slate-500 bg-white rounded-xl shadow-sm border border-slate-200 h-full flex flex-col justify-center items-center">
+                <PartyPopper size={40} className="text-slate-300 mb-3" />
+                <h3 className="text-lg font-bold text-slate-800 mb-1">No Events Today</h3>
+                <p className="text-sm font-medium">There are no birthdays or anniversaries today.</p>
+              </div>
+            )}
+          </div>
+
+          {/* Upcoming Events */}
+          {futureEvents.length > 0 && (
+            <div className="w-full xl:flex-[4] border-t xl:border-t-0 xl:border-l border-slate-200/60 pt-4 sm:pt-6 xl:pt-0 xl:pl-8">
+              <h3 className="text-lg font-bold text-slate-800 mb-4 sm:mb-6 px-1 flex items-center gap-2">
+                <Calendar size={18} className="text-indigo-600" />
+                Upcoming Events
+              </h3>
+
+              {/* Auto-Slider Card */}
+              <div className="w-full sm:max-w-md xl:max-w-none">
+                {(() => {
+                  const record = futureEvents[currentSlide] || futureEvents[0];
+
+                  return (
+                    <React.Fragment key={currentSlide}>
+                      <style>{`@keyframes fadeSlideIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }`}</style>
+                      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 xl:p-0 flex items-center xl:flex-col xl:items-stretch gap-4 xl:gap-0 relative overflow-hidden transition-all duration-300" style={{ animation: 'fadeSlideIn 0.6s cubic-bezier(0.16, 1, 0.3, 1)' }}>
+                        {record.photo ? (
+                          <img src={record.photo} alt={record.empName} className="w-12 h-12 xl:w-full xl:h-56 xl:rounded-none xl:border-0 rounded-lg border border-slate-100 shadow-sm object-cover shrink-0" />
+                        ) : (
+                          <div className="w-12 h-12 xl:w-full xl:h-56 xl:rounded-none xl:border-0 rounded-lg border border-slate-100 shadow-sm bg-slate-50 flex items-center justify-center text-slate-400 shrink-0">
+                            <ImageIcon className="w-5 h-5 xl:w-12 xl:h-12 text-slate-300" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0 xl:p-6 bg-white xl:border-t border-slate-100">
+                          <p className="text-[10px] xl:text-xs font-bold text-indigo-600 uppercase tracking-wider mb-0.5 xl:mb-1.5">{record.type === 'Birthday' ? 'Upcoming Birthday' : 'Upcoming Anniversary'}</p>
+                          <h4 className="font-bold text-slate-900 text-sm xl:text-xl truncate">{record.empName}</h4>
+                          <p className="text-xs xl:text-sm text-slate-500 mt-0.5 xl:mt-2 flex items-center gap-1.5">
+                            <Calendar className="w-3 h-3 xl:w-4 xl:h-4 text-slate-400" />
+                            {dayjs(record.targetDate).format('DD MMM YYYY')} • In {record.diffDays} Days
+                          </p>
+                        </div>
+                      </div>
+                    </React.Fragment>
+                  );
+                })()}
+
+                {futureEvents.length > 1 && (
+                  <div className="flex items-center gap-1.5 mt-4 px-1">
+                    {futureEvents.map((_, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setCurrentSlide(idx)}
+                        className={`h-1.5 rounded-full transition-all duration-300 ${currentSlide === idx ? 'bg-indigo-600 w-4' : 'bg-slate-200 w-1.5 hover:bg-slate-300'}`}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button onClick={() => navigate('/birthdays')} className="w-full mt-6 py-2.5 text-xs font-bold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors">
+                View All Events
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
     </div>
   );
 };
@@ -697,7 +915,7 @@ const StatCard = ({ title, value, icon: Icon, trend, trendUp, color }) => {
   const scheme = colorMap[color] || colorMap.indigo;
 
   return (
-    <div className="bg-white p-2.5 sm:p-6 rounded-2xl sm:rounded-3xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] border border-slate-100/60 hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
+    <div className="bg-white p-2.5 sm:p-6 rounded-2xl sm:rounded-3xl shadow-md border border-slate-200 hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
       <div className="flex justify-between items-start mb-3 sm:mb-4">
         <div className={`p-2 sm:p-3.5 rounded-xl sm:rounded-2xl ${scheme.bg} ${scheme.text} shadow-sm`}>
           <Icon size={18} className="sm:w-[22px] sm:h-[22px] stroke-[2.5px]" />

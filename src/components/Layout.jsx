@@ -35,9 +35,9 @@ const Layout = () => {
               </a>
             </div>
 
-            <div className="hidden sm:block text-center md:text-right text-xs text-slate-400 font-medium opacity-80">
+            {/* <div className="hidden sm:block text-center md:text-right text-xs text-slate-400 font-medium opacity-80">
               &copy; 2026 Botivate Services LLP. All rights reserved.
-            </div>
+            </div> */}
           </div>
         </footer>
       </div>

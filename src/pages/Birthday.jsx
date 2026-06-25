@@ -440,8 +440,8 @@ const Birthday = () => {
                     </div>
                   )}
                   {filteredRecords.length === 0 && (
-                    <div className="text-center py-8 text-slate-500 bg-white rounded-xl shadow-sm border border-slate-200 mx-auto max-w-lg mt-6">
-                      <Cake size={40} className="mx-auto text-slate-300 mb-3" />
+                    <div className="flex flex-col justify-center items-center text-center py-8 text-slate-500 bg-white rounded-xl shadow-sm border border-slate-200 w-full min-h-[250px] xl:min-h-[420px]">
+                      <Cake size={40} className="text-slate-300 mb-3" />
                       <p className="text-sm">No events today.</p>
                     </div>
                   )}
@@ -464,20 +464,20 @@ const Birthday = () => {
                         return (
                           <React.Fragment key={currentSlide}>
                             <style>{`@keyframes fadeSlideIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }`}</style>
-                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center gap-4 relative overflow-hidden transition-all duration-300" style={{ animation: 'fadeSlideIn 0.6s cubic-bezier(0.16, 1, 0.3, 1)' }}>
+                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 xl:p-0 flex items-center xl:flex-col xl:items-stretch gap-4 xl:gap-0 relative overflow-hidden transition-all duration-300" style={{ animation: 'fadeSlideIn 0.6s cubic-bezier(0.16, 1, 0.3, 1)' }}>
                               {record.photo ? (
-                                <img src={record.photo} alt={record.empName} className="w-12 h-12 rounded-full border border-slate-100 shadow-sm object-cover shrink-0" />
+                                <img src={record.photo} alt={record.empName} className="w-12 h-12 xl:w-full xl:h-56 xl:rounded-none xl:border-0 rounded-lg border border-slate-100 shadow-sm object-cover shrink-0" />
                               ) : (
-                                <div className="w-12 h-12 rounded-full border border-slate-100 shadow-sm bg-slate-50 flex items-center justify-center text-slate-400 shrink-0">
-                                  <ImageIcon size={20} />
+                                <div className="w-12 h-12 xl:w-full xl:h-56 xl:rounded-none xl:border-0 rounded-lg border border-slate-100 shadow-sm bg-slate-50 flex items-center justify-center text-slate-400 shrink-0">
+                                  <ImageIcon className="w-5 h-5 xl:w-12 xl:h-12 text-slate-300" />
                                 </div>
                               )}
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider mb-0.5">{record.type === 'Birthday' ? 'Upcoming Birthday' : 'Upcoming Anniversary'}</p>
-                                <h4 className="font-bold text-slate-900 text-sm truncate">{record.empName}</h4>
-                                <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5">
-                                  <Calendar size={12} className="text-slate-400" />
-                                  {dayjs(record.targetDate).format('DD MMM')} • In {record.diffDays} Days
+                              <div className="flex-1 min-w-0 xl:p-6 bg-white xl:border-t border-slate-100">
+                                <p className="text-[10px] xl:text-xs font-bold text-indigo-600 uppercase tracking-wider mb-0.5 xl:mb-1.5">{record.type === 'Birthday' ? 'Upcoming Birthday' : 'Upcoming Anniversary'}</p>
+                                <h4 className="font-bold text-slate-900 text-sm xl:text-xl truncate">{record.empName}</h4>
+                                <p className="text-xs xl:text-sm text-slate-500 mt-0.5 xl:mt-2 flex items-center gap-1.5">
+                                  <Calendar className="w-3 h-3 xl:w-4 xl:h-4 text-slate-400" />
+                                  {dayjs(record.targetDate).format('DD MMM YYYY')} • In {record.diffDays} Days
                                 </p>
                               </div>
                             </div>

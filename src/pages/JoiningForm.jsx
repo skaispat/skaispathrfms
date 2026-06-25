@@ -8,7 +8,9 @@ import {
   CreditCard,
   FileText,
   CheckCircle,
-  ChevronDown
+  ChevronDown,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../supabaseClient';
@@ -42,6 +44,7 @@ const JoiningForm = () => {
   const [checkingEmpId, setCheckingEmpId] = useState(false);
   const [usernameError, setUsernameError] = useState('');
   const [checkingUsername, setCheckingUsername] = useState(false);
+  const [emailError, setEmailError] = useState('');
 
   // Check if already submitted
   useEffect(() => {
@@ -200,6 +203,37 @@ const JoiningForm = () => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
+
+    if (name === 'empId') {
+      let cleaned = value.replace(/[^0-9]/g, '');
+      setFormData(prev => ({ ...prev, [name]: cleaned }));
+      return;
+    }
+
+    if (name === 'username') {
+      // Must start with a letter
+      let cleaned = value.replace(/^[^a-zA-Z]+/, '');
+      setFormData(prev => ({ ...prev, [name]: cleaned }));
+      return;
+    }
+
+    if (name === 'nameAsPerAadhar' || name === 'fatherName' || name === 'relationshipWithFamily' || name === 'designation') {
+      // Allow only alphabetic characters and spaces
+      let cleaned = value.replace(/[^a-zA-Z\s]/g, '');
+      setFormData(prev => ({ ...prev, [name]: cleaned }));
+      return;
+    }
+
+    if (name === 'personalEmail') {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (value && !emailRegex.test(value)) {
+        setEmailError('Please enter a valid email address');
+      } else {
+        setEmailError('');
+      }
+      setFormData(prev => ({ ...prev, [name]: value }));
+      return;
+    }
 
     if (name === 'aadharCardNo') {
       let cleaned = value.replace(/[^0-9]/g, '');
@@ -576,7 +610,7 @@ const JoiningForm = () => {
                     <InputField label="Date Of Birth (जन्मतिथि)" name="dateOfBirth" type="date" value={formData.dateOfBirth} onChange={handleInputChange} required />
                     <SelectField label="Gender (लिंग)" name="gender" value={formData.gender} onChange={handleInputChange} options={['Male', 'Female', 'Other']} required />
                     <PhoneInputField label="Mobile No. (मोबाइल नंबर)" name="mobileNo" value={formData.mobileNo} onChange={handleInputChange} required placeholder="9999999999" />
-                    <InputField label="Email (ईमेल)" name="personalEmail" type="email" value={formData.personalEmail} onChange={handleInputChange} placeholder="email@example.com" />
+                    <InputField label="Email (ईमेल)" name="personalEmail" type="email" value={formData.personalEmail} onChange={handleInputChange} placeholder="email@example.com" error={emailError} />
                     <PhoneInputField label="Family Mobile No. (पारिवारिक मोबाइल नंबर)" name="familyMobileNo" value={formData.familyMobileNo} onChange={handleInputChange} placeholder="9999999999" />
                     <InputField label="Relationship With Family (परिवार के साथ संबंध)" name="relationshipWithFamily" value={formData.relationshipWithFamily} onChange={handleInputChange} placeholder="e.g. Father" />
                     <div className="md:col-span-2">
@@ -682,10 +716,10 @@ const JoiningForm = () => {
                   </button>
                   <button
                     type="submit"
-                    disabled={submitting || (currentStep === 1 && (checkingEmpId || !!empIdError || checkingUsername || !!usernameError))}
+                    disabled={submitting || (currentStep === 1 && (checkingEmpId || !!empIdError || checkingUsername || !!usernameError)) || !!emailError}
                     className={`
                     w-full sm:w-auto px-8 py-3 sm:py-2.5 rounded-xl text-sm font-semibold text-white shadow-sm transition-all duration-200 flex items-center justify-center gap-2
-                    ${(submitting || (currentStep === 1 && (checkingEmpId || !!empIdError || checkingUsername || !!usernameError)))
+                    ${(submitting || (currentStep === 1 && (checkingEmpId || !!empIdError || checkingUsername || !!usernameError)) || !!emailError)
                         ? 'bg-slate-300 text-slate-500 cursor-not-allowed border-transparent'
                         : 'bg-[#991B1B] hover:bg-[#7F1D1D] hover:shadow-md hover:-translate-y-0.5 active:translate-y-0'}
                   `}
@@ -731,26 +765,44 @@ const SectionCard = ({ title, icon: Icon, children }) => (
   </div>
 );
 
-const InputField = ({ label, name, type = "text", value, onChange, placeholder, required, readOnly, error }) => (
-  <div className="group">
-    <label className="block text-sm font-semibold text-slate-700 mb-2 group-focus-within:text-[#991B1B] transition-colors break-words whitespace-normal leading-relaxed">
-      {label} {required && <span className="text-red-500">*</span>}
-    </label>
-    <input
-      type={type}
-      name={name}
-      value={value}
-      onChange={onChange}
-      placeholder={placeholder}
-      required={required}
-      readOnly={readOnly}
-      className={`w-full px-4 py-3 rounded-xl border ${error ? 'border-red-500 focus:border-red-500 focus:ring-red-500/10' : 'border-slate-200 focus:border-[#991B1B] focus:ring-[#991B1B]/5'} focus:ring-4 outline-none transition-all placeholder:text-slate-400
-        ${readOnly ? 'bg-slate-50 text-slate-500 cursor-not-allowed border-slate-100' : 'bg-slate-50 focus:bg-white'}
-      `}
-    />
-    {error && <p className="text-red-500 text-xs mt-1.5 font-medium">{error}</p>}
-  </div>
-);
+const InputField = ({ label, name, type = "text", value, onChange, placeholder, required, readOnly, error }) => {
+  const [showPassword, setShowPassword] = useState(false);
+  const isPasswordType = type === 'password';
+  const inputType = isPasswordType ? (showPassword ? 'text' : 'password') : type;
+
+  return (
+    <div className="group">
+      <label className="block text-sm font-semibold text-slate-700 mb-2 group-focus-within:text-[#991B1B] transition-colors break-words whitespace-normal leading-relaxed">
+        {label} {required && <span className="text-red-500">*</span>}
+      </label>
+      <div className="relative">
+        <input
+          type={inputType}
+          name={name}
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          required={required}
+          readOnly={readOnly}
+          className={`w-full px-4 py-3 rounded-xl border ${error ? 'border-red-500 focus:border-red-500 focus:ring-red-500/10' : 'border-slate-200 focus:border-[#991B1B] focus:ring-[#991B1B]/5'} focus:ring-4 outline-none transition-all placeholder:text-slate-400
+            ${readOnly ? 'bg-slate-50 text-slate-500 cursor-not-allowed border-slate-100' : 'bg-slate-50 focus:bg-white'}
+            ${isPasswordType ? 'pr-12' : ''}
+          `}
+        />
+        {isPasswordType && (
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors p-1"
+          >
+            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+          </button>
+        )}
+      </div>
+      {error && <p className="text-red-500 text-xs mt-1.5 font-medium">{error}</p>}
+    </div>
+  );
+};
 
 const SelectField = ({ label, name, value, onChange, options, required }) => (
   <div className="group">
