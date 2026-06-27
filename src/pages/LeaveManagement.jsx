@@ -847,7 +847,7 @@ const LeaveManagement = () => {
       // Prepare data for Supabase insertion
       const insertData = {
         timestamp: new Date().toISOString(),
-        serial_no: null, // As specified in schema, integer
+        serial_no: null,
         emp_id: formData.employeeId,
         employee_name: formData.employeeName,
         leave_date_start: formData.fromDate,
@@ -1025,6 +1025,7 @@ const LeaveManagement = () => {
         casual: newStatus === "Rejected" ? 0 : rowCounts.casual,
         earned: newStatus === "Rejected" ? 0 : rowCounts.earned,
         unpaid: newStatus === "Rejected" ? 0 : rowCounts.unpaid,
+        ...(newStatus === "Rejected" && { rejected_by: String(user.emp_id) }),
         ...(isHod && {
           hod_remarks: rowRemarks.hod || "",
           hod_id: user.emp_id,
@@ -1417,6 +1418,7 @@ const LeaveManagement = () => {
           casual: 0,
           earned: 0,
           unpaid: 0,
+          rejected_by: String(user.emp_id),
           hod_id: isHodUser ? user.emp_id : row.hodId,
           hod_name: isHodUser ? (user.full_name || user.Name) : row.hodName,
           ...(isHodUser && {

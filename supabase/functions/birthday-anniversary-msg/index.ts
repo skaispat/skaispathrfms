@@ -129,7 +129,7 @@ serve(async (req) => {
         }
 
         // Hardcoded HR Number
-        const hrPhone = "919630606237";
+        const hrPhone = "919109164455";
         const results = { birthdays: 0, anniversaries: 0, errors: [] };
 
         const messagesQueue: any[] = [];
@@ -159,7 +159,14 @@ serve(async (req) => {
                 if (employeePhone) {
                     messagesQueue.push({ phone: employeePhone, template: 'birthday_wish', params: [employeeName, department], image: bdayImage, name: employeeName, type: 'Birthday' });
                 }
-                messagesQueue.push({ phone: hrPhone, template: 'birthday_wish', params: [employeeName, department], image: bdayImage, name: `HR (for ${employeeName})`, type: 'Birthday' });
+
+                const hrBdayParams = [
+                    `🎉🎂 Happy Birthday, ${employeeName}! (${department} Department)🎂🎉`,
+                    `Wishing you a fantastic day filled with happiness, good health, and success. May the year ahead bring you new opportunities, personal growth, and many memorable moments.`,
+                    `Have a wonderful birthday and an amazing year ahead! 🎈🎁`
+                ];
+
+                messagesQueue.push({ phone: hrPhone, template: 'birthday_wish_hr', params: hrBdayParams, image: undefined, name: `HR (for ${employeeName})`, type: 'Birthday' });
             }
 
             // Check Anniversary Match
@@ -168,7 +175,15 @@ serve(async (req) => {
                 if (employeePhone) {
                     messagesQueue.push({ phone: employeePhone, template: 'anniversary_wish', params: [employeeName, department], image: undefined, name: employeeName, type: 'Anniversary' });
                 }
-                messagesQueue.push({ phone: hrPhone, template: 'anniversary_wish', params: [employeeName, department], image: undefined, name: `HR (for ${employeeName})`, type: 'Anniversary' });
+
+                const hrAnnivParams = [
+                    `🎉💐 Happy Marriage Anniversary ${employeeName} (${department} Department)! 💐🎉`,
+                    `Wishing you and your life partner a wonderful Marriage Anniversary! ❤️`,
+                    `May your life together always be filled with love, happiness, good health, and countless beautiful memories.`,
+                    `Have a fantastic celebration! 🥂✨`
+                ];
+
+                messagesQueue.push({ phone: hrPhone, template: 'anniversary_wish_hr', params: hrAnnivParams, image: undefined, name: `HR (for ${employeeName})`, type: 'Anniversary' });
             }
         }
 
