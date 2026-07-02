@@ -34,6 +34,7 @@ const getFiscalYear = (date = new Date()) => {
 import { sendWhatsappMessageToHod } from "../whatsappMessageSender/whatsappMessageSender";
 import { sendWhatsappMessageToHr } from "../whatsappMessageSender/sendWhatsappMessageToHr";
 import { sendApprovedMessageToEmployee, sendRejectedMessageToEmployee } from "../whatsappMessageSender/sendWhatsappMessageToEmployee";
+import { calculateLeaveSplitsDayByDay } from "../utils/leaveCalculations.js";
 
 const LeaveManagement = () => {
   const { user } = useAuthStore();
@@ -135,45 +136,21 @@ const LeaveManagement = () => {
   }, [user]);
 
   const getAutoLeaveSplits = (leaveType, startDate, endDate, empId) => {
-    const appliedDays = calculateDays(startDate, endDate);
-    if (!startDate || !endDate) return { casual: 0, earned: 0, unpaid: appliedDays };
-
-    const targetDate = new Date(startDate);
-    const fyMonthIndex = targetDate.getMonth() >= 3 ? targetDate.getMonth() - 2 : targetDate.getMonth() + 10;
-
-    const maxAccEL = fyMonthIndex * 2;
-    const maxAccCL = fyMonthIndex * 1;
-
     const quota = rowQuotas[empId] || {};
     const usedEL = quota.earned_leave_used || 0;
     const usedCL = quota.casual_leave_used || 0;
     const carriedForwardEL = quota.carried_forward_el || 0;
 
-    const availableAccEL = Math.max(0, maxAccEL + carriedForwardEL - usedEL);
-    const availableAccCL = Math.max(0, maxAccCL - usedCL);
+    const splits = calculateLeaveSplitsDayByDay(
+      leaveType,
+      startDate,
+      endDate,
+      usedEL,
+      usedCL,
+      carriedForwardEL
+    );
 
-    if (leaveType === 'UnPaid Leave') {
-      return { casual: 0, earned: 0, unpaid: appliedDays };
-    } else {
-      const effectiveCL = Math.min(3, availableAccCL);
-      const maxPaidPossible = Math.min(10, effectiveCL + availableAccEL);
-
-      if (appliedDays > maxPaidPossible) {
-        const lwpDays = appliedDays - maxPaidPossible;
-        const paidDays = maxPaidPossible;
-
-        let clToUse = Math.min(paidDays, effectiveCL);
-        let elToUse = paidDays - clToUse;
-
-        return { casual: clToUse, earned: elToUse, unpaid: lwpDays };
-      } else {
-        const paidDays = appliedDays;
-        let clToUse = Math.min(paidDays, effectiveCL);
-        let elToUse = paidDays - clToUse;
-
-        return { casual: clToUse, earned: elToUse, unpaid: 0 };
-      }
-    }
+    return { casual: splits.casual, earned: splits.earned, unpaid: splits.unpaid };
   };
 
   const handleCheckboxChange = (leaveId, rowData) => {
@@ -845,8 +822,14 @@ const LeaveManagement = () => {
       console.log("Starting Supabase insert...");
 
       // Prepare data for Supabase insertion
+      const now = new Date();
+      const istOffsetMs = 330 * 60000; // IST offset in milliseconds
+      const istDate = new Date(now.getTime() + istOffsetMs);
+      const istTimestamp = istDate.toISOString().slice(0, 19).replace('T', ' ');
+
       const insertData = {
-        timestamp: new Date().toISOString(),
+        timestamp: istTimestamp,
+        created_at: istTimestamp,
         serial_no: null,
         emp_id: formData.employeeId,
         employee_name: formData.employeeName,
@@ -3025,7 +3008,8 @@ const LeaveManagement = () => {
                         name="leaveType"
                         value={formData.leaveType}
                         onChange={handleInputChange}
-                        className="block w-full py-3 pl-10 pr-10 font-medium transition-all bg-white appearance-none rounded-xl border-slate-200 text-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                        disabled={!formData.employeeId}
+                        className="block w-full py-3 pl-10 pr-10 font-medium transition-all bg-white appearance-none rounded-xl border-slate-200 text-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 disabled:opacity-50 disabled:bg-slate-100 disabled:cursor-not-allowed"
                         required
                       >
                         <option value="">Select Leave Type</option>
@@ -3128,38 +3112,21 @@ const LeaveManagement = () => {
                       let leaveNote = null;
 
                       if (formData.fromDate && formData.toDate && formData.leaveType) {
-                        const appliedDays = calculateDays(formData.fromDate, formData.toDate);
-                        const targetDate = new Date(formData.fromDate);
-                        const fyMonthIndex = targetDate.getMonth() >= 3 ? targetDate.getMonth() - 2 : targetDate.getMonth() + 10;
-
-                        const maxAccEL = fyMonthIndex * 2;
-                        const maxAccCL = fyMonthIndex * 1;
-
                         const usedEL = leaveBalances.earned.used || 0;
                         const usedCL = leaveBalances.casual.used || 0;
                         const carriedForwardEL = leaveBalances.carriedForward || 0;
 
-                        const availableAccEL = Math.max(0, maxAccEL + carriedForwardEL - usedEL);
-                        const availableAccCL = Math.max(0, maxAccCL - usedCL);
+                        const splits = calculateLeaveSplitsDayByDay(
+                          formData.leaveType,
+                          formData.fromDate,
+                          formData.toDate,
+                          usedEL,
+                          usedCL,
+                          carriedForwardEL
+                        );
 
-                        if (formData.leaveType === 'UnPaid Leave') {
-                          leaveWarning = `आपने कुल ${appliedDays} दिन की छुट्टी के लिए आवेदन किया है। आपने LWP (बिना वेतन की छुट्टी) का चयन किया है। आपके पूरे ${appliedDays} दिन का वेतन काटा जाएगा।`;
-                        } else {
-                          const effectiveCL = Math.min(3, availableAccCL);
-                          const maxPaidPossible = Math.min(10, effectiveCL + availableAccEL);
-                          const totalAvailable = availableAccEL + availableAccCL;
-
-                          if (appliedDays > maxPaidPossible) {
-                            const lwpDays = appliedDays - maxPaidPossible;
-                            if (totalAvailable > maxPaidPossible) {
-                              leaveWarning = `आपने कुल ${appliedDays} दिन की छुट्टी के लिए आवेदन किया है। आपके पास कुल ${totalAvailable} छुट्टियां (EL: ${availableAccEL}, CL: ${availableAccCL}) हैं, लेकिन आप एक बार में अधिकतम 10 दिन (जिसमें अधिकतम 3 CL शामिल हो सकते हैं) की ही सवेतन छुट्टी ले सकते हैं। अतः आपके अतिरिक्त ${lwpDays} दिन LWP (बिना वेतन) माने जाएंगे।`;
-                            } else {
-                              leaveWarning = `आपने कुल ${appliedDays} दिन की छुट्टी के लिए आवेदन किया है। आपके पास केवल ${totalAvailable} छुट्टियां (EL: ${availableAccEL}, CL: ${availableAccCL}) उपलब्ध हैं। आपके अतिरिक्त ${lwpDays} दिन LWP (बिना वेतन) माने जाएंगे।`;
-                            }
-                          } else {
-                            leaveNote = `आपने कुल ${appliedDays} दिन की छुट्टी के लिए आवेदन किया है। आपके पास पर्याप्त छुट्टियां (कुल: ${totalAvailable} -> EL: ${availableAccEL}, CL: ${availableAccCL}) उपलब्ध हैं। आपके वेतन से कोई कटौती नहीं होगी।`;
-                          }
-                        }
+                        leaveWarning = splits.warning;
+                        leaveNote = splits.note;
                       }
 
                       if (leaveWarning) {

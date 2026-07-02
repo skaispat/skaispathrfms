@@ -142,13 +142,8 @@ const Login = () => {
       localStorage.setItem('user', JSON.stringify(userForStore));
       login(userForStore);
 
-      // 6. Navigate based on role
-      const isAdmin = userForStore.Admin === 'Yes';
-      if (isAdmin) {
-        navigate("/", { replace: true });
-      } else {
-        navigate("/my-profile", { replace: true });
-      }
+      // 6. Navigate to dashboard for all users
+      navigate("/", { replace: true });
 
     } catch (err) {
       console.error('Login exception:', err);

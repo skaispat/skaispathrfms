@@ -409,7 +409,7 @@ const Sidebar = ({ onClose }) => {
     { path: '/employee', icon: Users, label: 'Employee List', id: 'employee' },
 
     // Employee Specific
-    { path: '/my-profile', icon: ProfileIcon, label: 'My Profile', id: 'my-profile' },
+    // { path: '/my-profile', icon: ProfileIcon, label: 'My Profile', id: 'my-profile' },
     { path: '/my-attendance', icon: Clock, label: 'My Attendance', id: 'my-attendance' },
     { path: '/leave-request', icon: LeaveIcon, label: 'Leave Request', id: 'leave-request' },
     { path: '/gate-pass-request', icon: DoorOpen, label: 'Gate-Pass Request', id: 'gate-pass-request' },
@@ -466,11 +466,11 @@ const Sidebar = ({ onClose }) => {
 
     // If no page_access defined (legacy users), fallback to basic employee pages
     if (!user?.page_access || !Array.isArray(user?.page_access)) {
-      const DEFAULT_ACCESS = ['my-profile', 'my-attendance', 'leave-request', 'gate-pass-request', 'visitors', 'birthday', 'my-salary', 'company-calendar'];
+      const DEFAULT_ACCESS = ['/', 'my-profile', 'my-attendance', 'leave-request', 'gate-pass-request', 'visitors', 'birthday', 'my-salary', 'company-calendar'];
       return DEFAULT_ACCESS.includes(pageId);
     }
 
-    return user.page_access.includes(pageId);
+    return user.page_access.includes(pageId) || pageId === '/';
   };
 
   // Filter the menu items

@@ -3,20 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import useAuthStore from '../store/authStore';
 import { supabase } from '../supabaseClient';
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Cell,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  AreaChart,
-  Area
-} from 'recharts';
-import {
   Users,
   UserCheck,
   UserX,
@@ -37,27 +23,26 @@ import {
   Loader2
 } from 'lucide-react';
 import dayjs from 'dayjs';
-import UserDashboard from './UserDashboard';
 
-const Dashboard = () => {
+import { Link } from 'react-router-dom';
+
+// Fiscal year helper
+const getFiscalYear = (date = new Date()) => {
+  return date.getMonth() >= 3 ? date.getFullYear() : date.getFullYear() - 1;
+};
+
+const UserDashboard = () => {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const [loading, setLoading] = useState(true);
+  const [requestDropdownOpen, setRequestDropdownOpen] = useState(false);
 
-  const isAdmin = user && (user.Admin === 'Yes' || user.role === 'admin' || user.role === 'Admin');
-
-  if (!isAdmin) {
-    return <UserDashboard />;
-  }
-
-  const [totalEmployee, setTotalEmployee] = useState(0);
-  const [activeEmployee, setActiveEmployee] = useState(0);
-  const [resignedEmployee, setResignedEmployee] = useState(0);
-  const [leftEmployee, setLeftEmployee] = useState(0);
-  const [leftThisMonth, setLeftThisMonth] = useState(0);
-  const [monthlyHiringData, setMonthlyHiringData] = useState([]);
-  const [departmentData, setDepartmentData] = useState([]);
-  const [vacancies, setVacancies] = useState([]);
+  // Leave Balance State
+  const [leaveBalances, setLeaveBalances] = useState({
+    casual: { total: 12, used: 0, remaining: 12 },
+    earned: { total: 24, used: 0, remaining: 24, carriedForward: 0 },
+    unpaid: { used: 0 }
+  });
 
   // Operational widget state
   const [recentLeaves, setRecentLeaves] = useState([]);
@@ -84,20 +69,16 @@ const Dashboard = () => {
     setPresentLimit(10);
     setLateLimit(10);
   }, [searchQuery, selectedDepartment]);
-  // Helper to process distribution data
-  const getDistribution = (data, key) => {
-    const counts = {};
-    data.forEach(item => {
-      let val = item[key] ? item[key].trim() : 'Unknown';
-      // Grouping logic
-      if (val.toLowerCase().includes('approve')) val = 'Approved';
-      else if (val.toLowerCase().includes('reject')) val = 'Rejected';
-      else if (val.toLowerCase().includes('pending')) val = 'Pending HOD';
-
-      counts[val] = (counts[val] || 0) + 1;
-    });
-    return Object.keys(counts).map(k => ({ name: k, value: counts[k] }));
-  };
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (requestDropdownOpen && !e.target.closest('.request-dropdown-container')) {
+        setRequestDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [requestDropdownOpen]);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -107,7 +88,7 @@ const Dashboard = () => {
         const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString();
         const sixMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 5, 1).toISOString();
 
-        // 1. Fetch Users Data (Active & Total)
+        // 1. Fetch Users Data for events
         const { data: usersData, error: usersError } = await supabase
           .from('users')
           .select('emp_id, is_active, department, designation, joining_date, full_name, profile_picture');
@@ -115,17 +96,6 @@ const Dashboard = () => {
         if (usersError) throw usersError;
 
         setUsersData(usersData || []);
-
-        const total = usersData.length;
-        const active = usersData.filter(u => u.is_active).length;
-        const inactive = total - active;
-
-        setTotalEmployee(total);
-        setActiveEmployee(active);
-
-        // Department Distribution
-        const depts = getDistribution(usersData.filter(u => u.is_active), 'department');
-        setDepartmentData(depts);
 
         // Fetch Biometric API for today
         const y = today.getFullYear();
@@ -148,8 +118,7 @@ const Dashboard = () => {
         const uniqueDepts = new Set();
 
         usersData.filter(u => u.is_active).forEach(u => {
-          if (!isAdmin && user && String(u.emp_id) !== String(user.emp_id)) return;
-          if (u.department) uniqueDepts.add(u.department.trim());
+          if (user && String(u.emp_id) !== String(user.emp_id)) return;
           const logs = groupedApiData[u.emp_id] || [];
           if (logs.length > 0) {
             logs.sort();
@@ -178,74 +147,62 @@ const Dashboard = () => {
         setDepartments([...uniqueDepts].sort());
 
 
-        // 2. Fetch Employee Leaving Data
-        const { data: leavingData, error: leavingError } = await supabase
-          .from('employee_leaving')
-          .select('date_of_leaving, actual_date');
+        // 2. Fetch Leave Balances
+        if (user) {
+          const { data: balanceData } = await supabase
+            .from('employee_leave_balances')
+            .select('*')
+            .eq('emp_id', user.emp_id)
+            .maybeSingle();
 
-        if (leavingError) throw leavingError;
+          const { data: quotaData } = await supabase
+            .from('yearly_quota')
+            .select('carried_forward_el')
+            .eq('emp_id', user.emp_id)
+            .eq('year', getFiscalYear())
+            .maybeSingle();
 
-        const currentMonthLeaves = leavingData.filter(l => {
-          const d = l.actual_date || l.date_of_leaving;
-          if (!d) return false;
-          const date = new Date(d);
-          return date.getMonth() === today.getMonth() && date.getFullYear() === today.getFullYear();
-        }).length;
+          const carriedForwardEL = quotaData?.carried_forward_el || 0;
 
-        setLeftThisMonth(currentMonthLeaves);
-        setResignedEmployee(inactive);
-
-        // 3. Hiring vs Attrition Trends (Last 6 Months)
-        const months = [];
-        for (let i = 5; i >= 0; i--) {
-          const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
-          months.push({
-            name: d.toLocaleString('default', { month: 'short' }),
-            monthIndex: d.getMonth(),
-            year: d.getFullYear(),
-            hired: 0,
-            left: 0
-          });
+          if (balanceData) {
+            setLeaveBalances({
+              casual: {
+                total: 12,
+                used: 12 - (balanceData.casual_leave_remaining ?? 12),
+                remaining: balanceData.casual_leave_remaining ?? 12
+              },
+              earned: {
+                total: 24,
+                used: 24 - (balanceData.earned_leave_remaining ?? 24),
+                remaining: (balanceData.earned_leave_remaining ?? 24) + carriedForwardEL,
+                actualRemaining: balanceData.earned_leave_remaining ?? 24,
+                carriedForward: carriedForwardEL
+              },
+              unpaid: { used: balanceData.unpaid_leave_total_taken ?? 0 }
+            });
+          }
         }
 
-        usersData.forEach(user => {
-          if (user.joining_date) {
-            const jd = new Date(user.joining_date);
-            const month = months.find(m => m.monthIndex === jd.getMonth() && m.year === jd.getFullYear());
-            if (month) month.hired++;
-          }
-        });
-
-        leavingData.forEach(l => {
-          const dStr = l.actual_date || l.date_of_leaving;
-          if (dStr) {
-            const ld = new Date(dStr);
-            const month = months.find(m => m.monthIndex === ld.getMonth() && m.year === ld.getFullYear());
-            if (month) month.left++;
-          }
-        });
-
-        setMonthlyHiringData(months);
-
-
-        // 4. Fetch Recent Operational Data
+        // 3. Fetch Recent Operational Data (Current Month Only)
         let leavesQuery = supabase.from('leave_management')
           .select('id, employee_name, leave_type, status, leave_date_start, created_at')
           .order('created_at', { ascending: false });
-        if (!isAdmin && user) leavesQuery = leavesQuery.eq('employee_name', user.full_name);
+        if (user) {
+          leavesQuery = leavesQuery.eq('employee_name', user.full_name)
+            .gte('leave_date_start', firstDayOfMonth);
+        }
 
         let gatepassQuery = supabase.from('gate_pass')
           .select('id, emp_name, place_reason_to_visit, status, timestamp')
           .order('timestamp', { ascending: false });
-        if (!isAdmin && user) gatepassQuery = gatepassQuery.eq('emp_name', user.full_name);
+        if (user) {
+          gatepassQuery = gatepassQuery.eq('emp_name', user.full_name)
+            .gte('timestamp', firstDayOfMonth);
+        }
 
-        const [leavesRes, gatepassRes, applicantsRes, birthdaysRes] = await Promise.all([
+        const [leavesRes, gatepassRes, birthdaysRes] = await Promise.all([
           leavesQuery.limit(5),
           gatepassQuery.limit(5),
-          supabase.from('job_leads')
-            .select('id, candidate_name, post, candidate_experience, created_at')
-            .order('created_at', { ascending: false })
-            .limit(5),
           supabase.from('birthday')
             .select('*')
             .order('created_at', { ascending: false })
@@ -257,27 +214,8 @@ const Dashboard = () => {
         if (gatepassRes.error) console.error(gatepassRes.error);
         else setRecentGatepasses(gatepassRes.data || []);
 
-        if (applicantsRes.error) console.error(applicantsRes.error);
-        else setRecentApplicants(applicantsRes.data || []);
-
         if (birthdaysRes.error) console.error(birthdaysRes.error);
-        else setBirthdayRecords(birthdaysRes.data || []);        // 6. Fetch Recent Job Vacancies
-        const { data: jobs, error: jobsError } = await supabase
-          .from('job_vacancy')
-          .select('*')
-          .order('id', { ascending: false })
-          .limit(3);
-
-        if (!jobsError && jobs) {
-          const jobsWithCounts = await Promise.all(jobs.map(async (job) => {
-            const { count } = await supabase
-              .from('job_leads')
-              .select('*', { count: 'exact', head: true })
-              .eq('post', job.post);
-            return { ...job, applied_count: count || 0 };
-          }));
-          setVacancies(jobsWithCounts);
-        }
+        else setBirthdayRecords(birthdaysRes.data || []);
 
       } catch (error) {
         // console.error("Error fetching dashboard data:", error);
@@ -365,19 +303,19 @@ const Dashboard = () => {
     try {
       const column = record.type === 'Anniversary' ? 'anni_sent_by' : 'sent_by';
       let currentSentBy = record[column] || '';
-
+      
       let sentByArray = [];
       if (typeof currentSentBy === 'string') {
         sentByArray = currentSentBy.split(',').map(s => s.trim()).filter(Boolean);
       } else if (Array.isArray(currentSentBy)) {
         sentByArray = currentSentBy;
       }
-
+      
       if (sentByArray.includes(user.full_name.trim())) {
         return; // Already wished
       }
 
-      const newSentBy = sentByArray.length > 0
+      const newSentBy = sentByArray.length > 0 
         ? `${sentByArray.join(', ')}, ${user.full_name.trim()}`
         : user.full_name.trim();
 
@@ -407,14 +345,14 @@ const Dashboard = () => {
     const column = record.type === 'Anniversary' ? 'anni_sent_by' : 'sent_by';
     const sentBy = record[column];
     if (!sentBy) return false;
-
+    
     let sentByArray = [];
     if (typeof sentBy === 'string') {
       sentByArray = sentBy.split(',').map(s => s.trim()).filter(Boolean);
     } else if (Array.isArray(sentBy)) {
       sentByArray = sentBy;
     }
-
+    
     return sentByArray.includes(user.full_name.trim());
   };
 
@@ -471,226 +409,45 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="p-2 sm:p-4 md:p-6 max-w-[1600px] mx-auto space-y-3 sm:space-y-5 min-h-screen font-sans bg-slate-50/30">
+    <div className="py-4 w-full space-y-3 sm:space-y-5 min-h-screen font-sans bg-transparent">
       {/* Header */}
-      <div className="flex items-center justify-between gap-1.5 mb-1 sm:mb-4 px-1 sm:px-0">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 px-1 sm:px-0 relative">
         <div className="text-left">
-          <h1 className="text-xl sm:text-2xl font-extrabold text-[#800000] tracking-tight">Dashboard Overview</h1>
+          <h1 className="text-xl sm:text-2xl font-extrabold text-[#800000] tracking-tight">My Dashboard</h1>
           <p className="text-slate-600 text-xs sm:text-base mt-0.5 font-semibold">Welcome back! SKA HR System</p>
         </div>
-        <div className="flex items-center gap-1 px-2 py-1 sm:px-4 sm:py-2 bg-white rounded-full shadow-sm border border-slate-200/60 flex-shrink-0">
-          <Calendar size={12} className="text-slate-400 sm:w-4 sm:h-4" />
-          <span className="text-[10px] sm:text-sm font-bold text-slate-700">
-            {new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: '2-digit' })}
-          </span>
-        </div>
-      </div>
 
-      {/* Stats Cards */}
-      {isAdmin && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-1.5 sm:gap-6">
-          <StatCard
-            title="Total Employees"
-            value={totalEmployee}
-            icon={Users}
-            trend="+2.5%"
-            trendUp={true}
-            color="indigo"
-          />
-          <StatCard
-            title="Active Employees"
-            value={activeEmployee}
-            icon={UserCheck}
-            trend="Stable"
-            trendUp={true}
-            color="emerald"
-          />
-          <StatCard
-            title="Inactive / Resigned"
-            value={resignedEmployee}
-            icon={UserX}
-            trend="Total"
-            trendUp={false}
-            color="amber"
-          />
-          <StatCard
-            title="Left This Month"
-            value={leftThisMonth}
-            icon={Activity}
-            trend="Current Month"
-            trendUp={false}
-            color="rose"
-          />
-        </div>
-      )}
-
-      {/* Main Grid: Attendance */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-1.5 sm:gap-6">
-
-        {/* Today's In UI - 1 Col */}
-        <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-md border border-slate-200 flex flex-col">
-          <div className="mb-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base sm:text-lg font-extrabold text-slate-800 tracking-tight">{isAdmin ? "Today's In" : "My Attendance Today"}</h3>
-              {isAdmin && (
-                <select
-                  value={selectedDepartment}
-                  onChange={(e) => setSelectedDepartment(e.target.value)}
-                  className="text-xs font-semibold bg-white border border-slate-200 text-slate-700 py-1.5 px-2 sm:px-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer shadow-sm hover:bg-slate-50 transition-colors"
-                >
-                  <option value="All Departments">All Departments</option>
-                  {departments.map(d => <option key={d} value={d}>{d}</option>)}
-                </select>
-              )}
-            </div>
-            {isAdmin && (
-              <div className="relative mt-3">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search ID or Name"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 text-slate-700 py-2 pl-9 pr-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm"
-                />
-              </div>
-            )}
+        <div className="flex items-center gap-3">
+          {/* Inline Leave Balances */}
+          <div className="px-3 py-1.5 bg-white rounded-full shadow-sm border border-slate-200/60 flex-shrink-0 text-xs sm:text-sm font-bold text-slate-700">
+            Remaining Leaves <span className="text-indigo-600 ml-1">EL : {leaveBalances.earned.remaining}</span> , <span className="text-emerald-600">CL : {leaveBalances.casual.remaining}</span>
           </div>
 
-          <div
-            className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-3"
-            style={{ maxHeight: '420px' }}
-            onScroll={handlePresentScroll}
-          >
-            {/* On Time Present List */}
-            {filteredPresent.slice(0, presentLimit).map(emp => (
-              <div key={emp.emp_id} className="p-3 bg-white border border-slate-100 border-dashed rounded-xl flex items-center justify-between hover:shadow-sm transition-shadow gap-2">
-                <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                  {emp.profile_picture ? (
-                    <img src={emp.profile_picture} alt={emp.full_name} className="w-10 h-10 rounded-full object-cover shadow-sm flex-shrink-0" />
-                  ) : (
-                    <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 font-bold text-sm shadow-sm flex-shrink-0">
-                      {emp.full_name?.charAt(0) || 'U'}
-                    </div>
-                  )}
-                  <div className="min-w-0">
-                    <h4 className="text-sm font-bold text-slate-800 truncate">{emp.full_name}</h4>
-                    <p className="text-xs text-slate-500 font-medium truncate">{emp.designation}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-                  <Clock3 size={14} className="text-slate-400 hidden sm:block" />
-                  <span className="px-2 py-1 bg-emerald-500 text-white text-[11px] font-bold rounded flex items-center gap-1 shadow-sm whitespace-nowrap">
-                    <span className="w-1 h-1 bg-white rounded-full flex-shrink-0"></span>
-                    {emp.inTime}
-                  </span>
-                </div>
-              </div>
-            ))}
+          {/* Request Button */}
+          <div className="request-dropdown-container relative">
+            <button
+              onClick={() => setRequestDropdownOpen(!requestDropdownOpen)}
+              className="flex items-center gap-1 px-3 py-1.5 bg-[#800000] text-white rounded-full shadow-sm font-bold text-xs sm:text-sm hover:bg-[#600000] transition-colors"
+            >
+              <Briefcase size={14} />
+              Request
+            </button>
 
-            {filteredPresent.length === 0 && (
-              <div className="text-center py-12 text-slate-400 text-sm font-medium">
-                <Clock3 size={32} className="mx-auto mb-2 opacity-30" />
-                No punctual logs found
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Late UI - 1 Col */}
-        <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-md border border-slate-200 flex flex-col">
-          <div className="mb-4">
-            <h3 className="text-base sm:text-lg font-extrabold text-slate-800 tracking-tight">{isAdmin ? "Late Today" : "My Late Log"}</h3>
-          </div>
-
-          <div
-            className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-3"
-            style={{ maxHeight: '420px' }}
-            onScroll={handleLateScroll}
-          >
-            {/* Late Section */}
-            {filteredLate.slice(0, lateLimit).map(emp => (
-              <div key={emp.emp_id} className="p-3 bg-white border border-slate-100 border-dashed rounded-xl flex items-center justify-between hover:shadow-sm transition-shadow gap-2">
-                <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                  {emp.profile_picture ? (
-                    <img src={emp.profile_picture} alt={emp.full_name} className="w-10 h-10 rounded-full object-cover shadow-sm flex-shrink-0" />
-                  ) : (
-                    <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 font-bold text-sm shadow-sm flex-shrink-0">
-                      {emp.full_name?.charAt(0) || 'U'}
-                    </div>
-                  )}
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5 sm:gap-2">
-                      <h4 className="text-sm font-bold text-slate-800 truncate">{emp.full_name}</h4>
-                      <span className="px-1.5 py-0.5 bg-rose-600 text-white text-[9px] font-bold rounded flex items-center gap-0.5 shadow-sm whitespace-nowrap flex-shrink-0">
-                        <Clock size={10} className="flex-shrink-0" /> {emp.lateStr}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-500 font-medium mt-0.5 truncate">{emp.designation}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-                  <Clock3 size={14} className="text-slate-400 hidden sm:block" />
-                  <span className="px-2 py-1 bg-emerald-500 text-white text-[11px] font-bold rounded flex items-center gap-1 shadow-sm whitespace-nowrap">
-                    <span className="w-1 h-1 bg-white rounded-full flex-shrink-0"></span>
-                    {emp.inTime}
-                  </span>
-                </div>
-              </div>
-            ))}
-
-            {filteredLate.length === 0 && (
-              <div className="text-center py-12 text-slate-400 text-sm font-medium">
-                <Clock3 size={32} className="mx-auto mb-2 opacity-30" />
-                No late logs found
+            {requestDropdownOpen && (
+              <div className="absolute right-0 top-full mt-2 w-44 bg-white rounded-xl shadow-lg border border-slate-100 py-1 z-50 overflow-hidden">
+                <Link to="/leave-request" className="block px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 hover:text-[#800000] transition-colors">
+                  Leave Request
+                </Link>
+                <Link to="/gate-pass-request" className="block px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 hover:text-[#800000] transition-colors">
+                  Gatepass Request
+                </Link>
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Department Chart - Full Width */}
-      {isAdmin && (
-        <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-md border border-slate-200">
-          <div className="mb-6 flex items-center gap-2">
-            <div className="p-2 bg-purple-50 rounded-lg">
-              <Layers size={18} className="text-purple-600" />
-            </div>
-            <div>
-              <h3 className="text-base sm:text-lg font-bold text-slate-800">Department Overview</h3>
-              <p className="text-xs sm:text-sm text-slate-600 font-semibold">Employee distribution by department</p>
-            </div>
-          </div>
-          <div className="h-[280px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={departmentData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis
-                  dataKey="name"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: '#64748b', fontSize: 11, fontWeight: 500 }}
-                  dy={10}
-                />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 500 }}
-                />
-                <Tooltip
-                  cursor={{ fill: '#f8fafc', opacity: 0.5 }}
-                  contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                />
-                <Bar dataKey="value" name="Employees" radius={[6, 6, 0, 0]} barSize={45}>
-                  {departmentData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[(index + 3) % COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
+
 
       {/* Grid 1: Recent Leaves & Gate Passes */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mt-6">
@@ -702,12 +459,12 @@ const Dashboard = () => {
                 <Calendar size={18} className="text-indigo-600" />
               </div>
               <div>
-                <h3 className="text-base sm:text-lg font-bold text-slate-800">Recent Leaves</h3>
-                <p className="text-xs sm:text-sm text-slate-600 font-semibold">Latest leave requests</p>
+                <h3 className="text-base sm:text-lg font-bold text-slate-800">My Recent Leaves</h3>
+                <p className="text-xs sm:text-sm text-slate-600 font-semibold">Leaves taken this month</p>
               </div>
             </div>
           </div>
-          <div className="flex-1 space-y-3">
+          <div className="space-y-3 mt-4">
             {recentLeaves.length > 0 ? (
               recentLeaves.map((leave, index) => (
                 <div key={index} className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-between hover:shadow-sm transition-shadow">
@@ -728,8 +485,8 @@ const Dashboard = () => {
             )}
           </div>
           {recentLeaves.length > 0 && (
-            <button onClick={() => navigate('/leave-management')} className="w-full mt-4 py-2.5 text-xs font-bold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors">
-              View All Leaves
+            <button onClick={() => navigate('/leave-request')} className="w-full mt-4 py-2.5 text-xs font-bold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors">
+              View My Leave Requests
             </button>
           )}
         </div>
@@ -742,12 +499,12 @@ const Dashboard = () => {
                 <MapPin size={18} className="text-emerald-600" />
               </div>
               <div>
-                <h3 className="text-base sm:text-lg font-bold text-slate-800">Recent Gate Passes</h3>
-                <p className="text-xs sm:text-sm text-slate-600 font-semibold">Latest out-of-office logs</p>
+                <h3 className="text-base sm:text-lg font-bold text-slate-800">My Gate Passes</h3>
+                <p className="text-xs sm:text-sm text-slate-600 font-semibold">Gate passes this month</p>
               </div>
             </div>
           </div>
-          <div className="flex-1 space-y-3">
+          <div className="space-y-3 mt-4">
             {recentGatepasses.length > 0 ? (
               recentGatepasses.map((gp, index) => (
                 <div key={index} className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-between hover:shadow-sm transition-shadow">
@@ -768,104 +525,14 @@ const Dashboard = () => {
             )}
           </div>
           {recentGatepasses.length > 0 && (
-            <button onClick={() => navigate('/gate-pass')} className="w-full mt-4 py-2.5 text-xs font-bold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors">
-              View All Gate Passes
+            <button onClick={() => navigate('/gate-pass-request')} className="w-full mt-4 py-2.5 text-xs font-bold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors">
+              View My Gate Passes
             </button>
           )}
         </div>
       </div>
 
-      {/* Grid 2: Job Vacancies & Applicants */}
-      {isAdmin && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mt-6">
 
-          {/* Job Vacancies Widget */}
-          <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-md border border-slate-200 flex flex-col">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 sm:p-2 bg-blue-50 rounded-lg">
-                  <Briefcase size={18} className="text-blue-600" />
-                </div>
-                <div>
-                  <h3 className="text-base sm:text-lg font-bold text-slate-800">Job Openings</h3>
-                  <p className="text-xs sm:text-sm text-slate-600 font-semibold">Recent vacancies</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex-1 space-y-3">
-              {vacancies.length > 0 ? (
-                vacancies.map((job, index) => (
-                  <div key={index} className="p-4 rounded-2xl border border-slate-100/50 bg-slate-50/50 flex justify-between items-center hover:bg-white hover:shadow-md hover:shadow-slate-200/50 hover:border-slate-100 transition-all cursor-default">
-                    <div>
-                      <h4 className="text-sm font-bold text-slate-800">{job.post}</h4>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-[10px] font-medium text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-100">{job.department}</span>
-                        <span className="text-[10px] font-medium text-slate-400">{job.number_of_posts} posts</span>
-                        <span className="text-[10px] font-medium text-slate-400">• {job.timestamp ? new Date(job.timestamp).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'N/A'}</span>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-1.5">
-                      <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">{job.applied_count} Applied</span>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="flex flex-col items-center justify-center h-48 text-slate-300">
-                  <Briefcase size={40} className="mb-2 opacity-50" />
-                  <p className="text-sm font-medium">No open vacancies</p>
-                </div>
-              )}
-            </div>
-            {vacancies.length > 0 && (
-              <button
-                onClick={() => navigate('/job-vacancy')}
-                className="w-full mt-4 py-2 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors"
-              >
-                View All Jobs
-              </button>
-            )}
-          </div>
-
-          {/* Recent Applicants Card */}
-          <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-md border border-slate-200 flex flex-col">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 sm:p-2 bg-purple-50 rounded-lg">
-                  <Users size={18} className="text-purple-600" />
-                </div>
-                <div>
-                  <h3 className="text-base sm:text-lg font-bold text-slate-800">Recent Applicants</h3>
-                  <p className="text-xs sm:text-sm text-slate-600 font-semibold">Latest job inquiries</p>
-                </div>
-              </div>
-            </div>
-            <div className="flex-1 space-y-3">
-              {recentApplicants.length > 0 ? (
-                recentApplicants.map((applicant, index) => (
-                  <div key={index} className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-between hover:shadow-sm transition-shadow">
-                    <div className="min-w-0 pr-2">
-                      <h4 className="text-sm font-bold text-slate-800 truncate">{applicant.candidate_name}</h4>
-                      <p className="text-xs text-slate-500 font-medium truncate">{applicant.post} • {applicant.candidate_experience || 'Fresher'} • {applicant.created_at ? new Date(applicant.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'N/A'}</p>
-                    </div>
-                    <span className={`px-2 py-1 flex-shrink-0 text-[10px] font-bold rounded-full bg-slate-200 text-slate-700`}>
-                      Pending
-                    </span>
-                  </div>
-                ))
-              ) : (
-                <p className="text-sm text-slate-500 text-center py-4">No recent applicants</p>
-              )}
-            </div>
-            {recentApplicants.length > 0 && (
-              <button onClick={() => navigate('/employee_enquiry')} className="w-full mt-4 py-2.5 text-xs font-bold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors">
-                View All Applicants
-              </button>
-            )}
-          </div>
-
-        </div>
-      )}
 
       {/* Grid 3: Birthdays & Anniversaries */}
       {(todaysEvents.length > 0 || futureEvents.length > 0) && (
@@ -890,7 +557,7 @@ const Dashboard = () => {
                               <img
                                 src={record.photo}
                                 alt={record.empName}
-                                className="w-full h-48 sm:h-full sm:absolute sm:inset-0 object-cover cursor-default transition-transform"
+                                className="w-full h-32 sm:h-full sm:absolute sm:inset-0 object-cover cursor-default transition-transform"
                               />
                             ) : (
                               <div className="w-full h-full absolute inset-0 bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
@@ -907,16 +574,16 @@ const Dashboard = () => {
                               {isBirthday ? "Happy Birthday!" : "Happy Anniversary!"}
                             </h2>
                             <h3 className="font-bold text-slate-800 text-xl sm:text-2xl leading-tight">{record.empName}</h3>
-
-                            <button
+                            <button 
                               onClick={() => !hasWished(record) && handleWish(record)}
                               disabled={hasWished(record) || wishingRecordId === record.id}
-                              className={`mt-3 sm:mt-4 self-start font-bold text-xs sm:text-sm px-4 py-2 rounded-xl shadow-sm transition-all flex items-center gap-2 active:scale-95 ${hasWished(record)
-                                ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
-                                : wishingRecordId === record.id
-                                  ? 'bg-indigo-400 text-white cursor-not-allowed'
-                                  : 'bg-gradient-to-r from-pink-500 to-violet-600 hover:opacity-90 text-white'
-                                }`}>
+                              className={`mt-4 px-4 py-2 text-sm font-semibold rounded-lg shadow border flex items-center gap-2 transition-colors w-max cursor-pointer ${
+                                hasWished(record) 
+                                  ? 'bg-slate-200 text-slate-500 border-slate-200 cursor-not-allowed' 
+                                  : wishingRecordId === record.id
+                                    ? 'bg-indigo-400 text-white border-indigo-400 cursor-not-allowed'
+                                    : 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-700'
+                              }`}>
                               {wishingRecordId === record.id ? (
                                 <Loader2 size={16} className="animate-spin" />
                               ) : (
@@ -968,18 +635,18 @@ const Dashboard = () => {
                   return (
                     <React.Fragment key={currentSlide}>
                       <style>{`@keyframes fadeSlideIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }`}</style>
-                      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 xl:p-0 flex items-center xl:flex-col xl:items-stretch gap-4 xl:gap-0 relative overflow-hidden transition-all duration-300" style={{ animation: 'fadeSlideIn 0.6s cubic-bezier(0.16, 1, 0.3, 1)' }}>
+                      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center gap-4 relative overflow-hidden transition-all duration-300" style={{ animation: 'fadeSlideIn 0.6s cubic-bezier(0.16, 1, 0.3, 1)' }}>
                         {record.photo ? (
-                          <img src={record.photo} alt={record.empName} className="w-12 h-12 xl:w-full xl:h-56 xl:rounded-none xl:border-0 rounded-lg border border-slate-100 shadow-sm object-cover shrink-0" />
+                          <img src={record.photo} alt={record.empName} className="w-12 h-12 rounded-lg border border-slate-100 shadow-sm object-cover shrink-0" />
                         ) : (
-                          <div className="w-12 h-12 xl:w-full xl:h-56 xl:rounded-none xl:border-0 rounded-lg border border-slate-100 shadow-sm bg-slate-50 flex items-center justify-center text-slate-400 shrink-0">
-                            <ImageIcon className="w-5 h-5 xl:w-12 xl:h-12 text-slate-300" />
+                          <div className="w-12 h-12 rounded-lg border border-slate-100 shadow-sm bg-slate-50 flex items-center justify-center text-slate-400 shrink-0">
+                            <ImageIcon className="w-5 h-5 text-slate-300" />
                           </div>
                         )}
-                        <div className="flex-1 min-w-0 xl:p-6 bg-white xl:border-t border-slate-100">
-                          <p className="text-[10px] xl:text-xs font-bold text-indigo-600 uppercase tracking-wider mb-0.5 xl:mb-1.5">{record.type === 'Birthday' ? 'Upcoming Birthday' : 'Upcoming Anniversary'}</p>
-                          <h4 className="font-bold text-slate-900 text-sm xl:text-xl truncate">{record.empName}</h4>
-                          <p className="text-xs xl:text-sm text-slate-500 mt-0.5 xl:mt-2 flex items-center gap-1.5">
+                        <div className="flex-1 min-w-0 bg-white">
+                          <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider mb-0.5">{record.type === 'Birthday' ? 'Upcoming Birthday' : 'Upcoming Anniversary'}</p>
+                          <h4 className="font-bold text-slate-900 text-sm truncate">{record.empName}</h4>
+                          <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5">
                             <Calendar className="w-3 h-3 xl:w-4 xl:h-4 text-slate-400" />
                             {dayjs(record.targetDate).format('DD MMM YYYY')} • In {record.diffDays} Days
                           </p>
@@ -1043,4 +710,4 @@ const StatCard = ({ title, value, icon: Icon, trend, trendUp, color }) => {
   );
 };
 
-export default Dashboard;
+export default UserDashboard;

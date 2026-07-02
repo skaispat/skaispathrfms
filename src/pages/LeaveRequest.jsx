@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { supabase } from '../supabaseClient';
 import useAuthStore from '../store/authStore';
 import { sendWhatsappMessageToHod } from "../whatsappMessageSender/whatsappMessageSender.js";
+import { calculateLeaveSplitsDayByDay } from "../utils/leaveCalculations.js";
 
 // Fiscal year helper: April–March
 const getFiscalYear = (date = new Date()) => {
@@ -224,7 +225,18 @@ const LeaveRequest = () => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData(prev => {
+      const newData = { ...prev, [name]: value };
+
+      if (name === 'fromDate' && newData.toDate && new Date(value) > new Date(newData.toDate)) {
+        newData.toDate = value;
+      }
+      if (name === 'toDate' && newData.fromDate && new Date(value) < new Date(newData.fromDate)) {
+        newData.toDate = newData.fromDate;
+      }
+
+      return newData;
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -247,8 +259,14 @@ const LeaveRequest = () => {
 
     setSubmitting(true);
     try {
+      const now = new Date();
+      const istOffsetMs = 330 * 60000; // IST offset in milliseconds
+      const istDate = new Date(now.getTime() + istOffsetMs);
+      const istTimestamp = istDate.toISOString().slice(0, 19).replace('T', ' ');
+
       const insertData = {
-        timestamp: new Date().toISOString(),
+        timestamp: istTimestamp,
+        created_at: istTimestamp,
         emp_id: user.emp_id,
         employee_name: user.full_name || user.Name,
         leave_date_start: formData.fromDate,
@@ -665,38 +683,21 @@ const LeaveRequest = () => {
                     let leaveNote = null;
 
                     if (formData.fromDate && formData.toDate && formData.leaveType) {
-                      const appliedDays = calculateDays(formData.fromDate, formData.toDate);
-                      const targetDate = new Date(formData.fromDate);
-                      const fyMonthIndex = targetDate.getMonth() >= 3 ? targetDate.getMonth() - 2 : targetDate.getMonth() + 10;
-
-                      const maxAccEL = fyMonthIndex * 2;
-                      const maxAccCL = fyMonthIndex * 1;
-
                       const usedEL = leaveBalances.earned.used || 0;
                       const usedCL = leaveBalances.casual.used || 0;
                       const carriedForwardEL = leaveBalances.earned.carriedForward || 0;
 
-                      const availableAccEL = Math.max(0, maxAccEL + carriedForwardEL - usedEL);
-                      const availableAccCL = Math.max(0, maxAccCL - usedCL);
+                      const splits = calculateLeaveSplitsDayByDay(
+                        formData.leaveType,
+                        formData.fromDate,
+                        formData.toDate,
+                        usedEL,
+                        usedCL,
+                        carriedForwardEL
+                      );
 
-                      if (formData.leaveType === 'UnPaid Leave') {
-                        leaveWarning = `आपने कुल ${appliedDays} दिन की छुट्टी के लिए आवेदन किया है। आपने LWP (बिना वेतन की छुट्टी) का चयन किया है। आपके पूरे ${appliedDays} दिन का वेतन काटा जाएगा।`;
-                      } else {
-                        const effectiveCL = Math.min(3, availableAccCL);
-                        const maxPaidPossible = Math.min(10, effectiveCL + availableAccEL);
-                        const totalAvailable = availableAccEL + availableAccCL;
-
-                        if (appliedDays > maxPaidPossible) {
-                          const lwpDays = appliedDays - maxPaidPossible;
-                          if (totalAvailable > maxPaidPossible) {
-                            leaveWarning = `आपने कुल ${appliedDays} दिन की छुट्टी के लिए आवेदन किया है। आपके पास कुल ${totalAvailable} छुट्टियां (EL: ${availableAccEL}, CL: ${availableAccCL}) हैं, लेकिन आप एक बार में अधिकतम 10 दिन (जिसमें अधिकतम 3 CL शामिल हो सकते हैं) की ही सवेतन छुट्टी ले सकते हैं। अतः आपके अतिरिक्त ${lwpDays} दिन LWP (बिना वेतन) माने जाएंगे।`;
-                          } else {
-                            leaveWarning = `आपने कुल ${appliedDays} दिन की छुट्टी के लिए आवेदन किया है। आपके पास केवल ${totalAvailable} छुट्टियां (EL: ${availableAccEL}, CL: ${availableAccCL}) उपलब्ध हैं। आपके अतिरिक्त ${lwpDays} दिन LWP (बिना वेतन) माने जाएंगे।`;
-                          }
-                        } else {
-                          leaveNote = `आपने कुल ${appliedDays} दिन की छुट्टी के लिए आवेदन किया है। आपके पास पर्याप्त छुट्टियां (कुल: ${totalAvailable} -> EL: ${availableAccEL}, CL: ${availableAccCL}) उपलब्ध हैं। आपके वेतन से कोई कटौती नहीं होगी।`;
-                        }
-                      }
+                      leaveWarning = splits.warning;
+                      leaveNote = splits.note;
                     }
 
                     if (leaveWarning) {
