@@ -93,10 +93,15 @@ serve(async (req) => {
             }
         }
 
-        // Get today's MM and DD for matching
-        const today = new Date();
-        const mm = String(today.getMonth() + 1).padStart(2, '0');
-        const dd = String(today.getDate()).padStart(2, '0');
+        // Get today's MM and DD for matching in IST (Asia/Kolkata)
+        const parts = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'Asia/Kolkata',
+            month: '2-digit',
+            day: '2-digit'
+        }).formatToParts(new Date());
+
+        const mm = parts.find(p => p.type === 'month')?.value;
+        const dd = parts.find(p => p.type === 'day')?.value;
 
         const isTodayMatch = (dateStr?: string) => {
             if (!dateStr) return false;

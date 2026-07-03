@@ -1501,8 +1501,8 @@ const LeaveManagement = () => {
           'Employee ID': item.emp_id,
           'Employee Name': item.employee_name,
           'Designation': item.designation || '-',
-          'From Date': item.leave_date_start ? dayjs(item.leave_date_start).format('DD/MM/YYYY') : '-',
-          'To Date': item.leave_date_end ? dayjs(item.leave_date_end).format('DD/MM/YYYY') : '-',
+          'From Date': item.leave_date_start ? new Date(item.leave_date_start) : '-',
+          'To Date': item.leave_date_end ? new Date(item.leave_date_end) : '-',
           'Reason': item.remarks,
           'HOD Name': item.hod_name,
           'HOD Remarks': item.hod_remarks || '-',
@@ -1547,8 +1547,18 @@ const LeaveManagement = () => {
         }));
       });
 
-      // Create sheet
-      const worksheet = XLSX.utils.json_to_sheet(excelData);
+      // Create sheet with cellDates option so Date objects are treated as Excel dates
+      const worksheet = XLSX.utils.json_to_sheet(excelData, { cellDates: true });
+
+      // Apply date formatting
+      for (const cellAddress in worksheet) {
+        if (cellAddress.startsWith('!')) continue;
+        const cell = worksheet[cellAddress];
+        if (cell.t === 'd' || cell.v instanceof Date) {
+          // Keep display format as dd-mm-yyyy for proper Excel interpretation
+          cell.z = 'dd-mm-yyyy';
+        }
+      }
 
       // Set column widths for better readability
       const wscols = [
