@@ -19,7 +19,7 @@ const Attendancedaily = () => {
   const [attendanceData, setAttendanceData] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
 
-  console.log(allUsers, "user ");
+  // console.log(allUsers, "user ");
   const [loading, setLoading] = useState(false);
   const [tableLoading, setTableLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -455,7 +455,6 @@ const Attendancedaily = () => {
     const targetEmpIds = [
       "3",
       "219",
-      "53",
       "1",
       "321",
       "200",
@@ -469,11 +468,8 @@ const Attendancedaily = () => {
       "152",
       "294",
       "261",
-      "339",
-      "283",
       "281",
       "363",
-      "176",
       "238",
       "112",
       "170",
@@ -482,22 +478,18 @@ const Attendancedaily = () => {
       "86",
       "235",
       "341",
-      "246",
       "227",
       "242",
       "356",
-      "172",
       "501",
       "504",
       "180",
       "199",
       "522",
       "519",
-      "145",
       "78",
       "117",
       "191",
-      "134",
       "275",
       "253",
     ];
@@ -689,15 +681,9 @@ const Attendancedaily = () => {
     }
 
     const today = new Date().toISOString().split("T")[0];
-
     let finalDate = exportDate;
 
-    // If today → auto shift to yesterday
-    if (exportDate === today) {
-      const y = new Date();
-      y.setDate(y.getDate() - 1);
-      finalDate = y.toISOString().split("T")[0];
-    }
+    // Removed the auto-shift to yesterday so it exports the exact selected date
 
     const dataToExport = attendanceData.filter(
       (item) => item.date === finalDate,
