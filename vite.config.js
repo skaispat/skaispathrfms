@@ -13,6 +13,18 @@ export default defineConfig({
       'date-fns'
     ]
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom'],
+          ui: ['lucide-react', 'recharts', 'react-hot-toast'],
+          utils: ['date-fns', 'jspdf', 'jspdf-autotable', 'xlsx', 'dayjs']
+        }
+      }
+    },
+    chunkSizeWarningLimit: 1000
+  },
   server: {
     host: '0.0.0.0',
     port: 5173,
