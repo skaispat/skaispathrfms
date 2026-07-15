@@ -180,7 +180,7 @@ const AfterJoiningWork = () => {
       pfEsic: item.pfEsic,
       companyDirectory: item.companyDirectory,
       assets: [],
-      employeeId: item.joiningNo || "", // Initialize with joiningNo
+      employeeId: item.empId || item.joiningNo || "", // Initialize with empId or joiningNo
     });
 
     setSelectedItem(item);
@@ -192,7 +192,7 @@ const AfterJoiningWork = () => {
 
     try {
       // Fetch assets data
-      const assetsData = await fetchAssetsData(item.joiningNo);
+      const assetsData = await fetchAssetsData(item.empId || item.joiningNo);
 
       // Merge with assets data if available
       const finalFormData = {
@@ -206,7 +206,7 @@ const AfterJoiningWork = () => {
         manualImageUrl: assetsData?.manualImageUrl || "",
         manualImage: null,
         assets: [],
-        employeeId: assetsData?.employeeId || (assetsData?.punchCode ? "" : item.joiningNo), // Prefer existing if available
+        employeeId: assetsData?.employeeId || item.empId || (assetsData?.punchCode ? "" : item.joiningNo), // Prefer existing if available
       };
 
       setFormData(prev => ({
@@ -365,7 +365,7 @@ const AfterJoiningWork = () => {
 
       // Save assets data
       // Use formData.employeeId instead of selectedItem.joiningNo if we are assigning a new ID
-      const targetEmployeeId = formData.employeeId || selectedItem.joiningNo;
+      const targetEmployeeId = formData.employeeId || selectedItem.empId || selectedItem.joiningNo;
 
       // Ensure user exists in 'users' table before assigning assets
       // This is required to satisfy the foreign key constraint on the assets table
@@ -817,7 +817,6 @@ const AfterJoiningWork = () => {
                       <label className="text-sm font-bold text-indigo-900 block mb-0.5">
                         Employee ID
                       </label>
-                      <p className="text-xs text-indigo-700/80 font-medium">Assign a unique ID (e.g. EMP001)</p>
                     </div>
                     <div className="w-40 flex-shrink-0">
                       <input
@@ -826,8 +825,9 @@ const AfterJoiningWork = () => {
                         value={formData.employeeId}
                         onChange={handleInputChange}
                         onBlur={(e) => validateEmployeeId(e.target.value)}
-                        className="w-full px-3 py-2 bg-white border-2 border-indigo-200 rounded-lg focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-sm font-bold text-indigo-700 placeholder-indigo-300 transition-all text-center shadow-sm"
+                        className="w-full px-3 py-2 bg-slate-100 border-2 border-indigo-200/50 rounded-lg outline-none text-sm font-bold text-indigo-700/60 cursor-not-allowed transition-all text-center shadow-sm"
                         placeholder="EMP ID"
+                        disabled
                       />
                     </div>
                   </div>
