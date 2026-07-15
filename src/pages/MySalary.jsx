@@ -50,7 +50,7 @@ const MySalary = () => {
       }
 
       const rawData = result.data || result;
-      console.log("Raw data from API:", rawData);
+      // console.log("Raw data from API:", rawData);
 
       if (!Array.isArray(rawData)) {
         throw new Error('Expected array data not received');
@@ -94,7 +94,7 @@ const MySalary = () => {
           item.employeeId === employeeId && item.employeeName === employeeName
         );
 
-      console.log("Filtered salary data:", processedData);
+      // console.log("Filtered salary data:", processedData);
       setSalaryData(processedData);
 
     } catch (error) {
@@ -306,8 +306,8 @@ const MySalary = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${record.status === 'Paid'
-                          ? 'bg-green-50 text-green-700 border-green-100'
-                          : 'bg-yellow-50 text-yellow-700 border-yellow-100'
+                        ? 'bg-green-50 text-green-700 border-green-100'
+                        : 'bg-yellow-50 text-yellow-700 border-yellow-100'
                         }`}>
                         {record.status}
                       </span>

@@ -44,7 +44,7 @@ const Attendancedaily = () => {
 
       ////////console.log(users,"userdata")
 
-      console.log(users);
+      // console.log(users);
 
       if (userError) throw userError;
 
@@ -57,7 +57,7 @@ const Attendancedaily = () => {
 
       const year = new Date().getFullYear();
       const response = await fetch(
-        `https://sohcm.com/SmartApp_ess/api/SwipeDetails/GetDeviceLogs?APIKey=341813122509&AccountName=SKAISPAT&FromDate=${year}-01-01&ToDate=${year}-12-31`,
+        `${import.meta.env.VITE_BIOMETRIC_API_URL}&FromDate=${year}-01-01&ToDate=${year}-12-31`
       );
 
       if (!response.ok) {
@@ -198,7 +198,7 @@ const Attendancedaily = () => {
       // Sort by Date DESC
       finalData.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-      console.log("Processed total attendance data (API + DB):", finalData);
+      // console.log("Processed total attendance data (API + DB):", finalData);
       setAttendanceData(finalData);
       resultData = finalData;
 
@@ -356,18 +356,18 @@ const Attendancedaily = () => {
 
         // Only run once per day
         if (lastSyncRef.current !== todayStr && lastSynced !== todayStr) {
-          console.log(
-            "🕕 Triggering scheduled 6:00 AM attendance data sync...",
-          );
+          // console.log(
+          //   "🕕 Triggering scheduled 6:00 AM attendance data sync...",
+          // );
           lastSyncRef.current = todayStr; // Block immediate re-entry
 
           try {
             const freshData = await fetchAttendanceData();
 
             if (freshData && freshData.length > 0) {
-              console.log(
-                `✅ 6 AM Sync completed: ${freshData.length} records synced to database`,
-              );
+              // console.log(
+              //   `✅ 6 AM Sync completed: ${freshData.length} records synced to database`,
+              // );
               // Persist success to prevent re-run on reload
               localStorage.setItem("last_6am_sync_date", todayStr);
               toast.success("6 AM: Attendance data synced successfully!");
@@ -454,6 +454,14 @@ const Attendancedaily = () => {
     // Target Employee IDs filtered specifically for this report
     const targetEmpIds = [
       "3",
+      "387",
+      "390",
+      "395",
+      "404",
+      "402",
+      "429",
+      "363",
+      "403",
       "219",
       "1",
       "321",
@@ -492,6 +500,7 @@ const Attendancedaily = () => {
       "191",
       "275",
       "253",
+
     ];
 
     // Filter data to only include target employees

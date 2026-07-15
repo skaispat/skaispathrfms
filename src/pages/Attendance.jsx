@@ -40,7 +40,8 @@ const Attendance = () => {
         userMap[user.emp_id] = user;
       });
 
-      const response = await fetch("https://sohcm.com/SmartApp_ess/api/SwipeDetails/GetDeviceLogs?APIKey=341813122509&AccountName=SKAISPAT&FromDate=2025-12-01&ToDate=2026-12-01");
+      const currentYear = new Date().getFullYear();
+      const response = await fetch(`${import.meta.env.VITE_BIOMETRIC_API_URL}&FromDate=${currentYear}-01-01&ToDate=${currentYear}-12-31`);
 
       if (!response.ok) {
         throw new Error(`API Error: ${response.statusText}`);
@@ -108,7 +109,7 @@ const Attendance = () => {
         return a.empId.localeCompare(b.empId);
       });
 
-      console.log('Processed attendance data:', processedData);
+      // console.log('Processed attendance data:', processedData);
       setAttendanceData(processedData);
 
       // Auto-sync after fetching
@@ -160,7 +161,7 @@ const Attendance = () => {
         if (error) throw error;
       }
 
-      console.log("Auto-sync completed successfully");
+      // console.log("Auto-sync completed successfully");
       // Optional: toast.success("Attendance synced successfully"); 
     } catch (error) {
       console.error("Error auto-syncing data:", error);
@@ -361,7 +362,8 @@ const Attendance = () => {
 
     try {
       // Fetch raw logs from API (same as main fetch)
-      const response = await fetch("https://sohcm.com/SmartApp_ess/api/SwipeDetails/GetDeviceLogs?APIKey=341813122509&AccountName=SKAISPAT&FromDate=2025-12-01&ToDate=2026-12-01");
+      const currentYear = new Date().getFullYear();
+      const response = await fetch(`${import.meta.env.VITE_BIOMETRIC_API_URL}&FromDate=${currentYear}-01-01&ToDate=${currentYear}-12-31`);
 
       if (!response.ok) {
         throw new Error(`API Error: ${response.statusText}`);

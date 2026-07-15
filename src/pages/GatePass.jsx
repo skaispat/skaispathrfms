@@ -331,7 +331,7 @@ const GatePass = () => {
 
           if (newStatus === 'Pending HR') {
             // HOD Approved -> Notify HR
-            console.log("📤 Sending Gate Pass WhatsApp to HR...");
+            // console.log("📤 Sending Gate Pass WhatsApp to HR...");
             await sendGatePassMessageToHr({
               employeId: request.hr_id || 'HR',
               tableid: request.id,
@@ -346,12 +346,12 @@ const GatePass = () => {
             });
           } else if (newStatus === 'Approved') {
             // HR Approved -> Notifications are now handled via Supabase Edge Function Webhook
-            console.log("✅ Gate Pass Approved. Notification will be sent via Supabase Webhook.");
+            // console.log("✅ Gate Pass Approved. Notification will be sent via Supabase Webhook.");
           } else if (newStatus === 'Rejected') {
             // Final Rejection (HR Action or HOD Action)
             if (isHr) {
               if (employeePhone) {
-                console.log("📤 Sending Gate Pass Rejection to Employee...");
+                // console.log("📤 Sending Gate Pass Rejection to Employee...");
                 await sendGatePassRejectedToEmployee({
                   employeePhone,
                   employeeName: request.employee_name,
@@ -364,7 +364,7 @@ const GatePass = () => {
 
               // MD Notification
               if (specialEmpIds.includes(currentEmpId)) {
-                console.log("👑 Sending Gate Pass Rejection to MD Sir...");
+                // console.log("👑 Sending Gate Pass Rejection to MD Sir...");
                 await sendGatePassRejectedToEmployee({
                   employeePhone: mdNumber,
                   employeeName: `${request.employee_name} (ID: ${currentEmpId})`,
@@ -377,7 +377,7 @@ const GatePass = () => {
             } else if (isHod) {
               // HOD Rejection
               if (employeePhone) {
-                console.log("📤 Sending HOD Rejection WhatsApp...");
+                // console.log("📤 Sending HOD Rejection WhatsApp...");
                 await sendGatePassHodRejectedToEmployee({
                   employeePhone,
                   employeeName: request.employee_name,
@@ -656,7 +656,7 @@ const GatePass = () => {
             const statusLabel = insertData.status;
 
             if (statusLabel === 'Pending HR') {
-              console.log("📤 Sending Gate Pass WhatsApp to HR...");
+              // console.log("📤 Sending Gate Pass WhatsApp to HR...");
               await sendGatePassMessageToHr({
                 employeId: formData.hrId || 'HR',
                 tableid: data[0].id,

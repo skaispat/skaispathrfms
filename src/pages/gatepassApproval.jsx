@@ -258,7 +258,7 @@ const GatePassApproval = () => {
             const isFinalAction = newStatus === 'Approved' || newStatus === 'Rejected';
             const employeePhone = request.employee_whatsapp_number || request.users?.phone_number;
 
-            console.log("📱 Notification Debug - Status:", newStatus, "FinalAction:", isFinalAction, "Phone:", employeePhone);
+            // console.log("📱 Notification Debug - Status:", newStatus, "FinalAction:", isFinalAction, "Phone:", employeePhone);
 
             if (isFinalAction && employeePhone) {
                 const formatDateTime = (dateString) => {
@@ -289,7 +289,7 @@ const GatePassApproval = () => {
 
                 if (newStatus === 'Approved') {
                     // HR Approved -> Notifications are now handled via Supabase Edge Function Webhook
-                    console.log("✅ Gate Pass Approved. Notification will be sent via Supabase Webhook.");
+                    // console.log("✅ Gate Pass Approved. Notification will be sent via Supabase Webhook.");
                 } else if (newStatus === 'Rejected' && !isHodAction) {
                     const employeeResult = await sendGatePassRejectedToEmployee({
                         employeePhone: employeePhone,
@@ -306,7 +306,7 @@ const GatePassApproval = () => {
 
                     // Notify MD for special employees
                     if (specialEmpIds.includes(currentEmpId)) {
-                        console.log("👑 Sending Gate Pass Rejection WhatsApp to MD Sir...");
+                        // console.log("👑 Sending Gate Pass Rejection WhatsApp to MD Sir...");
                         await sendGatePassRejectedToEmployee({
                             employeePhone: mdNumber,
                             employeeName: `${request.employee_name} (ID: ${currentEmpId})`,

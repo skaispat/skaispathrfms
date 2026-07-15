@@ -464,8 +464,148 @@ const Dashboard = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+      <div className="p-2 sm:p-4 md:p-6 max-w-[1600px] mx-auto space-y-3 sm:space-y-5 min-h-screen font-sans bg-slate-50/30">
+
+        {/* Header Skeleton */}
+        <div className="flex items-center justify-between gap-1.5 mb-1 sm:mb-4 px-1 sm:px-0 animate-pulse">
+          <div className="text-left space-y-2">
+            <div className="h-6 sm:h-8 w-[180px] sm:w-[250px] bg-slate-200 rounded-md"></div>
+            <div className="h-3 sm:h-4 w-[120px] sm:w-[150px] bg-slate-200 rounded-md"></div>
+          </div>
+          <div className="h-7 sm:h-9 w-24 sm:w-28 bg-white rounded-full shadow-sm border border-slate-200/60"></div>
+        </div>
+
+        {/* Stats Cards Skeleton */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-1.5 sm:gap-6">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="bg-white p-2.5 sm:p-6 rounded-2xl sm:rounded-3xl shadow-md border border-slate-200 flex flex-col justify-between animate-pulse">
+              <div className="flex justify-between items-start mb-3 sm:mb-4">
+                <div className="w-[34px] h-[34px] sm:w-[50px] sm:h-[50px] rounded-xl sm:rounded-2xl bg-slate-100 shadow-sm"></div>
+                <div className="w-12 sm:w-16 h-4 sm:h-5 rounded-full bg-slate-100"></div>
+              </div>
+              <div>
+                <div className="w-12 sm:w-16 h-6 sm:h-9 bg-slate-100 rounded-md mb-1 sm:mb-2"></div>
+                <div className="w-20 sm:w-28 h-3 sm:h-4 bg-slate-100 rounded-md"></div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Main Grid: Attendance Skeleton */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-1.5 sm:gap-6">
+
+          {/* Today's In Skeleton */}
+          <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-md border border-slate-200 flex flex-col animate-pulse">
+            <div className="flex items-center justify-between mb-4">
+              <div className="h-5 sm:h-6 w-24 sm:w-32 bg-slate-200 rounded-md"></div>
+              <div className="h-7 sm:h-8 w-28 sm:w-32 bg-slate-100 rounded-lg border border-slate-200"></div>
+            </div>
+            <div className="mb-4">
+              <div className="h-9 sm:h-10 w-full bg-slate-50 rounded-lg border border-slate-200"></div>
+            </div>
+            <div className="space-y-3">
+              {[1, 2, 3, 4].map((j) => (
+                <div key={j} className="p-3 bg-white border border-slate-100 border-dashed rounded-xl flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 sm:gap-3 min-w-0 w-full">
+                    <div className="w-10 h-10 rounded-full bg-slate-100 shrink-0"></div>
+                    <div className="space-y-2 w-full max-w-[150px]">
+                      <div className="w-full h-3 sm:h-4 bg-slate-100 rounded-md"></div>
+                      <div className="w-2/3 h-2 sm:h-3 bg-slate-100 rounded-md"></div>
+                    </div>
+                  </div>
+                  <div className="w-16 h-5 sm:h-6 rounded bg-slate-100 shrink-0"></div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Late Today Skeleton */}
+          <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-md border border-slate-200 flex flex-col animate-pulse">
+            <div className="mb-4">
+              <div className="h-5 sm:h-6 w-24 sm:w-32 bg-slate-200 rounded-md"></div>
+            </div>
+            <div className="space-y-3 pt-1">
+              {[1, 2, 3, 4, 5].map((j) => (
+                <div key={j} className="p-3 bg-white border border-slate-100 border-dashed rounded-xl flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 sm:gap-3 min-w-0 w-full">
+                    <div className="w-10 h-10 rounded-full bg-slate-100 shrink-0"></div>
+                    <div className="space-y-2 w-full max-w-[180px]">
+                      <div className="flex items-center gap-2">
+                        <div className="w-1/2 h-3 sm:h-4 bg-slate-100 rounded-md"></div>
+                        <div className="w-8 sm:w-12 h-3 sm:h-4 bg-slate-100 rounded-full"></div>
+                      </div>
+                      <div className="w-2/3 h-2 sm:h-3 bg-slate-100 rounded-md"></div>
+                    </div>
+                  </div>
+                  <div className="w-16 h-5 sm:h-6 rounded bg-slate-100 shrink-0"></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Department Chart Skeleton */}
+        <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-md border border-slate-200 animate-pulse mt-1.5 sm:mt-6">
+          <div className="flex items-center gap-2 mb-6">
+            <div className="w-8 sm:w-9 h-8 sm:h-9 rounded-lg bg-slate-100"></div>
+            <div className="space-y-1.5 w-full max-w-[200px]">
+              <div className="w-3/4 h-4 sm:h-5 bg-slate-200 rounded-md"></div>
+              <div className="w-full h-2 sm:h-3 bg-slate-100 rounded-md"></div>
+            </div>
+          </div>
+          <div className="h-[200px] sm:h-[280px] w-full bg-slate-50 rounded-xl"></div>
+        </div>
+
+        {/* Grid 1: Recent Leaves & Gate Passes Skeleton */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mt-6">
+          {[1, 2].map((i) => (
+            <div key={i} className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-md border border-slate-200 flex flex-col animate-pulse">
+              <div className="flex items-center gap-2 mb-6">
+                <div className="w-8 sm:w-9 h-8 sm:h-9 rounded-lg bg-slate-100"></div>
+                <div className="space-y-1.5 w-full max-w-[200px]">
+                  <div className="w-3/4 h-4 sm:h-5 bg-slate-200 rounded-md"></div>
+                  <div className="w-full h-2 sm:h-3 bg-slate-100 rounded-md"></div>
+                </div>
+              </div>
+              <div className="space-y-3">
+                {[1, 2, 3].map((j) => (
+                  <div key={j} className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-between">
+                    <div className="space-y-2 w-full max-w-[150px]">
+                      <div className="w-full h-3 sm:h-4 bg-slate-200 rounded-md"></div>
+                      <div className="w-2/3 h-2 sm:h-3 bg-slate-200 rounded-md"></div>
+                    </div>
+                    <div className="w-16 h-4 sm:h-5 rounded-full bg-slate-200"></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Grid 2: Job Vacancies Skeleton */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mt-6">
+          <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-md border border-slate-200 flex flex-col animate-pulse">
+            <div className="flex items-center gap-2 mb-6">
+              <div className="w-8 sm:w-9 h-8 sm:h-9 rounded-lg bg-slate-100"></div>
+              <div className="space-y-1.5 w-full max-w-[200px]">
+                <div className="w-3/4 h-4 sm:h-5 bg-slate-200 rounded-md"></div>
+                <div className="w-full h-2 sm:h-3 bg-slate-100 rounded-md"></div>
+              </div>
+            </div>
+            <div className="space-y-3">
+              {[1, 2, 3].map((j) => (
+                <div key={j} className="p-4 rounded-2xl border border-slate-100/50 bg-slate-50/50 flex justify-between items-center">
+                  <div className="space-y-2 w-full max-w-[150px]">
+                    <div className="w-full h-4 sm:h-5 bg-slate-200 rounded-md"></div>
+                    <div className="w-3/4 h-3 sm:h-4 bg-slate-200 rounded-md"></div>
+                  </div>
+                  <div className="w-16 h-6 sm:h-8 rounded bg-slate-200"></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
       </div>
     );
   }

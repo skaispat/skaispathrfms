@@ -402,8 +402,83 @@ const UserDashboard = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+      <div className="py-4 w-full space-y-3 sm:space-y-5 min-h-screen font-sans bg-transparent">
+        
+        {/* Header Skeleton */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 px-1 sm:px-0 relative animate-pulse">
+          <div className="text-left space-y-2">
+            <div className="h-6 sm:h-8 w-[150px] sm:w-[200px] bg-slate-200 rounded-md"></div>
+            <div className="h-3 sm:h-4 w-[120px] sm:w-[150px] bg-slate-200 rounded-md"></div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="h-7 sm:h-9 w-40 sm:w-48 bg-white rounded-full shadow-sm border border-slate-200/60"></div>
+            <div className="h-7 sm:h-9 w-24 sm:w-28 bg-[#800000]/20 rounded-full shadow-sm"></div>
+          </div>
+        </div>
+
+        {/* Grid 1: Recent Leaves & Gate Passes Skeleton */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mt-6">
+          {[1, 2].map((i) => (
+            <div key={i} className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-md border border-slate-200 flex flex-col animate-pulse">
+               <div className="flex items-center justify-between mb-6">
+                 <div className="flex items-center gap-2">
+                   <div className="w-8 sm:w-9 h-8 sm:h-9 rounded-lg bg-slate-100"></div>
+                   <div className="space-y-1.5 w-full max-w-[200px]">
+                      <div className="w-3/4 h-4 sm:h-5 bg-slate-200 rounded-md"></div>
+                      <div className="w-1/2 h-2 sm:h-3 bg-slate-100 rounded-md"></div>
+                   </div>
+                 </div>
+               </div>
+               <div className="space-y-3 mt-4">
+                  {[1, 2, 3].map((j) => (
+                    <div key={j} className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-between">
+                       <div className="space-y-2 w-full max-w-[150px]">
+                          <div className="w-full h-3 sm:h-4 bg-slate-200 rounded-md"></div>
+                          <div className="w-2/3 h-2 sm:h-3 bg-slate-200 rounded-md"></div>
+                       </div>
+                       <div className="w-16 h-4 sm:h-5 rounded-full bg-slate-200"></div>
+                    </div>
+                  ))}
+               </div>
+               <div className="w-full h-10 mt-4 rounded-xl bg-slate-50 border border-slate-100"></div>
+            </div>
+          ))}
+        </div>
+
+        {/* Grid 3: Birthdays & Anniversaries Skeleton */}
+        <div className="bg-white p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-md border border-slate-200 mt-6 flex flex-col xl:flex-row gap-6 xl:gap-8 animate-pulse">
+           
+           {/* Today's Events Skeleton */}
+           <div className="w-full xl:flex-[6]">
+             <div className="h-5 sm:h-6 w-32 sm:w-40 bg-slate-200 rounded-md mb-4 px-1"></div>
+             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col sm:flex-row h-auto sm:h-[240px]">
+                <div className="w-full sm:w-[35%] bg-slate-100 h-40 sm:h-full"></div>
+                <div className="p-4 sm:p-6 flex-1 flex flex-col justify-center space-y-3">
+                   <div className="h-6 sm:h-8 w-3/4 bg-slate-200 rounded-md"></div>
+                   <div className="h-5 sm:h-6 w-1/2 bg-slate-200 rounded-md"></div>
+                   <div className="h-8 sm:h-10 w-32 bg-slate-200 rounded-lg mt-4"></div>
+                </div>
+             </div>
+           </div>
+
+           {/* Upcoming Events Skeleton */}
+           <div className="w-full xl:flex-[4] border-t xl:border-t-0 xl:border-l border-slate-200/60 pt-4 sm:pt-6 xl:pt-0 xl:pl-8">
+             <div className="flex items-center gap-2 mb-4 sm:mb-6">
+                <div className="w-5 h-5 rounded bg-slate-200"></div>
+                <div className="h-5 sm:h-6 w-32 bg-slate-200 rounded-md"></div>
+             </div>
+             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center gap-4">
+                <div className="w-12 h-12 rounded-lg bg-slate-100 shrink-0"></div>
+                <div className="flex-1 space-y-2 w-full max-w-[150px]">
+                   <div className="w-1/2 h-2 sm:h-3 bg-slate-200 rounded-md"></div>
+                   <div className="w-3/4 h-3 sm:h-4 bg-slate-200 rounded-md"></div>
+                   <div className="w-2/3 h-2 sm:h-3 bg-slate-100 rounded-md"></div>
+                </div>
+             </div>
+           </div>
+
+        </div>
+
       </div>
     );
   }

@@ -21,7 +21,8 @@ import {
     ChevronLeft,
     ChevronRight,
     ChevronDown,
-    AlertCircle
+    AlertCircle,
+    ArrowRightLeft
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import toast from 'react-hot-toast';
@@ -85,6 +86,11 @@ const Settings = () => {
     const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
     const [selectedEmployees, setSelectedEmployees] = useState([]);
     const [hodSearchTerm, setHodSearchTerm] = useState('');
+
+    // Shift Employees State
+    const [isShiftModalOpen, setIsShiftModalOpen] = useState(false);
+    const [shiftTargetHod, setShiftTargetHod] = useState('');
+    const [employeesToShift, setEmployeesToShift] = useState([]);
 
     // Modal Team Selection
     const [selectedTeam, setSelectedTeam] = useState([]);
@@ -716,6 +722,55 @@ const Settings = () => {
         return users.filter(u => u.hod_id === hodId);
     };
 
+    const handleShiftEmployees = async () => {
+        if (!shiftTargetHod || employeesToShift.length === 0) {
+            toast.error("Please select a target HOD and employees to shift.");
+            return;
+        }
+
+        try {
+            setLoading(true);
+
+            // 1. Delete old assignments for these employees
+            const { error: deleteError } = await supabase
+                .from('team_members')
+                .delete()
+                .in('emp_id', employeesToShift);
+
+            if (deleteError) throw deleteError;
+
+            // 2. Add new assignments
+            const updates = employeesToShift.map(empId => ({
+                hod_id: shiftTargetHod,
+                emp_id: empId
+            }));
+
+            const { error: upsertError } = await supabase
+                .from('team_members')
+                .upsert(updates);
+
+            if (upsertError) throw upsertError;
+
+            toast.success(`Successfully shifted ${employeesToShift.length} employees`);
+            setIsShiftModalOpen(false);
+            setEmployeesToShift([]);
+            setShiftTargetHod('');
+            fetchUsers(); // Refresh data
+        } catch (error) {
+            console.error('Error shifting employees:', error);
+            toast.error('Failed to shift employees: ' + error.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const openShiftModal = () => {
+        const team = getEmployeesForHod(selectedHod.emp_id);
+        setEmployeesToShift(team.map(e => e.emp_id)); // default select all
+        setShiftTargetHod('');
+        setIsShiftModalOpen(true);
+    };
+
     const handleAssignEmployees = async () => {
         if (!selectedHod || selectedEmployees.length === 0) return;
 
@@ -1289,13 +1344,23 @@ const Settings = () => {
                                             </div>
                                         </div>
                                     </div>
-                                    <button
-                                        onClick={() => setIsAssignModalOpen(true)}
-                                        className="flex items-center gap-2 px-4 py-2 bg-[#991B1B] text-white rounded-lg hover:bg-red-800 transition-colors shadow-sm text-sm font-medium"
-                                    >
-                                        <Plus size={16} />
-                                        Assign Employees
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={openShiftModal}
+                                            disabled={getEmployeesForHod(selectedHod.emp_id).length === 0}
+                                            className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors shadow-sm text-sm font-medium disabled:opacity-50"
+                                        >
+                                            <ArrowRightLeft size={16} />
+                                            Shift
+                                        </button>
+                                        <button
+                                            onClick={() => setIsAssignModalOpen(true)}
+                                            className="flex items-center gap-2 px-4 py-2 bg-[#991B1B] text-white rounded-lg hover:bg-red-800 transition-colors shadow-sm text-sm font-medium"
+                                        >
+                                            <Plus size={16} />
+                                            Assign
+                                        </button>
+                                    </div>
                                 </div>
 
                                 {/* Team List */}
@@ -1350,6 +1415,105 @@ const Settings = () => {
                 </div>
             )}
 
+
+            {/* Shift Employees Modal */}
+            {isShiftModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center sm:p-6 transition-all duration-300">
+                    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsShiftModalOpen(false)}></div>
+                    <div className="relative bg-white sm:rounded-2xl shadow-xl w-full sm:max-w-2xl h-full sm:h-auto sm:max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200">
+                        <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-100 flex items-center justify-between shrink-0 bg-white z-10 sticky top-0 sm:rounded-t-2xl">
+                            <div>
+                                <h3 className="text-lg font-bold text-slate-800">Shift Employees</h3>
+                                <p className="text-sm text-slate-500">Transfer team from {selectedHod?.full_name}</p>
+                            </div>
+                            <button onClick={() => setIsShiftModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400">
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-4 sm:p-6 custom-scrollbar">
+                            <div className="space-y-6">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Select Target HOD <span className="text-red-500">*</span></label>
+                                    <div className="relative">
+                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                            <Briefcase className="h-4 w-4 text-slate-400" />
+                                        </div>
+                                        <select
+                                            value={shiftTargetHod}
+                                            onChange={(e) => setShiftTargetHod(e.target.value)}
+                                            className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-300 focus:border-[#991B1B] focus:ring-1 focus:ring-[#991B1B] outline-none appearance-none bg-white text-sm"
+                                        >
+                                            <option value="">Select New HOD</option>
+                                            {managers
+                                                .filter(m => m.emp_id !== selectedHod.emp_id)
+                                                .map(manager => (
+                                                    <option key={manager.emp_id} value={manager.emp_id}>
+                                                        {manager.full_name} ({manager.department || 'No Dept'})
+                                                    </option>
+                                                ))}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <label className="block text-sm font-medium text-slate-700">Select Employees to Shift</label>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => setEmployeesToShift(getEmployeesForHod(selectedHod.emp_id).map(e => e.emp_id))}
+                                                className="text-xs text-[#991B1B] hover:underline font-medium"
+                                            >
+                                                Select All
+                                            </button>
+                                            <span className="text-slate-300">|</span>
+                                            <button
+                                                onClick={() => setEmployeesToShift([])}
+                                                className="text-xs text-slate-500 hover:underline"
+                                            >
+                                                None
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="bg-slate-50 border border-slate-200 rounded-xl max-h-60 overflow-y-auto custom-scrollbar p-2">
+                                        {getEmployeesForHod(selectedHod.emp_id).map(emp => (
+                                            <label key={emp.emp_id} className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${employeesToShift.includes(emp.emp_id) ? 'bg-white shadow-sm ring-1 ring-slate-200' : 'hover:bg-slate-100'}`}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={employeesToShift.includes(emp.emp_id)}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) setEmployeesToShift(prev => [...prev, emp.emp_id]);
+                                                        else setEmployeesToShift(prev => prev.filter(id => id !== emp.emp_id));
+                                                    }}
+                                                    className="w-4 h-4 rounded border-slate-300 text-[#991B1B] focus:ring-[#991B1B]"
+                                                />
+                                                <div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden flex items-center justify-center text-xs text-slate-500 font-bold shrink-0">
+                                                    {emp.profile_picture ? <img src={emp.profile_picture} className="w-full h-full object-cover" /> : emp.full_name?.charAt(0)}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-medium text-slate-800 text-sm truncate">{emp.full_name}</p>
+                                                    <p className="text-xs text-slate-500 truncate">{emp.designation || 'No Role'} • {emp.emp_id}</p>
+                                                </div>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-4 sm:p-6 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 sticky bottom-0 sm:rounded-b-2xl">
+                            <button onClick={() => setIsShiftModalOpen(false)} className="px-5 py-2 text-slate-600 font-medium hover:bg-white rounded-lg transition-colors border border-transparent hover:border-slate-200 text-sm">Cancel</button>
+                            <button
+                                onClick={handleShiftEmployees}
+                                disabled={!shiftTargetHod || employeesToShift.length === 0}
+                                className="px-6 py-2 bg-[#991B1B] text-white rounded-lg font-medium hover:bg-red-800 disabled:opacity-50 transition-colors text-sm shadow-sm"
+                            >
+                                Shift ({employeesToShift.length}) Employees
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Assign Employees Modal */}
             {isAssignModalOpen && (

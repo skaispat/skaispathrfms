@@ -5,7 +5,7 @@ import { Calendar, Clock, CheckCircle, XCircle, ChevronDown, Activity, AlertCirc
 const MyAttendance = () => {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [attendanceData, setAttendanceData] = useState([]);
   const [stats, setStats] = useState({
@@ -70,7 +70,8 @@ const MyAttendance = () => {
 
       setUserLeaves(leavesData || []);
 
-      const response = await fetch("https://sohcm.com/SmartApp_ess/api/SwipeDetails/GetDeviceLogs?APIKey=341813122509&AccountName=SKAISPAT&FromDate=2025-12-01&ToDate=2026-12-01");
+      const currentYear = new Date().getFullYear();
+      const response = await fetch(`${import.meta.env.VITE_BIOMETRIC_API_URL}&FromDate=${currentYear}-01-01&ToDate=${currentYear}-12-31`);
 
       if (!response.ok) {
         throw new Error(`API Error: ${response.statusText}`);
@@ -325,6 +326,48 @@ const MyAttendance = () => {
     });
   })();
 
+  if (loading) {
+    return (
+      <div className="h-full flex flex-col gap-6 overflow-hidden bg-slate-50/30 px-4 sm:px-0">
+        
+        {/* Header Skeleton */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 shrink-0 pt-2 lg:pt-0 animate-pulse">
+          <div className="space-y-2">
+            <div className="h-6 sm:h-8 w-[200px] sm:w-[250px] bg-slate-200 rounded-md"></div>
+            <div className="h-3 sm:h-4 w-[150px] sm:w-[200px] bg-slate-200 rounded-md"></div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="h-12 w-full sm:w-44 bg-slate-200 rounded-2xl shadow-sm border border-slate-100"></div>
+            <div className="h-12 w-full sm:w-32 bg-slate-200 rounded-2xl shadow-sm border border-slate-100"></div>
+          </div>
+        </div>
+
+        {/* Stats Grid Skeleton */}
+        <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 shrink-0 animate-pulse">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="w-full bg-white p-2 sm:p-5 rounded-2xl sm:rounded-3xl shadow-sm border border-slate-200 flex flex-col items-center justify-center gap-1 sm:gap-2 min-w-0">
+               <div className="w-8 sm:w-10 h-8 sm:h-10 rounded-lg sm:rounded-2xl bg-slate-100 shadow-sm border border-white"></div>
+               <div className="space-y-2 w-full flex flex-col items-center mt-1">
+                 <div className="h-2 sm:h-3 w-12 sm:w-16 bg-slate-100 rounded"></div>
+                 <div className="h-5 sm:h-7 w-16 sm:w-20 bg-slate-100 rounded mt-0.5"></div>
+               </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Main Content Area Skeleton */}
+        <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex-1 flex flex-col mb-4 min-h-0 animate-pulse">
+          <div className="flex-1 p-4 space-y-4">
+             {[1, 2, 3, 4, 5].map((j) => (
+               <div key={j} className="h-24 sm:h-16 w-full bg-slate-50 rounded-2xl border border-slate-100 border-dashed"></div>
+             ))}
+          </div>
+        </div>
+
+      </div>
+    );
+  }
+
   const months = [
     'January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'
@@ -425,12 +468,7 @@ const MyAttendance = () => {
 
       {/* Data Section */}
       <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex-1 flex flex-col mb-4">
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 flex-1 bg-white/50 backdrop-blur-sm">
-            <div className="w-10 h-10 border-4 border-indigo-500/20 border-t-indigo-600 rounded-full animate-spin mb-4"></div>
-            <p className="text-slate-500 text-sm font-bold animate-pulse">Synchronizing logs...</p>
-          </div>
-        ) : error ? (
+        {error ? (
           <div className="flex flex-col items-center justify-center py-20 text-center px-4 flex-1">
             <div className="bg-rose-50 p-4 rounded-3xl mb-4 border border-rose-100">
               <AlertCircle className="w-8 h-8 text-rose-600" />

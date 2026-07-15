@@ -316,7 +316,7 @@ const LeaveManagement = () => {
     if (!employeeId) return;
 
     try {
-      console.log('Fetching balance for employee:', employeeId);
+      // console.log('Fetching balance for employee:', employeeId);
       const { data: balanceData, error: balanceError } = await supabase
         .from('employee_leave_balances')
         .select('*')
@@ -329,7 +329,7 @@ const LeaveManagement = () => {
       }
 
       if (balanceData) {
-        console.log('Balance data found:', balanceData);
+        // console.log('Balance data found:', balanceData);
 
         // Also fetch carry forward from yearly_quota
         const currentYear = getFiscalYear();
@@ -445,8 +445,8 @@ const LeaveManagement = () => {
           .limit(1)
           .maybeSingle();
 
-        console.log(hrData, "data is coming formt eh ");
-        console.log(formData, "formdata");
+        // console.log(hrData, "data is coming formt eh ");
+        // console.log(formData, "formdata");
         if (hrData) {
           setFormData((prev) => ({
             ...prev,
@@ -774,11 +774,11 @@ const LeaveManagement = () => {
   const errorMessage = queryError?.message;
 
   const handleSubmit = async (e) => {
-    console.log("the trigger has been run ");
+    // console.log("the trigger has been run ");
     e.preventDefault();
 
-    console.log("=== handleSubmit called ===");
-    console.log("formData:", formData);
+    // console.log("=== handleSubmit called ===");
+    // console.log("formData:", formData);
 
     if (
       !formData.employeeName ||
@@ -819,7 +819,7 @@ const LeaveManagement = () => {
       }
 
       setSubmitting(true);
-      console.log("Starting Supabase insert...");
+      // console.log("Starting Supabase insert...");
 
       // Prepare data for Supabase insertion
       const now = new Date();
@@ -868,14 +868,14 @@ const LeaveManagement = () => {
         });
 
         // Send WhatsApp message to HOD if HOD is assigned and has phone number
-        console.log(
-          "WhatsApp Debug - hodId:",
-          formData.hodId,
-          "hodPhoneNumber:",
-          formData.hodPhoneNumber,
-        );
+        // console.log(
+        //   "WhatsApp Debug - hodId:",
+        //   formData.hodId,
+        //   "hodPhoneNumber:",
+        //   formData.hodPhoneNumber,
+        // );
         if (formData.hodId && formData.hodPhoneNumber) {
-          console.log("Sending WhatsApp message to HOD...");
+          // console.log("Sending WhatsApp message to HOD...");
           const totalDays = calculateDays(formData.fromDate, formData.toDate);
           const whatsappResult = await sendWhatsappMessageToHod({
             employeId: formData.hodId,
@@ -892,7 +892,7 @@ const LeaveManagement = () => {
             who: "hod",
           });
 
-          console.log(whatsappResult, "whatsapp result");
+          // console.log(whatsappResult, "whatsapp result");
 
           if (whatsappResult.success) {
             toast.success("WhatsApp notification sent to HOD!");
@@ -993,6 +993,28 @@ const LeaveManagement = () => {
       const rowRemarks = remarksInputs[targetRow.id] || {};
       const rowDates = editableDates[targetRow.id] || {};
       const rowCounts = leaveCounts[targetRow.id] || { casual: 0, earned: 0, unpaid: 0 };
+
+      if (action === "accept") {
+        const originalDays = targetRow.days || calculateDays(targetRow.startDate, targetRow.endDate);
+        const newStartDate = rowDates.from || targetRow.startDate;
+        const newEndDate = rowDates.to || targetRow.endDate;
+        const newDays = calculateDays(newStartDate, newEndDate);
+        const totalNewCounts = (rowCounts.casual || 0) + (rowCounts.earned || 0) + (rowCounts.unpaid || 0);
+
+        if (newDays > originalDays) {
+          toast.error(`आप कर्मचारी द्वारा मांगी गई ${originalDays} दिन की छुट्टियों से ज्यादा अप्रूव नहीं कर सकते।`);
+          setLoading(false);
+          setActionInProgress(null);
+          return;
+        }
+
+        if (totalNewCounts > originalDays) {
+          toast.error(`छुट्टियों का कुल विवरण (${totalNewCounts}) मांगी गई ${originalDays} छुट्टियों से ज्यादा नहीं हो सकता।`);
+          setLoading(false);
+          setActionInProgress(null);
+          return;
+        }
+      }
 
       const updateData = {
         timestamp: new Date().toISOString(),
@@ -1219,6 +1241,24 @@ const LeaveManagement = () => {
         const rowRemarks = remarksInputs[row.id] || {};
         const rowDates = editableDates[row.id] || {};
         const rowCounts = leaveCounts[row.id] || { casual: row.casual, earned: row.earned, unpaid: row.unpaid };
+
+        const originalDays = row.days || calculateDays(row.startDate, row.endDate);
+        const newStartDate = rowDates.from || row.startDate;
+        const newEndDate = rowDates.to || row.endDate;
+        const newDays = calculateDays(newStartDate, newEndDate);
+        const totalNewCounts = (rowCounts.casual || 0) + (rowCounts.earned || 0) + (rowCounts.unpaid || 0);
+
+        if (newDays > originalDays) {
+          toast.error(`${row.employeeName} के लिए छुट्टियां नहीं बढ़ाई जा सकतीं। मांगी गई: ${originalDays}, बदली गई: ${newDays}`);
+          failCount++;
+          continue;
+        }
+
+        if (totalNewCounts > originalDays) {
+          toast.error(`${row.employeeName} का छुट्टी विवरण (${totalNewCounts}) मूल अनुरोध (${originalDays}) से ज्यादा है।`);
+          failCount++;
+          continue;
+        }
 
         const updateData = {
           timestamp: new Date().toISOString(),
@@ -1615,6 +1655,24 @@ const LeaveManagement = () => {
   const handleSaveApproved = async (originalItem) => {
     try {
       setLoading(true);
+
+      const originalDays = originalItem.days || calculateDays(originalItem.startDate, originalItem.endDate);
+      const newStartDate = tempApprovedData.startDate || originalItem.startDate;
+      const newEndDate = tempApprovedData.endDate || originalItem.endDate;
+      const newDays = calculateDays(newStartDate, newEndDate);
+      const totalNewCounts = (parseFloat(tempApprovedData.casual) || 0) + (parseFloat(tempApprovedData.earned) || 0) + (parseFloat(tempApprovedData.unpaid) || 0);
+
+      if (newDays > originalDays) {
+        toast.error(`आप कर्मचारी द्वारा मांगी गई ${originalDays} दिन की छुट्टियों से ज्यादा अप्रूव नहीं कर सकते।`);
+        setLoading(false);
+        return;
+      }
+
+      if (totalNewCounts > originalDays) {
+        toast.error(`छुट्टियों का कुल विवरण (${totalNewCounts}) मांगी गई ${originalDays} छुट्टियों से ज्यादा नहीं हो सकता।`);
+        setLoading(false);
+        return;
+      }
 
       const updateData = {};
       if (tempApprovedData.startDate !== originalItem.startDate) updateData.leave_date_start = tempApprovedData.startDate;
@@ -2086,117 +2144,141 @@ const LeaveManagement = () => {
                 </td>
               )}
               <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                <div className="flex space-x-2">
-                  {(user?.is_hod &&
-                    (item.status === "Pending" ||
-                      item.status === "Pending HOD") &&
-                    (item.hodName === user?.full_name ||
-                      item.hodName === user?.Name)) ||
-                    ((user?.role === "hr" ||
-                      user?.role === "HR" ||
-                      user?.role === "admin" ||
-                      user.role === "Admin" ||
-                      user?.Admin === "Yes") &&
-                      (item.status === "Pending HR" ||
-                        item.status === "Pending" ||
-                        item.status === "Pending HOD")) ? (
-                    <>
-                      <button
-                        onClick={() => handleLeaveAction("accept", item)}
-                        disabled={
-                          !selectedIds.includes(item.id) || loading
-                        }
-                        className={`px-3 py-1.5 text-xs font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-sm ${!selectedIds.includes(item.id) || loading
-                          ? "opacity-75 cursor-not-allowed"
-                          : ""
-                          }`}
-                      >
-                        {loading &&
-                          actionInProgress === "accept" ? (
-                          <span className="flex items-center">
-                            <svg
-                              className="w-3 h-3 mr-1 text-white animate-spin"
-                              viewBox="0 0 24 24"
+                {(() => {
+                  const originalDays = item.days || calculateDays(item.startDate, item.endDate);
+                  const rowDates = editableDates[item.id] || {};
+                  const rowCounts = leaveCounts[item.id] || { casual: 0, earned: 0, unpaid: 0 };
+
+                  const newStartDate = rowDates.from || item.startDate;
+                  const newEndDate = rowDates.to || item.endDate;
+                  const newDays = calculateDays(newStartDate, newEndDate);
+                  const totalNewCounts = (rowCounts.casual || 0) + (rowCounts.earned || 0) + (rowCounts.unpaid || 0);
+
+                  const isDaysInvalid = newDays > originalDays;
+                  const isCountsInvalid = totalNewCounts > originalDays;
+                  const isInvalid = isDaysInvalid || isCountsInvalid;
+
+                  return (
+                    <div className="flex flex-col gap-1">
+                      {isInvalid && selectedIds.includes(item.id) && (
+                        <div className="text-[10px] text-red-500 font-medium leading-tight max-w-[120px] whitespace-normal">
+                          {isDaysInvalid ? `आप ${originalDays} दिन से ज्यादा अप्रूव नहीं कर सकते।` : `छुट्टियों का विवरण ${originalDays} दिन से ज्यादा है।`}
+                        </div>
+                      )}
+                      <div className="flex space-x-2">
+                        {(user?.is_hod &&
+                          (item.status === "Pending" ||
+                            item.status === "Pending HOD") &&
+                          (item.hodName === user?.full_name ||
+                            item.hodName === user?.Name)) ||
+                          ((user?.role === "hr" ||
+                            user?.role === "HR" ||
+                            user?.role === "admin" ||
+                            user.role === "Admin" ||
+                            user?.Admin === "Yes") &&
+                            (item.status === "Pending HR" ||
+                              item.status === "Pending" ||
+                              item.status === "Pending HOD")) ? (
+                          <>
+                            <button
+                              onClick={() => handleLeaveAction("accept", item)}
+                              disabled={
+                                !selectedIds.includes(item.id) || loading || isInvalid
+                              }
+                              className={`px-3 py-1.5 text-xs font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-sm ${!selectedIds.includes(item.id) || loading || isInvalid
+                                ? "opacity-75 cursor-not-allowed"
+                                : ""
+                                }`}
                             >
-                              <circle
-                                className="opacity-25"
-                                cx="12"
-                                cy="12"
-                                r="10"
-                                stroke="currentColor"
-                                strokeWidth="4"
-                              ></circle>
-                              <path
-                                className="opacity-75"
-                                fill="currentColor"
-                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                              ></path>
-                            </svg>
-                            Accepting
-                          </span>
-                        ) : (
-                          "Accept"
-                        )}
-                      </button>
-                      <button
-                        onClick={() => handleLeaveAction("rejected", item)}
-                        disabled={!selectedIds.includes(item.id) || loading}
-                        className={`px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors shadow-sm ${!selectedIds.includes(item.id) ||
-                          (loading && actionInProgress === "accept")
-                          ? "opacity-75 cursor-not-allowed"
-                          : ""
-                          }`}
-                      >
-                        {loading &&
-                          actionInProgress === "rejected" ? (
-                          <span className="flex items-center">
-                            <svg
-                              className="w-3 h-3 mr-1 text-white animate-spin"
-                              viewBox="0 0 24 24"
+                              {loading &&
+                                actionInProgress === "accept" ? (
+                                <span className="flex items-center">
+                                  <svg
+                                    className="w-3 h-3 mr-1 text-white animate-spin"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <circle
+                                      className="opacity-25"
+                                      cx="12"
+                                      cy="12"
+                                      r="10"
+                                      stroke="currentColor"
+                                      strokeWidth="4"
+                                    ></circle>
+                                    <path
+                                      className="opacity-75"
+                                      fill="currentColor"
+                                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                    ></path>
+                                  </svg>
+                                  Accepting
+                                </span>
+                              ) : (
+                                "Accept"
+                              )}
+                            </button>
+                            <button
+                              onClick={() => handleLeaveAction("rejected", item)}
+                              disabled={!selectedIds.includes(item.id) || loading}
+                              className={`px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors shadow-sm ${!selectedIds.includes(item.id) ||
+                                (loading && actionInProgress === "accept")
+                                ? "opacity-75 cursor-not-allowed"
+                                : ""
+                                }`}
                             >
-                              <circle
-                                className="opacity-25"
-                                cx="12"
-                                cy="12"
-                                r="10"
-                                stroke="currentColor"
-                                strokeWidth="4"
-                              ></circle>
-                              <path
-                                className="opacity-75"
-                                fill="currentColor"
-                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                              ></path>
-                            </svg>
-                            Rejecting
-                          </span>
-                        ) : (
-                          "Reject"
-                        )}
-                      </button>
-                    </>
-                  ) : // Fallback for HR when status is Pending (HOD has not approved yet)
-                    (user?.role === "hr" ||
-                      user?.role === "HR" ||
-                      user?.role === "admin" ||
-                      user?.role === "Admin" ||
-                      user?.Admin === "Yes") &&
-                      (item.status === "Pending" ||
-                        item.status === "Pending HOD") ? (
-                      <span className="text-xs italic font-medium text-orange-500">
-                        Waiting for HOD
-                      </span>
-                    ) : (
-                      <span className="text-xs italic text-slate-400">
-                        {item.status === "Pending" ||
-                          item.status === "Pending HOD"
-                          ? "Waiting for HOD"
-                          : item.status === "Pending HR"
-                            ? "Waiting for HR"
-                            : "-"}
-                      </span>
-                    )}
-                </div>
+                              {loading &&
+                                actionInProgress === "rejected" ? (
+                                <span className="flex items-center">
+                                  <svg
+                                    className="w-3 h-3 mr-1 text-white animate-spin"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <circle
+                                      className="opacity-25"
+                                      cx="12"
+                                      cy="12"
+                                      r="10"
+                                      stroke="currentColor"
+                                      strokeWidth="4"
+                                    ></circle>
+                                    <path
+                                      className="opacity-75"
+                                      fill="currentColor"
+                                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                    ></path>
+                                  </svg>
+                                  Rejecting
+                                </span>
+                              ) : (
+                                "Reject"
+                              )}
+                            </button>
+                          </>
+                        ) : // Fallback for HR when status is Pending (HOD has not approved yet)
+                          (user?.role === "hr" ||
+                            user?.role === "HR" ||
+                            user?.role === "admin" ||
+                            user?.role === "Admin" ||
+                            user?.Admin === "Yes") &&
+                            (item.status === "Pending" ||
+                              item.status === "Pending HOD") ? (
+                            <span className="text-xs italic font-medium text-orange-500">
+                              Waiting for HOD
+                            </span>
+                          ) : (
+                            <span className="text-xs italic text-slate-400">
+                              {item.status === "Pending" ||
+                                item.status === "Pending HOD"
+                                ? "Waiting for HOD"
+                                : item.status === "Pending HR"
+                                  ? "Waiting for HR"
+                                  : "-"}
+                            </span>
+                          )}
+                      </div>
+                    </div>
+                  );
+                })()}
               </td>
             </tr>
           ))

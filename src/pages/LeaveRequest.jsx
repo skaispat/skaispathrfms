@@ -339,8 +339,43 @@ const LeaveRequest = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="w-8 h-8 border-4 border-indigo-500/30 border-t-indigo-600 rounded-full animate-spin"></div>
+      <div className="h-full flex flex-col gap-6 overflow-hidden bg-slate-50/30 px-4 sm:px-0">
+        
+        {/* Header Skeleton */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 shrink-0 pt-2 lg:pt-0 animate-pulse">
+          <div className="space-y-2">
+            <div className="h-6 sm:h-8 w-[200px] sm:w-[250px] bg-slate-200 rounded-md"></div>
+            <div className="h-3 sm:h-4 w-[150px] sm:w-[200px] bg-slate-200 rounded-md"></div>
+          </div>
+          <div className="h-12 w-full lg:w-48 bg-slate-200 rounded-2xl shadow-sm border border-slate-100"></div>
+        </div>
+
+        {/* Stats Grid Skeleton */}
+        <div className="grid grid-cols-3 md:grid-cols-3 gap-3 sm:gap-6 shrink-0 animate-pulse">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="bg-white p-2.5 sm:p-5 rounded-2xl sm:rounded-3xl shadow-sm border border-slate-200 flex flex-col items-center justify-center gap-1 sm:gap-2">
+              <div className="w-8 sm:w-10 h-8 sm:h-10 rounded-lg sm:rounded-2xl bg-slate-100 shadow-sm border border-white"></div>
+              <div className="space-y-2 w-full flex flex-col items-center mt-1">
+                <div className="h-2 sm:h-3 w-12 sm:w-16 bg-slate-100 rounded"></div>
+                <div className="h-6 sm:h-8 w-16 sm:w-20 bg-slate-100 rounded mt-0.5"></div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Main Content Area Skeleton */}
+        <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex-1 flex flex-col mb-4 min-h-0 animate-pulse">
+          <div className="p-4 border-b border-slate-100 bg-slate-50/30 flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
+             <div className="h-10 w-full md:w-64 bg-slate-100 rounded-xl"></div>
+             <div className="h-10 w-full md:w-80 bg-slate-100 rounded-xl"></div>
+          </div>
+          <div className="flex-1 p-4 space-y-4">
+             {[1, 2, 3, 4].map((j) => (
+               <div key={j} className="h-24 sm:h-16 w-full bg-slate-50 rounded-2xl border border-slate-100 border-dashed"></div>
+             ))}
+          </div>
+        </div>
+
       </div>
     );
   }
