@@ -454,13 +454,12 @@ const UserDashboard = () => {
           </div>
 
           {/* My Lates Badge */}
-          {user && (
+          {user && myLates.count > 0 && (
             <div
-              onClick={() => myLates.count > 0 && setSelectedLateEmployee({ ...user, lateCount: myLates.count, lateDetails: myLates.details, department: user.department || 'Employee' })}
-              className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-full shadow-sm border flex-shrink-0 text-[10px] sm:text-sm font-bold transition-colors flex items-center gap-1 sm:gap-1.5 ${myLates.count > 0 ? 'bg-rose-50 hover:bg-rose-100 border-rose-200/60 text-rose-700 cursor-pointer' : 'bg-emerald-50 border-emerald-200/60 text-emerald-700 cursor-default'
-                }`}
+              onClick={() => setSelectedLateEmployee({ ...user, lateCount: myLates.count, lateDetails: myLates.details, department: user.department || 'Employee' })}
+              className="px-2 sm:px-3 py-1 sm:py-1.5 rounded-full shadow-sm border flex-shrink-0 text-[10px] sm:text-sm font-bold transition-colors flex items-center gap-1 sm:gap-1.5 bg-rose-50 hover:bg-rose-100 border-rose-200/60 text-rose-700 cursor-pointer"
             >
-              <Clock size={12} className={`sm:w-3.5 sm:h-3.5 ${myLates.count > 0 ? "text-rose-500" : "text-emerald-500"}`} />
+              <Clock size={12} className="sm:w-3.5 sm:h-3.5 text-rose-500" />
               {myLates.count} <span className="hidden sm:inline">Lates This Month</span><span className="sm:hidden">Lates This Month</span>
             </div>
           )}
