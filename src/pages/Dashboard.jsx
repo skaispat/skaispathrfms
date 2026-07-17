@@ -52,9 +52,6 @@ const Dashboard = () => {
 
   const [totalEmployee, setTotalEmployee] = useState(0);
   const [activeEmployee, setActiveEmployee] = useState(0);
-  const [resignedEmployee, setResignedEmployee] = useState(0);
-  const [leftEmployee, setLeftEmployee] = useState(0);
-  const [leftThisMonth, setLeftThisMonth] = useState(0);
   const [monthlyHiringData, setMonthlyHiringData] = useState([]);
   const [departmentData, setDepartmentData] = useState([]);
   const [vacancies, setVacancies] = useState([]);
@@ -74,6 +71,8 @@ const Dashboard = () => {
   // Attendance state
   const [presentList, setPresentList] = useState([]);
   const [lateList, setLateList] = useState([]);
+  const [frequentLateList, setFrequentLateList] = useState([]);
+  const [selectedLateEmployee, setSelectedLateEmployee] = useState(null);
   const [departments, setDepartments] = useState([]);
   const [selectedDepartment, setSelectedDepartment] = useState('All Departments');
   const [searchQuery, setSearchQuery] = useState('');
@@ -118,7 +117,6 @@ const Dashboard = () => {
 
         const total = usersData.length;
         const active = usersData.filter(u => u.is_active).length;
-        const inactive = total - active;
 
         setTotalEmployee(total);
         setActiveEmployee(active);
@@ -127,33 +125,52 @@ const Dashboard = () => {
         const depts = getDistribution(usersData.filter(u => u.is_active), 'department');
         setDepartmentData(depts);
 
-        // Fetch Biometric API for today
+        // Fetch Biometric API for current month
         const y = today.getFullYear();
         const m = String(today.getMonth() + 1).padStart(2, '0');
         const d = String(today.getDate()).padStart(2, '0');
         const todayStr = `${y}-${m}-${d}`;
-        const response = await fetch(`${import.meta.env.VITE_BIOMETRIC_API_URL}&FromDate=${todayStr}&ToDate=${todayStr}`);
+        const firstDayStr = `${y}-${m}-01`;
+
+        const response = await fetch(`${import.meta.env.VITE_BIOMETRIC_API_URL}&FromDate=${firstDayStr}&ToDate=${todayStr}`);
         const apiData = await response.json();
 
         const groupedApiData = {};
+        const todayLogsByUserId = {};
+
         if (Array.isArray(apiData)) {
           apiData.forEach((log) => {
-            if (!groupedApiData[log.UserId]) groupedApiData[log.UserId] = [];
-            groupedApiData[log.UserId].push(log.LogDate);
+            if (!log.LogDate) return;
+            const logDateOnly = log.LogDate.split('T')[0];
+
+            // For monthly tracking
+            if (!groupedApiData[log.UserId]) groupedApiData[log.UserId] = {};
+            if (!groupedApiData[log.UserId][logDateOnly]) {
+              groupedApiData[log.UserId][logDateOnly] = [];
+            }
+            groupedApiData[log.UserId][logDateOnly].push(log.LogDate);
+
+            // For today's tracking
+            if (logDateOnly === todayStr) {
+              if (!todayLogsByUserId[log.UserId]) todayLogsByUserId[log.UserId] = [];
+              todayLogsByUserId[log.UserId].push(log.LogDate);
+            }
           });
         }
 
         const presentArr = [];
         const lateArr = [];
+        const frequentLateArr = [];
         const uniqueDepts = new Set();
 
         usersData.filter(u => u.is_active).forEach(u => {
           if (!isAdmin && user && String(u.emp_id) !== String(user.emp_id)) return;
           if (u.department) uniqueDepts.add(u.department.trim());
-          const logs = groupedApiData[u.emp_id] || [];
-          if (logs.length > 0) {
-            logs.sort();
-            const firstLog = logs[0];
+
+          const todayLogs = todayLogsByUserId[u.emp_id] || [];
+          if (todayLogs.length > 0) {
+            todayLogs.sort();
+            const firstLog = todayLogs[0];
             const inTime = firstLog.split('T')[1].substring(0, 5); // HH:MM
 
             const [hr, min] = inTime.split(':').map(Number);
@@ -168,13 +185,40 @@ const Dashboard = () => {
               presentArr.push({ ...u, inTime });
             }
           }
+
+          // Frequent late logic
+          const monthLogs = groupedApiData[u.emp_id] || {};
+          let lateCount = 0;
+          let lateDetails = [];
+          Object.keys(monthLogs).forEach(dateStr => {
+            const logs = monthLogs[dateStr];
+            logs.sort();
+            const firstLog = logs[0];
+            const inTime = firstLog.split('T')[1].substring(0, 5);
+            const [hr, min] = inTime.split(':').map(Number);
+            const isLate = (hr > 10) || (hr === 10 && min > 5);
+            if (isLate) {
+              lateCount++;
+              const lateMins = (hr * 60 + min) - (10 * 60 + 5);
+              let lateStr = `${lateMins} Min`;
+              if (lateMins >= 60) lateStr = `${Math.floor(lateMins / 60)}h ${lateMins % 60}m`;
+              lateDetails.push({ date: dateStr, inTime, lateStr });
+            }
+          });
+
+          if (lateCount > 2) {
+            lateDetails.sort((a, b) => new Date(b.date) - new Date(a.date));
+            frequentLateArr.push({ ...u, lateCount, lateDetails });
+          }
         });
 
         presentArr.sort((a, b) => a.inTime.localeCompare(b.inTime));
         lateArr.sort((a, b) => b.inTime.localeCompare(a.inTime));
+        frequentLateArr.sort((a, b) => b.lateCount - a.lateCount);
 
         setPresentList(presentArr);
         setLateList(lateArr);
+        setFrequentLateList(frequentLateArr);
         setDepartments([...uniqueDepts].sort());
 
 
@@ -192,8 +236,7 @@ const Dashboard = () => {
           return date.getMonth() === today.getMonth() && date.getFullYear() === today.getFullYear();
         }).length;
 
-        setLeftThisMonth(currentMonthLeaves);
-        setResignedEmployee(inactive);
+        // Removed setLeftThisMonth and setResignedEmployee
 
         // 3. Hiring vs Attrition Trends (Last 6 Months)
         const months = [];
@@ -645,22 +688,45 @@ const Dashboard = () => {
             trendUp={true}
             color="emerald"
           />
-          <StatCard
-            title="Inactive / Resigned"
-            value={resignedEmployee}
-            icon={UserX}
-            trend="Total"
-            trendUp={false}
-            color="amber"
-          />
-          <StatCard
-            title="Left This Month"
-            value={leftThisMonth}
-            icon={Activity}
-            trend="Current Month"
-            trendUp={false}
-            color="rose"
-          />
+          <div className="col-span-2 bg-white p-3 sm:p-4 rounded-2xl sm:rounded-3xl shadow-md border border-slate-200 flex flex-col h-[110px] sm:h-[174px]">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs sm:text-sm font-bold text-slate-800 flex items-center gap-2">
+                <Clock className="text-rose-500 w-4 h-4" />
+                Frequent Late Employees
+              </h3>
+              <span className="bg-rose-100 text-rose-700 text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full">{frequentLateList.length}</span>
+            </div>
+            <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 grid grid-cols-1 sm:grid-cols-2 gap-2 content-start">
+              {frequentLateList.length > 0 ? frequentLateList.map((emp) => (
+                <div
+                  key={emp.emp_id}
+                  onClick={() => setSelectedLateEmployee(emp)}
+                  className="flex items-center justify-between bg-slate-50 p-1.5 sm:p-2 rounded-xl border border-slate-100 hover:bg-slate-100 hover:shadow-sm cursor-pointer transition-colors"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    {emp.profile_picture ? (
+                      <img src={emp.profile_picture} alt={emp.full_name} className="w-6 h-6 sm:w-8 sm:h-8 rounded-full object-cover flex-shrink-0" />
+                    ) : (
+                      <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-rose-50 flex items-center justify-center text-rose-600 font-bold text-[10px] sm:text-xs flex-shrink-0">
+                        {emp.full_name?.charAt(0) || 'U'}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <h4 className="text-[10px] sm:text-xs font-bold text-slate-800 truncate">{emp.full_name}</h4>
+                      <p className="text-[9px] sm:text-[10px] text-slate-500 truncate">{emp.department}</p>
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0">
+                    <span className="text-[9px] sm:text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded-md">{emp.lateCount} Lates</span>
+                  </div>
+                </div>
+              )) : (
+                <div className="col-span-1 sm:col-span-2 flex items-center justify-center h-full min-h-[40px] text-slate-400 text-[10px] sm:text-xs font-medium">
+                  No frequent late comers this month
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -1146,7 +1212,53 @@ const Dashboard = () => {
           )}
         </div>
       )}
-
+      {/* Late Employee Details Modal */}
+      {selectedLateEmployee && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setSelectedLateEmployee(null)}>
+          <div className="bg-white rounded-2xl sm:rounded-3xl shadow-xl w-full max-w-md overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 sm:p-6 border-b border-slate-100">
+              <div className="flex items-center gap-3 min-w-0">
+                {selectedLateEmployee.profile_picture ? (
+                  <img src={selectedLateEmployee.profile_picture} alt={selectedLateEmployee.full_name} className="w-10 h-10 rounded-full object-cover shadow-sm" />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-rose-50 flex items-center justify-center text-rose-600 font-bold text-sm shadow-sm">
+                    {selectedLateEmployee.full_name?.charAt(0) || 'U'}
+                  </div>
+                )}
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold text-slate-800 truncate">{selectedLateEmployee.full_name}</h3>
+                  <p className="text-xs text-slate-500 font-medium">{selectedLateEmployee.department} • {selectedLateEmployee.lateCount} Lates</p>
+                </div>
+              </div>
+              <button onClick={() => setSelectedLateEmployee(null)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+            <div className="p-4 sm:p-6 max-h-[60vh] overflow-y-auto custom-scrollbar bg-slate-50/50">
+              <div className="space-y-3">
+                {selectedLateEmployee.lateDetails?.map((detail, idx) => (
+                  <div key={idx} className="flex items-center justify-between bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-rose-50 rounded-lg">
+                        <Calendar size={16} className="text-rose-500" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">{new Date(detail.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
+                        <p className="text-[10px] text-slate-500 font-medium mt-0.5 flex items-center gap-1">
+                          <Clock3 size={10} /> In Time: {detail.inTime}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="px-2 py-1 bg-rose-100 text-rose-700 text-[10px] font-bold rounded-md">
+                      {detail.lateStr} Late
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

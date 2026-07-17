@@ -57,18 +57,8 @@ const UserDashboard = () => {
   const [wishingRecordId, setWishingRecordId] = useState(null);
 
   // Attendance state
-  const [presentList, setPresentList] = useState([]);
-  const [lateList, setLateList] = useState([]);
-  const [departments, setDepartments] = useState([]);
-  const [selectedDepartment, setSelectedDepartment] = useState('All Departments');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [presentLimit, setPresentLimit] = useState(10);
-  const [lateLimit, setLateLimit] = useState(10);
-
-  useEffect(() => {
-    setPresentLimit(10);
-    setLateLimit(10);
-  }, [searchQuery, selectedDepartment]);
+  const [myLates, setMyLates] = useState({ count: 0, details: [] });
+  const [selectedLateEmployee, setSelectedLateEmployee] = useState(null);
   // Close dropdown on click outside
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -97,54 +87,50 @@ const UserDashboard = () => {
 
         setUsersData(usersData || []);
 
-        // Fetch Biometric API for today
+        // Fetch Biometric API for this month
         const y = today.getFullYear();
         const m = String(today.getMonth() + 1).padStart(2, '0');
         const d = String(today.getDate()).padStart(2, '0');
         const todayStr = `${y}-${m}-${d}`;
-        const response = await fetch(`${import.meta.env.VITE_BIOMETRIC_API_URL}&FromDate=${todayStr}&ToDate=${todayStr}`);
+        const firstDayStr = `${y}-${m}-01`;
+        const response = await fetch(`${import.meta.env.VITE_BIOMETRIC_API_URL}&FromDate=${firstDayStr}&ToDate=${todayStr}`);
         const apiData = await response.json();
 
-        const groupedApiData = {};
-        if (Array.isArray(apiData)) {
+        const myLogs = {};
+        if (Array.isArray(apiData) && user) {
           apiData.forEach((log) => {
-            if (!groupedApiData[log.UserId]) groupedApiData[log.UserId] = [];
-            groupedApiData[log.UserId].push(log.LogDate);
+            if (String(log.UserId) === String(user.emp_id) && log.LogDate) {
+              const logDateOnly = log.LogDate.split('T')[0];
+              if (!myLogs[logDateOnly]) {
+                myLogs[logDateOnly] = [];
+              }
+              myLogs[logDateOnly].push(log.LogDate);
+            }
           });
         }
 
-        const presentArr = [];
-        const lateArr = [];
-        const uniqueDepts = new Set();
+        let myLateCount = 0;
+        let myLateDetails = [];
+        Object.keys(myLogs).forEach(dateStr => {
+          const logs = myLogs[dateStr];
+          logs.sort();
+          const firstLog = logs[0];
+          const inTime = firstLog.split('T')[1].substring(0, 5); // HH:MM
 
-        usersData.filter(u => u.is_active).forEach(u => {
-          if (user && String(u.emp_id) !== String(user.emp_id)) return;
-          const logs = groupedApiData[u.emp_id] || [];
-          if (logs.length > 0) {
-            logs.sort();
-            const firstLog = logs[0];
-            const inTime = firstLog.split('T')[1].substring(0, 5); // HH:MM
+          const [hr, min] = inTime.split(':').map(Number);
+          const isLate = (hr > 10) || (hr === 10 && min > 5);
 
-            const [hr, min] = inTime.split(':').map(Number);
-            const isLate = (hr > 10) || (hr === 10 && min > 5);
-
-            if (isLate) {
-              const lateMins = (hr * 60 + min) - (10 * 60 + 5);
-              let lateStr = `${lateMins} Min`;
-              if (lateMins >= 60) lateStr = `${Math.floor(lateMins / 60)}h ${lateMins % 60}m`;
-              lateArr.push({ ...u, inTime, lateStr });
-            } else {
-              presentArr.push({ ...u, inTime });
-            }
+          if (isLate) {
+            myLateCount++;
+            const lateMins = (hr * 60 + min) - (10 * 60 + 5);
+            let lateStr = `${lateMins} Min`;
+            if (lateMins >= 60) lateStr = `${Math.floor(lateMins / 60)}h ${lateMins % 60}m`;
+            myLateDetails.push({ date: dateStr, inTime, lateStr });
           }
         });
 
-        presentArr.sort((a, b) => a.inTime.localeCompare(b.inTime));
-        lateArr.sort((a, b) => b.inTime.localeCompare(a.inTime));
-
-        setPresentList(presentArr);
-        setLateList(lateArr);
-        setDepartments([...uniqueDepts].sort());
+        myLateDetails.sort((a, b) => new Date(b.date) - new Date(a.date));
+        setMyLates({ count: myLateCount, details: myLateDetails });
 
 
         // 2. Fetch Leave Balances
@@ -303,19 +289,19 @@ const UserDashboard = () => {
     try {
       const column = record.type === 'Anniversary' ? 'anni_sent_by' : 'sent_by';
       let currentSentBy = record[column] || '';
-      
+
       let sentByArray = [];
       if (typeof currentSentBy === 'string') {
         sentByArray = currentSentBy.split(',').map(s => s.trim()).filter(Boolean);
       } else if (Array.isArray(currentSentBy)) {
         sentByArray = currentSentBy;
       }
-      
+
       if (sentByArray.includes(user.full_name.trim())) {
         return; // Already wished
       }
 
-      const newSentBy = sentByArray.length > 0 
+      const newSentBy = sentByArray.length > 0
         ? `${sentByArray.join(', ')}, ${user.full_name.trim()}`
         : user.full_name.trim();
 
@@ -345,14 +331,14 @@ const UserDashboard = () => {
     const column = record.type === 'Anniversary' ? 'anni_sent_by' : 'sent_by';
     const sentBy = record[column];
     if (!sentBy) return false;
-    
+
     let sentByArray = [];
     if (typeof sentBy === 'string') {
       sentByArray = sentBy.split(',').map(s => s.trim()).filter(Boolean);
     } else if (Array.isArray(sentBy)) {
       sentByArray = sentBy;
     }
-    
+
     return sentByArray.includes(user.full_name.trim());
   };
 
@@ -369,33 +355,7 @@ const UserDashboard = () => {
     'Unknown': '#9CA3AF'
   };
 
-  const filteredPresent = presentList.filter(u => {
-    const matchDept = selectedDepartment === 'All Departments' || u.department === selectedDepartment;
-    const matchSearch = u.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      u.emp_id?.toString().toLowerCase().includes(searchQuery.toLowerCase());
-    return matchDept && matchSearch;
-  });
 
-  const filteredLate = lateList.filter(u => {
-    const matchDept = selectedDepartment === 'All Departments' || u.department === selectedDepartment;
-    const matchSearch = u.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      u.emp_id?.toString().toLowerCase().includes(searchQuery.toLowerCase());
-    return matchDept && matchSearch;
-  });
-
-  const handlePresentScroll = (e) => {
-    const { scrollTop, scrollHeight, clientHeight } = e.target;
-    if (scrollHeight - scrollTop <= clientHeight + 50) {
-      setPresentLimit(prev => Math.min(prev + 10, filteredPresent.length));
-    }
-  };
-
-  const handleLateScroll = (e) => {
-    const { scrollTop, scrollHeight, clientHeight } = e.target;
-    if (scrollHeight - scrollTop <= clientHeight + 50) {
-      setLateLimit(prev => Math.min(prev + 10, filteredLate.length));
-    }
-  };
 
   const todaysEvents = upcomingEvents.filter(e => e.diffDays === 0);
   const futureEvents = upcomingEvents.filter(e => e.diffDays > 0);
@@ -403,7 +363,7 @@ const UserDashboard = () => {
   if (loading) {
     return (
       <div className="py-4 w-full space-y-3 sm:space-y-5 min-h-screen font-sans bg-transparent">
-        
+
         {/* Header Skeleton */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 px-1 sm:px-0 relative animate-pulse">
           <div className="text-left space-y-2">
@@ -420,62 +380,62 @@ const UserDashboard = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mt-6">
           {[1, 2].map((i) => (
             <div key={i} className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-md border border-slate-200 flex flex-col animate-pulse">
-               <div className="flex items-center justify-between mb-6">
-                 <div className="flex items-center gap-2">
-                   <div className="w-8 sm:w-9 h-8 sm:h-9 rounded-lg bg-slate-100"></div>
-                   <div className="space-y-1.5 w-full max-w-[200px]">
-                      <div className="w-3/4 h-4 sm:h-5 bg-slate-200 rounded-md"></div>
-                      <div className="w-1/2 h-2 sm:h-3 bg-slate-100 rounded-md"></div>
-                   </div>
-                 </div>
-               </div>
-               <div className="space-y-3 mt-4">
-                  {[1, 2, 3].map((j) => (
-                    <div key={j} className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-between">
-                       <div className="space-y-2 w-full max-w-[150px]">
-                          <div className="w-full h-3 sm:h-4 bg-slate-200 rounded-md"></div>
-                          <div className="w-2/3 h-2 sm:h-3 bg-slate-200 rounded-md"></div>
-                       </div>
-                       <div className="w-16 h-4 sm:h-5 rounded-full bg-slate-200"></div>
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 sm:w-9 h-8 sm:h-9 rounded-lg bg-slate-100"></div>
+                  <div className="space-y-1.5 w-full max-w-[200px]">
+                    <div className="w-3/4 h-4 sm:h-5 bg-slate-200 rounded-md"></div>
+                    <div className="w-1/2 h-2 sm:h-3 bg-slate-100 rounded-md"></div>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-3 mt-4">
+                {[1, 2, 3].map((j) => (
+                  <div key={j} className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-between">
+                    <div className="space-y-2 w-full max-w-[150px]">
+                      <div className="w-full h-3 sm:h-4 bg-slate-200 rounded-md"></div>
+                      <div className="w-2/3 h-2 sm:h-3 bg-slate-200 rounded-md"></div>
                     </div>
-                  ))}
-               </div>
-               <div className="w-full h-10 mt-4 rounded-xl bg-slate-50 border border-slate-100"></div>
+                    <div className="w-16 h-4 sm:h-5 rounded-full bg-slate-200"></div>
+                  </div>
+                ))}
+              </div>
+              <div className="w-full h-10 mt-4 rounded-xl bg-slate-50 border border-slate-100"></div>
             </div>
           ))}
         </div>
 
         {/* Grid 3: Birthdays & Anniversaries Skeleton */}
         <div className="bg-white p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-md border border-slate-200 mt-6 flex flex-col xl:flex-row gap-6 xl:gap-8 animate-pulse">
-           
-           {/* Today's Events Skeleton */}
-           <div className="w-full xl:flex-[6]">
-             <div className="h-5 sm:h-6 w-32 sm:w-40 bg-slate-200 rounded-md mb-4 px-1"></div>
-             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col sm:flex-row h-auto sm:h-[240px]">
-                <div className="w-full sm:w-[35%] bg-slate-100 h-40 sm:h-full"></div>
-                <div className="p-4 sm:p-6 flex-1 flex flex-col justify-center space-y-3">
-                   <div className="h-6 sm:h-8 w-3/4 bg-slate-200 rounded-md"></div>
-                   <div className="h-5 sm:h-6 w-1/2 bg-slate-200 rounded-md"></div>
-                   <div className="h-8 sm:h-10 w-32 bg-slate-200 rounded-lg mt-4"></div>
-                </div>
-             </div>
-           </div>
 
-           {/* Upcoming Events Skeleton */}
-           <div className="w-full xl:flex-[4] border-t xl:border-t-0 xl:border-l border-slate-200/60 pt-4 sm:pt-6 xl:pt-0 xl:pl-8">
-             <div className="flex items-center gap-2 mb-4 sm:mb-6">
-                <div className="w-5 h-5 rounded bg-slate-200"></div>
-                <div className="h-5 sm:h-6 w-32 bg-slate-200 rounded-md"></div>
-             </div>
-             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center gap-4">
-                <div className="w-12 h-12 rounded-lg bg-slate-100 shrink-0"></div>
-                <div className="flex-1 space-y-2 w-full max-w-[150px]">
-                   <div className="w-1/2 h-2 sm:h-3 bg-slate-200 rounded-md"></div>
-                   <div className="w-3/4 h-3 sm:h-4 bg-slate-200 rounded-md"></div>
-                   <div className="w-2/3 h-2 sm:h-3 bg-slate-100 rounded-md"></div>
-                </div>
-             </div>
-           </div>
+          {/* Today's Events Skeleton */}
+          <div className="w-full xl:flex-[6]">
+            <div className="h-5 sm:h-6 w-32 sm:w-40 bg-slate-200 rounded-md mb-4 px-1"></div>
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col sm:flex-row h-auto sm:h-[240px]">
+              <div className="w-full sm:w-[35%] bg-slate-100 h-40 sm:h-full"></div>
+              <div className="p-4 sm:p-6 flex-1 flex flex-col justify-center space-y-3">
+                <div className="h-6 sm:h-8 w-3/4 bg-slate-200 rounded-md"></div>
+                <div className="h-5 sm:h-6 w-1/2 bg-slate-200 rounded-md"></div>
+                <div className="h-8 sm:h-10 w-32 bg-slate-200 rounded-lg mt-4"></div>
+              </div>
+            </div>
+          </div>
+
+          {/* Upcoming Events Skeleton */}
+          <div className="w-full xl:flex-[4] border-t xl:border-t-0 xl:border-l border-slate-200/60 pt-4 sm:pt-6 xl:pt-0 xl:pl-8">
+            <div className="flex items-center gap-2 mb-4 sm:mb-6">
+              <div className="w-5 h-5 rounded bg-slate-200"></div>
+              <div className="h-5 sm:h-6 w-32 bg-slate-200 rounded-md"></div>
+            </div>
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center gap-4">
+              <div className="w-12 h-12 rounded-lg bg-slate-100 shrink-0"></div>
+              <div className="flex-1 space-y-2 w-full max-w-[150px]">
+                <div className="w-1/2 h-2 sm:h-3 bg-slate-200 rounded-md"></div>
+                <div className="w-3/4 h-3 sm:h-4 bg-slate-200 rounded-md"></div>
+                <div className="w-2/3 h-2 sm:h-3 bg-slate-100 rounded-md"></div>
+              </div>
+            </div>
+          </div>
 
         </div>
 
@@ -487,12 +447,26 @@ const UserDashboard = () => {
     <div className="py-4 w-full space-y-3 sm:space-y-5 min-h-screen font-sans bg-transparent">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 px-1 sm:px-0 relative">
-        <div className="text-left">
-          <h1 className="text-xl sm:text-2xl font-extrabold text-[#800000] tracking-tight">My Dashboard</h1>
-          <p className="text-slate-600 text-xs sm:text-base mt-0.5 font-semibold">Welcome back! SKA HR System</p>
+        <div className="flex items-start sm:items-center justify-between w-full sm:w-auto sm:gap-6">
+          <div className="text-left">
+            <h1 className="text-xl sm:text-2xl font-extrabold text-[#800000] tracking-tight">My Dashboard</h1>
+            <p className="text-slate-600 text-[10px] sm:text-base mt-0.5 font-semibold">Welcome back! SKA HR System</p>
+          </div>
+
+          {/* My Lates Badge */}
+          {user && (
+            <div
+              onClick={() => myLates.count > 0 && setSelectedLateEmployee({ ...user, lateCount: myLates.count, lateDetails: myLates.details, department: user.department || 'Employee' })}
+              className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-full shadow-sm border flex-shrink-0 text-[10px] sm:text-sm font-bold transition-colors flex items-center gap-1 sm:gap-1.5 ${myLates.count > 0 ? 'bg-rose-50 hover:bg-rose-100 border-rose-200/60 text-rose-700 cursor-pointer' : 'bg-emerald-50 border-emerald-200/60 text-emerald-700 cursor-default'
+                }`}
+            >
+              <Clock size={12} className={`sm:w-3.5 sm:h-3.5 ${myLates.count > 0 ? "text-rose-500" : "text-emerald-500"}`} />
+              {myLates.count} <span className="hidden sm:inline">Lates This Month</span><span className="sm:hidden">Lates This Month</span>
+            </div>
+          )}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-end">
           {/* Inline Leave Balances */}
           <div className="px-3 py-1.5 bg-white rounded-full shadow-sm border border-slate-200/60 flex-shrink-0 text-xs sm:text-sm font-bold text-slate-700">
             Remaining Leaves <span className="text-indigo-600 ml-1">EL : {leaveBalances.earned.remaining}</span> , <span className="text-emerald-600">CL : {leaveBalances.casual.remaining}</span>
@@ -649,16 +623,15 @@ const UserDashboard = () => {
                               {isBirthday ? "Happy Birthday!" : "Happy Anniversary!"}
                             </h2>
                             <h3 className="font-bold text-slate-800 text-xl sm:text-2xl leading-tight">{record.empName}</h3>
-                            <button 
+                            <button
                               onClick={() => !hasWished(record) && handleWish(record)}
                               disabled={hasWished(record) || wishingRecordId === record.id}
-                              className={`mt-4 px-4 py-2 text-sm font-semibold rounded-lg shadow border flex items-center gap-2 transition-colors w-max cursor-pointer ${
-                                hasWished(record) 
-                                  ? 'bg-slate-200 text-slate-500 border-slate-200 cursor-not-allowed' 
-                                  : wishingRecordId === record.id
-                                    ? 'bg-indigo-400 text-white border-indigo-400 cursor-not-allowed'
-                                    : 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-700'
-                              }`}>
+                              className={`mt-4 px-4 py-2 text-sm font-semibold rounded-lg shadow border flex items-center gap-2 transition-colors w-max cursor-pointer ${hasWished(record)
+                                ? 'bg-slate-200 text-slate-500 border-slate-200 cursor-not-allowed'
+                                : wishingRecordId === record.id
+                                  ? 'bg-indigo-400 text-white border-indigo-400 cursor-not-allowed'
+                                  : 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-700'
+                                }`}>
                               {wishingRecordId === record.id ? (
                                 <Loader2 size={16} className="animate-spin" />
                               ) : (
@@ -749,6 +722,53 @@ const UserDashboard = () => {
         </div>
       )}
 
+      {/* Late Employee Details Modal */}
+      {selectedLateEmployee && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setSelectedLateEmployee(null)}>
+          <div className="bg-white rounded-2xl sm:rounded-3xl shadow-xl w-full max-w-md overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 sm:p-6 border-b border-slate-100">
+              <div className="flex items-center gap-3 min-w-0">
+                {selectedLateEmployee.profile_picture ? (
+                  <img src={selectedLateEmployee.profile_picture} alt={selectedLateEmployee.full_name} className="w-10 h-10 rounded-full object-cover shadow-sm" />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-rose-50 flex items-center justify-center text-rose-600 font-bold text-sm shadow-sm">
+                    {selectedLateEmployee.full_name?.charAt(0) || 'U'}
+                  </div>
+                )}
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold text-slate-800 truncate">{selectedLateEmployee.full_name}</h3>
+                  <p className="text-xs text-slate-500 font-medium">{selectedLateEmployee.department} • {selectedLateEmployee.lateCount} Lates</p>
+                </div>
+              </div>
+              <button onClick={() => setSelectedLateEmployee(null)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+            <div className="p-4 sm:p-6 max-h-[60vh] overflow-y-auto custom-scrollbar bg-slate-50/50">
+              <div className="space-y-3">
+                {selectedLateEmployee.lateDetails?.map((detail, idx) => (
+                  <div key={idx} className="flex items-center justify-between bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-rose-50 rounded-lg">
+                        <Calendar size={16} className="text-rose-500" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">{new Date(detail.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
+                        <p className="text-[10px] text-slate-500 font-medium mt-0.5 flex items-center gap-1">
+                          <Clock3 size={10} /> In Time: {detail.inTime}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="px-2 py-1 bg-rose-100 text-rose-700 text-[10px] font-bold rounded-md">
+                      {detail.lateStr} Late
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
