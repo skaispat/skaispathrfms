@@ -1,6 +1,57 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
-import { Calendar, Clock, CheckCircle, XCircle, ChevronDown, Activity, AlertCircle, FileText } from 'lucide-react';
+import { Calendar, Clock, CheckCircle, XCircle, ChevronDown, Activity, AlertCircle, FileText, MapPin, Loader2 } from 'lucide-react';
+import toast from 'react-hot-toast';
+
+const TARGET_LAT = 21.237836;
+const TARGET_LNG = 81.714938;
+const RADIUS_METERS = 50;
+
+const calculateDistance = (lat1, lon1, lat2, lon2) => {
+  const R = 6371e3; // metres
+  const φ1 = lat1 * Math.PI / 180;
+  const φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180;
+  const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+  const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+    Math.cos(φ1) * Math.cos(φ2) *
+    Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c;
+};
+
+const getISTDateDetails = () => {
+  const date = new Date();
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+  const parts = formatter.formatToParts(date);
+  const getPart = (type) => parts.find(p => p.type === type).value;
+
+  const dateStr = `${getPart('year')}-${getPart('month')}-${getPart('day')}`;
+  let hour = getPart('hour');
+  if (hour === '24') hour = '00';
+  const timeStr = `${hour}:${getPart('minute')}`;
+
+  const monthNameFormatter = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', month: 'long' });
+  const dayNameFormatter = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', weekday: 'long' });
+
+  return {
+    year: parseInt(getPart('year')),
+    dateStr,
+    timeStr,
+    monthName: monthNameFormatter.format(date),
+    dayName: dayNameFormatter.format(date)
+  };
+};
 
 const MyAttendance = () => {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
@@ -18,6 +69,46 @@ const MyAttendance = () => {
   const [weekOff, setWeekOff] = useState('');
   const [userLeaves, setUserLeaves] = useState([]);
   const [activeFilter, setActiveFilter] = useState('All');
+
+  // Geolocation State
+  const [isWithinRange, setIsWithinRange] = useState(false);
+  const [locationStatus, setLocationStatus] = useState('Checking location...');
+  const [isPunching, setIsPunching] = useState(false);
+
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      setLocationStatus('Geolocation is not supported');
+      return;
+    }
+
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        const dist = calculateDistance(latitude, longitude, TARGET_LAT, TARGET_LNG);
+
+        if (dist <= RADIUS_METERS) {
+          setIsWithinRange(true);
+          setLocationStatus('In range (ready)');
+        } else {
+          setIsWithinRange(false);
+          setLocationStatus(`Out of range (${Math.round(dist)}m away)`);
+        }
+      },
+      (error) => {
+        setIsWithinRange(false);
+        setLocationStatus('Location access denied');
+        console.error('Geolocation error:', error);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+      }
+    );
+
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, []);
+
 
   const weekDayMap = {
     'SUNDAY': 0,
@@ -71,81 +162,110 @@ const MyAttendance = () => {
       setUserLeaves(leavesData || []);
 
       const currentYear = new Date().getFullYear();
-      const response = await fetch(`${import.meta.env.VITE_BIOMETRIC_API_URL}&FromDate=${currentYear}-01-01&ToDate=${currentYear}-12-31`);
 
+      // 1. Fetch from Biomax API
+      const response = await fetch(`${import.meta.env.VITE_BIOMETRIC_API_URL}&FromDate=${currentYear}-01-01&ToDate=${currentYear}-12-31`);
       if (!response.ok) {
         throw new Error(`API Error: ${response.statusText}`);
       }
-
-      const data = await response.json();
-
-      // Filter logs for the current user
-      const userLogs = data.filter(log => String(log.UserId) === String(user.emp_id));
+      const rawApiData = await response.json();
+      const userLogs = rawApiData.filter(log => String(log.UserId) === String(user.emp_id));
 
       const groupedData = {};
-
       userLogs.forEach(log => {
         const dateStr = log.LogDate.split('T')[0];
         if (!groupedData[dateStr]) {
-          groupedData[dateStr] = {
-            date: dateStr,
-            logs: []
-          };
+          groupedData[dateStr] = { date: dateStr, logs: [] };
         }
         groupedData[dateStr].logs.push(log.LogDate);
       });
 
-      const processedData = Object.values(groupedData).map(item => {
-        item.logs.sort();
-        const firstLog = item.logs[0];
-        const lastLog = item.logs[item.logs.length - 1];
+      // 2. Fetch manual punches from attendance_daily
+      const { data: dailyRecords } = await supabase
+        .from('attendance_daily')
+        .select('*')
+        .eq('emp_id', user.emp_id)
+        .gte('date', `${currentYear}-01-01`)
+        .lte('date', `${currentYear}-12-31`);
 
-        const inTime = firstLog.split('T')[1].substring(0, 5); // HH:MM
-        const outTime = item.logs.length > 1 ? lastLog.split('T')[1].substring(0, 5) : null;
+      const manualDataMap = {};
+      if (dailyRecords) {
+        dailyRecords.forEach(record => {
+          if (record.remarks && record.remarks.includes('Mobile')) {
+            manualDataMap[record.date] = record;
+          }
+        });
+      }
+
+      // 3. Process and Merge
+      const allDates = new Set([...Object.keys(groupedData), ...Object.keys(manualDataMap)]);
+
+      const processedData = Array.from(allDates).map(dateStr => {
+        const apiItem = groupedData[dateStr];
+        const manualItem = manualDataMap[dateStr];
+
+        let inTime = null;
+        let outTime = null;
+
+        if (apiItem) {
+          apiItem.logs.sort();
+          inTime = apiItem.logs[0].split('T')[1].substring(0, 5);
+          if (apiItem.logs.length > 1) {
+            outTime = apiItem.logs[apiItem.logs.length - 1].split('T')[1].substring(0, 5);
+          }
+        }
+
+        if (manualItem) {
+          if (manualItem.in_time && (!inTime || manualItem.in_time < inTime)) {
+            inTime = manualItem.in_time;
+          }
+          if (manualItem.out_time && (!outTime || manualItem.out_time > outTime)) {
+            outTime = manualItem.out_time;
+          }
+        }
 
         let workingHoursDisplay = '0h 0m';
         let workingHoursVal = 0;
         let overtimeVal = 0;
         let overtimeDisplay = '0h 0m';
 
-        if (outTime) {
-          const start = new Date(firstLog);
-          const end = new Date(lastLog);
+        if (inTime && outTime && outTime !== '-') {
+          const start = new Date(`${dateStr}T${inTime}`);
+          const end = new Date(`${dateStr}T${outTime}`);
           const diffMs = end - start;
 
-          workingHoursVal = diffMs / 3600000;
+          if (diffMs > 0) {
+            workingHoursVal = diffMs / 3600000;
+            const hours = Math.floor(diffMs / 3600000);
+            const minutes = Math.floor((diffMs % 3600000) / 60000);
+            workingHoursDisplay = `${hours}h ${minutes}m`;
 
-          const hours = Math.floor(diffMs / 3600000);
-          const minutes = Math.floor((diffMs % 3600000) / 60000);
-          workingHoursDisplay = `${hours}h ${minutes}m`;
-
-          // Overtime Calculation (Threshold: 9 hours)
-          const nineHoursMs = 9 * 60 * 60 * 1000;
-          if (diffMs > nineHoursMs) {
-            const extraMs = diffMs - nineHoursMs;
-            overtimeVal = extraMs / 3600000;
-            const otHours = Math.floor(extraMs / 3600000);
-            const otMinutes = Math.floor((extraMs % 3600000) / 60000);
-            overtimeDisplay = `${otHours}h ${otMinutes}m`;
+            const nineHoursMs = 9 * 60 * 60 * 1000;
+            if (diffMs > nineHoursMs) {
+              const extraMs = diffMs - nineHoursMs;
+              overtimeVal = extraMs / 3600000;
+              const otHours = Math.floor(extraMs / 3600000);
+              const otMinutes = Math.floor((extraMs % 3600000) / 60000);
+              overtimeDisplay = `${otHours}h ${otMinutes}m`;
+            }
           }
         }
 
         return {
-          date: item.date,
-          day: new Date(item.date).toLocaleDateString('en-US', { weekday: 'long' }),
-          inTime: inTime,
+          date: dateStr,
+          day: new Date(dateStr).toLocaleDateString('en-US', { weekday: 'long' }),
+          inTime: inTime || '-',
           outTime: outTime || '-',
           workingHoursDisplay: workingHoursDisplay,
           workingHoursVal: workingHoursVal,
           overtimeDisplay: overtimeDisplay,
           overtimeVal: overtimeVal,
           status: 'Present',
+          isMobile: !!manualItem,
         };
       });
 
-      // Sort by Date DESC
       processedData.sort((a, b) => new Date(b.date) - new Date(a.date));
-
       setAttendanceData(processedData);
 
     } catch (error) {
@@ -159,6 +279,112 @@ const MyAttendance = () => {
   useEffect(() => {
     fetchAttendanceData();
   }, []);
+
+  const handleMarkAttendance = async () => {
+    if (!isWithinRange || isPunching) return;
+
+    setIsPunching(true);
+    const userObj = getUser();
+    if (!userObj || !userObj.emp_id) {
+      toast.error("User not found!");
+      setIsPunching(false);
+      return;
+    }
+
+    try {
+      const { year, dateStr, timeStr, monthName, dayName } = getISTDateDetails();
+
+      // Fetch full user details to post all columns
+      const { data: fullUser } = await supabase.from('users').select('*').eq('emp_id', userObj.emp_id).single();
+
+      const { data: existingRecord } = await supabase
+        .from('attendance_daily')
+        .select('*')
+        .eq('emp_id', userObj.emp_id)
+        .eq('date', dateStr)
+        .maybeSingle();
+
+      let upsertData = {
+        emp_id: userObj.emp_id,
+        date: dateStr,
+        year: year,
+        month_name: monthName,
+        day: dayName,
+        company_name: "SKAISPAT",
+        name: fullUser?.full_name || userObj.Name || `User ${userObj.emp_id}`,
+        designation: fullUser?.designation || "-",
+        holiday: "No",
+        working_day: "Yes",
+        n_holiday: "",
+        status: "P",
+      };
+
+      if (existingRecord) {
+        let workingHours = '0h 0m';
+        let presentMinutes = 0;
+        let overtimeHours = '0h 0m';
+        let inTimeStr = existingRecord.in_time;
+
+        if (inTimeStr) {
+          const inDate = new Date(`${dateStr}T${inTimeStr}`);
+          const outDate = new Date(`${dateStr}T${timeStr}`);
+          const diffMs = outDate - inDate;
+          if (diffMs > 0) {
+            const h = Math.floor(diffMs / 3600000);
+            const m = Math.floor((diffMs % 3600000) / 60000);
+            workingHours = `${h}h ${m}m`;
+            presentMinutes = h * 60 + m;
+
+            const nineHoursMs = 9 * 60 * 60 * 1000;
+            if (diffMs > nineHoursMs) {
+              const ot = diffMs - nineHoursMs;
+              const otH = Math.floor(ot / 3600000);
+              const otM = Math.floor((ot % 3600000) / 60000);
+              overtimeHours = `${otH}h ${otM}m`;
+            }
+          }
+        }
+
+        upsertData = {
+          ...existingRecord,
+          ...upsertData,
+          out_time: timeStr,
+          punch_miss: "No",
+          working_hours: workingHours,
+          present_minutes: presentMinutes,
+          early_out: "0",
+          overtime_hours: overtimeHours,
+          remarks: existingRecord.remarks ? (existingRecord.remarks.includes('Mobile') ? existingRecord.remarks : `${existingRecord.remarks}, Mobile Out`) : "Mobile Out"
+        };
+      } else {
+        upsertData = {
+          ...upsertData,
+          in_time: timeStr,
+          out_time: "",
+          working_hours: "0h 0m",
+          present_minutes: 0,
+          early_out: "0",
+          overtime_hours: "0h 0m",
+          punch_miss: "Yes",
+          remarks: "Mobile In"
+        };
+      }
+
+      const { error } = await supabase
+        .from('attendance_daily')
+        .upsert([upsertData], { onConflict: "emp_id, date" });
+
+      if (error) throw error;
+
+      toast.success("Attendance Marked Successfully!");
+      fetchAttendanceData();
+    } catch (error) {
+      console.error("Error marking attendance:", error);
+      toast.error("Failed to mark attendance.");
+    } finally {
+      setIsPunching(false);
+    }
+  };
 
   useEffect(() => {
     let currentMonthData = [];
@@ -312,11 +538,11 @@ const MyAttendance = () => {
     const baseRecords = enrichedRecords.sort((a, b) => new Date(b.date) - new Date(a.date));
 
     if (activeFilter === 'All' || activeFilter === 'Total Days') return baseRecords;
-    
+
     return baseRecords.filter(record => {
       const status = record.status.toLowerCase();
       const filter = activeFilter.toLowerCase();
-      
+
       if (filter === 'present') return status === 'present';
       if (filter === 'absent') return status.includes('absent');
       if (filter === 'week off') return status === 'week off';
@@ -329,7 +555,7 @@ const MyAttendance = () => {
   if (loading) {
     return (
       <div className="h-full flex flex-col gap-6 overflow-hidden bg-slate-50/30 px-4 sm:px-0">
-        
+
         {/* Header Skeleton */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 shrink-0 pt-2 lg:pt-0 animate-pulse">
           <div className="space-y-2">
@@ -346,11 +572,11 @@ const MyAttendance = () => {
         <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 shrink-0 animate-pulse">
           {[1, 2, 3, 4, 5].map((i) => (
             <div key={i} className="w-full bg-white p-2 sm:p-5 rounded-2xl sm:rounded-3xl shadow-sm border border-slate-200 flex flex-col items-center justify-center gap-1 sm:gap-2 min-w-0">
-               <div className="w-8 sm:w-10 h-8 sm:h-10 rounded-lg sm:rounded-2xl bg-slate-100 shadow-sm border border-white"></div>
-               <div className="space-y-2 w-full flex flex-col items-center mt-1">
-                 <div className="h-2 sm:h-3 w-12 sm:w-16 bg-slate-100 rounded"></div>
-                 <div className="h-5 sm:h-7 w-16 sm:w-20 bg-slate-100 rounded mt-0.5"></div>
-               </div>
+              <div className="w-8 sm:w-10 h-8 sm:h-10 rounded-lg sm:rounded-2xl bg-slate-100 shadow-sm border border-white"></div>
+              <div className="space-y-2 w-full flex flex-col items-center mt-1">
+                <div className="h-2 sm:h-3 w-12 sm:w-16 bg-slate-100 rounded"></div>
+                <div className="h-5 sm:h-7 w-16 sm:w-20 bg-slate-100 rounded mt-0.5"></div>
+              </div>
             </div>
           ))}
         </div>
@@ -358,9 +584,9 @@ const MyAttendance = () => {
         {/* Main Content Area Skeleton */}
         <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex-1 flex flex-col mb-4 min-h-0 animate-pulse">
           <div className="flex-1 p-4 space-y-4">
-             {[1, 2, 3, 4, 5].map((j) => (
-               <div key={j} className="h-24 sm:h-16 w-full bg-slate-50 rounded-2xl border border-slate-100 border-dashed"></div>
-             ))}
+            {[1, 2, 3, 4, 5].map((j) => (
+              <div key={j} className="h-24 sm:h-16 w-full bg-slate-50 rounded-2xl border border-slate-100 border-dashed"></div>
+            ))}
           </div>
         </div>
 
@@ -379,9 +605,43 @@ const MyAttendance = () => {
     <div className="h-full flex flex-col gap-6 overflow-hidden bg-slate-50/30 px-4 sm:px-0">
       {/* Header & Controls */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 shrink-0 pt-2 lg:pt-0">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-extrabold text-[#800000] tracking-tight drop-shadow-sm">My Attendance</h1>
-          <p className="mt-1 text-sm text-slate-500">Track your daily swipes and productivity</p>
+        <div className="flex flex-row items-center justify-between w-full lg:w-auto gap-2 sm:gap-6">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl sm:text-2xl font-extrabold text-[#800000] tracking-tight drop-shadow-sm truncate">My Attendance</h1>
+            <p className="mt-1 text-xs sm:text-sm text-slate-500 truncate">Track your daily swipes</p>
+          </div>
+
+          <div className="flex flex-col items-end sm:items-start sm:border-l sm:pl-6 border-slate-200 shrink-0">
+            {(() => {
+              const { dateStr: localTodayStr } = getISTDateDetails();
+              const todayRecord = attendanceData.find(r => r.date === localTodayStr);
+              const hasPunchedInToday = todayRecord && todayRecord.inTime && todayRecord.inTime !== '-';
+
+              return (
+                <>
+                  <button
+                    disabled={!isWithinRange || isPunching}
+                    onClick={handleMarkAttendance}
+                    className={`flex items-center justify-center gap-1.5 sm:gap-2 px-3 py-2 sm:px-5 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-all
+                        ${!isWithinRange || isPunching
+                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                        : hasPunchedInToday
+                          ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-amber-200 cursor-pointer transform active:scale-95'
+                          : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200 cursor-pointer transform active:scale-95'}`}
+                  >
+                    {isPunching ? (
+                      <Loader2 size={14} className="sm:w-4 sm:h-4 animate-spin" />
+                    ) : (
+                      <MapPin size={14} className={`sm:w-4 sm:h-4 ${isWithinRange ? 'animate-bounce' : ''}`} />
+                    )}
+                    <span className="hidden sm:inline">{isPunching ? 'Processing...' : (hasPunchedInToday ? 'Mark Out' : 'Mark In')}</span>
+                    <span className="sm:hidden">{isPunching ? '...' : (hasPunchedInToday ? 'Out' : 'In')}</span>
+                  </button>
+                  <span className="text-[8px] sm:text-[10px] font-bold text-slate-400 mt-1 sm:mt-1.5 uppercase tracking-wider text-right sm:text-left">{locationStatus}</span>
+                </>
+              );
+            })()}
+          </div>
         </div>
 
         <div className="flex items-center gap-3">
@@ -522,8 +782,15 @@ const MyAttendance = () => {
                           <span className="text-slate-300">--</span>
                         )}
                       </td>
-                      <td className="px-8 py-4 text-right">
-                        <StatusBadge status={record.status} />
+                      <td className="px-8 py-4">
+                        <div className="flex items-center justify-end gap-2">
+                          {record.isMobile && (
+                            <span className="inline-flex items-center px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border bg-indigo-50 text-indigo-700 border-indigo-200 shadow-sm">
+                              Mobile
+                            </span>
+                          )}
+                          <StatusBadge status={record.status} />
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -547,7 +814,14 @@ const MyAttendance = () => {
                         <span className="text-xs font-black text-slate-400 uppercase tracking-widest">{record.day}</span>
                         <span className="text-sm font-bold text-slate-900">{record.date.split('-').reverse().join('/')}</span>
                       </div>
-                      <StatusBadge status={record.status} />
+                      <div className="flex items-center gap-2">
+                        {record.isMobile && (
+                          <span className="inline-flex items-center px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border bg-indigo-50 text-indigo-700 border-indigo-200 shadow-sm">
+                            Mobile
+                          </span>
+                        )}
+                        <StatusBadge status={record.status} />
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 pt-2">
@@ -598,7 +872,7 @@ const MyAttendance = () => {
 };
 
 const StatCard = ({ label, value, icon: Icon, color, bg, subValue, active, onClick }) => (
-  <button 
+  <button
     onClick={onClick}
     className={`w-full bg-white p-2 sm:p-5 rounded-2xl sm:rounded-3xl shadow-sm border ${active ? 'border-indigo-500 ring-4 ring-indigo-500/10' : 'border-slate-200'} flex flex-col items-center justify-center text-center gap-1 sm:gap-2 hover:shadow-md transition-all duration-300 group min-w-0 overflow-hidden cursor-pointer active:scale-95`}
   >

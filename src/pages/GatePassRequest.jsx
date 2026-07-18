@@ -331,7 +331,7 @@ const GatePassRequest = () => {
     }
   };
 
-  const formatDate = (dateString, includeTime = false) => {
+  const formatDate = (dateString, includeTime = false, isLocalStoredAsUTC = false) => {
     if (!dateString) return '-';
     const date = new Date(dateString);
     if (isNaN(date.getTime())) return dateString;
@@ -340,6 +340,9 @@ const GatePassRequest = () => {
     if (includeTime) {
       options.hour = '2-digit';
       options.minute = '2-digit';
+    }
+    if (isLocalStoredAsUTC) {
+      options.timeZone = 'UTC';
     }
     return date.toLocaleString('en-GB', options);
   };
@@ -508,7 +511,7 @@ const GatePassRequest = () => {
                     <tr key={item.id} className="hover:bg-slate-50/80 transition-all duration-200 group">
                       <td className="px-6 py-4 whitespace-nowrap font-medium text-sm text-slate-900">
                         <div className="flex flex-col">
-                          <span>{formatDate(item.departure_from_plant, true)}</span>
+                          <span>{formatDate(item.departure_from_plant, true, true)}</span>
                           <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Applied: {formatDate(item.timestamp)}</span>
                         </div>
                       </td>
@@ -580,11 +583,11 @@ const GatePassRequest = () => {
                     <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-50/50">
                       <div className="space-y-1">
                         <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Departure</p>
-                        <p className="text-[11px] font-bold text-slate-700 flex items-center gap-2"><Clock size={14} className="text-indigo-500" />{formatDate(item.departure_from_plant, true)}</p>
+                        <p className="text-[11px] font-bold text-slate-700 flex items-center gap-2"><Clock size={14} className="text-indigo-500" />{formatDate(item.departure_from_plant, true, true)}</p>
                       </div>
                       <div className="space-y-1">
                         <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Arrival</p>
-                        <p className="text-[11px] font-bold text-slate-700 flex items-center gap-2"><Clock size={14} className="text-slate-300" />{item.arrival_at_plant ? formatDate(item.arrival_at_plant, true) : 'Open Entry'}</p>
+                        <p className="text-[11px] font-bold text-slate-700 flex items-center gap-2"><Clock size={14} className="text-slate-300" />{item.arrival_at_plant ? formatDate(item.arrival_at_plant, true, true) : 'No'}</p>
                       </div>
                     </div>
 

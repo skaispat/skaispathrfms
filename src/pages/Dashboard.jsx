@@ -696,7 +696,7 @@ const Dashboard = () => {
               </h3>
               <span className="bg-rose-100 text-rose-700 text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full">{frequentLateList.length}</span>
             </div>
-            <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 grid grid-cols-1 sm:grid-cols-2 gap-2 content-start">
+            <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 grid grid-cols-2 gap-2 content-start">
               {frequentLateList.length > 0 ? frequentLateList.map((emp) => (
                 <div
                   key={emp.emp_id}
@@ -711,17 +711,17 @@ const Dashboard = () => {
                         {emp.full_name?.charAt(0) || 'U'}
                       </div>
                     )}
-                    <div className="min-w-0">
-                      <h4 className="text-[10px] sm:text-xs font-bold text-slate-800 truncate">{emp.full_name}</h4>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="text-[10px] sm:text-xs font-bold text-slate-800 whitespace-nowrap overflow-hidden">{emp.full_name}</h4>
                       <p className="text-[9px] sm:text-[10px] text-slate-500 truncate">{emp.department}</p>
                     </div>
                   </div>
-                  <div className="flex-shrink-0">
+                  <div className="flex-shrink-0 ml-1">
                     <span className="text-[9px] sm:text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded-md">{emp.lateCount} Lates</span>
                   </div>
                 </div>
               )) : (
-                <div className="col-span-1 sm:col-span-2 flex items-center justify-center h-full min-h-[40px] text-slate-400 text-[10px] sm:text-xs font-medium">
+                <div className="col-span-2 flex items-center justify-center h-full min-h-[40px] text-slate-400 text-[10px] sm:text-xs font-medium">
                   No frequent late comers this month
                 </div>
               )}
