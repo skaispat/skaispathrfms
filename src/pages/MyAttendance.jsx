@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 
 const TARGET_LAT = 21.237836;
 const TARGET_LNG = 81.714938;
-const RADIUS_METERS = 50;
+const RADIUS_METERS = 15;
 
 const calculateDistance = (lat1, lon1, lat2, lon2) => {
   const R = 6371e3; // metres
