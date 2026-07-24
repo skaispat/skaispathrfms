@@ -340,14 +340,14 @@ const LeaveRequest = () => {
   if (loading) {
     return (
       <div className="h-full flex flex-col gap-6 overflow-hidden bg-slate-50/30 px-4 sm:px-0">
-        
+
         {/* Header Skeleton */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 shrink-0 pt-2 lg:pt-0 animate-pulse">
-          <div className="space-y-2">
-            <div className="h-6 sm:h-8 w-[200px] sm:w-[250px] bg-slate-200 rounded-md"></div>
-            <div className="h-3 sm:h-4 w-[150px] sm:w-[200px] bg-slate-200 rounded-md"></div>
+        <div className="flex flex-row items-center justify-between gap-3 shrink-0 pt-1 lg:pt-0 animate-pulse">
+          <div className="space-y-1">
+            <div className="h-6 sm:h-8 w-[140px] sm:w-[250px] bg-slate-200 rounded-md"></div>
+            <div className="h-3 sm:h-4 w-[100px] sm:w-[200px] bg-slate-200 rounded-md hidden sm:block"></div>
           </div>
-          <div className="h-12 w-full lg:w-48 bg-slate-200 rounded-2xl shadow-sm border border-slate-100"></div>
+          <div className="h-9 sm:h-12 w-28 sm:w-48 bg-slate-200 rounded-xl sm:rounded-2xl shadow-sm border border-slate-100 shrink-0"></div>
         </div>
 
         {/* Stats Grid Skeleton */}
@@ -366,13 +366,13 @@ const LeaveRequest = () => {
         {/* Main Content Area Skeleton */}
         <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex-1 flex flex-col mb-4 min-h-0 animate-pulse">
           <div className="p-4 border-b border-slate-100 bg-slate-50/30 flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
-             <div className="h-10 w-full md:w-64 bg-slate-100 rounded-xl"></div>
-             <div className="h-10 w-full md:w-80 bg-slate-100 rounded-xl"></div>
+            <div className="h-10 w-full md:w-64 bg-slate-100 rounded-xl"></div>
+            <div className="h-10 w-full md:w-80 bg-slate-100 rounded-xl"></div>
           </div>
           <div className="flex-1 p-4 space-y-4">
-             {[1, 2, 3, 4].map((j) => (
-               <div key={j} className="h-24 sm:h-16 w-full bg-slate-50 rounded-2xl border border-slate-100 border-dashed"></div>
-             ))}
+            {[1, 2, 3, 4].map((j) => (
+              <div key={j} className="h-24 sm:h-16 w-full bg-slate-50 rounded-2xl border border-slate-100 border-dashed"></div>
+            ))}
           </div>
         </div>
 
@@ -393,21 +393,21 @@ const LeaveRequest = () => {
   return (
     <div className="h-full flex flex-col gap-6 overflow-hidden bg-slate-50/30 px-4 sm:px-0">
       {/* Header Section */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 shrink-0 pt-2 lg:pt-0">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-extrabold text-[#800000] tracking-tight drop-shadow-sm">My Leave Requests</h1>
-          <p className="mt-1 text-sm text-slate-500">View your leave balance and application status</p>
+      <div className="flex flex-row items-center justify-between gap-3 shrink-0 pt-1 lg:pt-0">
+        <div className="min-w-0 pr-2 space-y-0.5">
+          <h1 className="text-lg sm:text-2xl font-extrabold text-[#800000] tracking-tight drop-shadow-sm truncate">My Leave Requests</h1>
+          <p className="text-xs sm:text-sm text-slate-500 hidden sm:block">View your leave balance and application status</p>
         </div>
         <button
           onClick={() => isLeaveAllowedByAdmin && setShowModal(true)}
           disabled={!isLeaveAllowedByAdmin}
-          className={`inline-flex items-center justify-center px-6 py-3 rounded-2xl shadow-lg border border-transparent text-sm font-bold text-white transition-all transform active:scale-95 focus:outline-none focus:ring-4 focus:ring-offset-2 w-full lg:w-auto
+          className={`inline-flex items-center justify-center px-3 py-2.5 sm:px-6 sm:py-3 rounded-xl sm:rounded-2xl shadow-md border border-transparent text-xs sm:text-sm font-bold text-white transition-all transform active:scale-95 shrink-0 whitespace-nowrap focus:outline-none focus:ring-4 focus:ring-offset-2
             ${!isLeaveAllowedByAdmin
               ? 'bg-slate-400 cursor-not-allowed shadow-none'
               : 'bg-indigo-600 hover:bg-indigo-700 hover:shadow-indigo-200 ring-indigo-500'}`}
         >
-          <Plus size={18} className="mr-2" />
-          {!isLeaveAllowedByAdmin ? 'Access Disabled' : 'New Leave Request'}
+          <Plus size={16} className="mr-1 sm:mr-2" />
+          <span>{!isLeaveAllowedByAdmin ? 'Access Disabled' : <><span className="sm:hidden">New Leave</span><span className="hidden sm:inline">New Leave Request</span></>}</span>
         </button>
       </div>
 
