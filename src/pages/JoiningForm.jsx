@@ -493,7 +493,7 @@ const JoiningForm = () => {
                   localStorage.removeItem('submittedEmpId');
                   localStorage.removeItem('submittedUsername');
                   localStorage.removeItem('submittedPassword');
-                  navigate('/login');
+                  navigate('/user-login');
                 }}
                 className="w-full py-3.5 px-6 rounded-xl bg-[#991B1B] text-white font-bold hover:bg-[#7F1D1D] active:scale-[0.98] transition-all shadow-lg shadow-red-900/10 flex items-center justify-center gap-2"
               >
@@ -543,7 +543,7 @@ const JoiningForm = () => {
             Career
           </Link>
           <Link
-            to="/login"
+            to="/user-login"
             className="px-4 py-2 rounded-xl text-sm font-bold transition-all duration-200 text-white/90 hover:bg-white/10 hover:text-white"
           >
             Login
@@ -710,7 +710,7 @@ const JoiningForm = () => {
                   <button
                     type="button"
                     className="w-full sm:w-auto px-6 py-3 sm:py-2.5 text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors rounded-xl hover:bg-slate-50 border border-slate-200 sm:border-transparent"
-                    onClick={() => currentStep > 1 ? prevStep() : navigate('/login')}
+                    onClick={() => currentStep > 1 ? prevStep() : navigate('/user-login')}
                   >
                     Back
                   </button>

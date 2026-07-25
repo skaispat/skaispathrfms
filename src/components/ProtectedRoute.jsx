@@ -6,7 +6,7 @@ const ProtectedRoute = ({ children }) => {
   const location = window.location.pathname;
 
   if (!user) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/user-login" replace />;
   }
 
   // Admin Bypass: Admins usually have full access. 
@@ -41,7 +41,7 @@ const ProtectedRoute = ({ children }) => {
 
     if (!isAllowed && location !== '/') {
       // If they have access to some pages, send them to the first one, or Dashboard if allowed.
-      const fallback = allowedPages.length > 0 ? allowedPages[0] : '/login';
+      const fallback = allowedPages.length > 0 ? allowedPages[0] : '/user-login';
       const redirectPath = fallback === '/' ? '/' : `/${fallback}`;
       // Prevent infinite loop if they are already there or if fallback invalid
       if (location !== redirectPath && !location.startsWith(redirectPath)) {

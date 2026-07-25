@@ -213,7 +213,7 @@ const Header = ({ children }) => {
 
   const handleLogout = () => {
     logout();
-    navigate('/login');
+    navigate('/user-login');
     toast.success('Logged out successfully');
   };
 

@@ -49,7 +49,8 @@ function App() {
         <Toaster position="top-right" containerStyle={{ zIndex: 99999 }} />
         <Suspense fallback={<PageLoader />}>
           <Routes>
-            <Route path="/login" element={<Login />} />
+            <Route path="/user-login" element={<Login />} />
+            <Route path="/login" element={<Navigate to="/user-login" replace />} />
             <Route path="/home" element={<Login />} />
             <Route path="/career" element={<Login />} />
             <Route path="/joining-form" element={<JoiningForm />} />

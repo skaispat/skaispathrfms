@@ -57,7 +57,7 @@ const Sidebar = ({ onClose }) => {
 
   const handleLogout = () => {
     localStorage.removeItem('user');
-    navigate('/login', { replace: true });
+    navigate('/user-login', { replace: true });
   };
 
   // Get current language from Google Translate
