@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { User, Lock, Loader2, Eye, EyeOff, CheckCircle2, Briefcase, ChevronRight, Users, Phone, Mail, MapPin } from 'lucide-react';
+import { User, Lock, Loader2, Eye, EyeOff, CheckCircle2, Briefcase, ChevronRight, Users, Phone, Mail, MapPin, ShieldCheck, Shield, FileText, Building2, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useAuthStore from '../store/authStore';
 import { supabase } from '../supabaseClient';
@@ -21,6 +21,10 @@ const Login = () => {
   const [jobVacancies, setJobVacancies] = useState([]);
   const [loadingJobs, setLoadingJobs] = useState(false);
   const [selectedJob, setSelectedJob] = useState(null);
+
+  // Legal & Privacy Modal states
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
 
   // Form states
   const [candidateName, setCandidateName] = useState('');
@@ -461,9 +465,43 @@ const Login = () => {
 
         <div className="space-y-2">
           {loadingJobs ? (
-            <div className="flex justify-center items-center py-12 text-[#800000]">
-              <Loader2 className="animate-spin h-8 w-8 mr-2" />
-              <span className="font-medium">Loading open positions...</span>
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="p-4 sm:p-6 border border-gray-200 rounded-2xl bg-white animate-pulse space-y-3.5">
+                  {/* Top skeleton header row */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-3 h-3 rounded-full bg-gray-200"></div>
+                      <div className="w-3 h-3 rounded-full bg-gray-200"></div>
+                      <div className="w-3 h-3 rounded-full bg-gray-200"></div>
+                      <div className="h-3.5 w-20 bg-gray-200 rounded-full"></div>
+                    </div>
+                    <div className="h-6 w-24 bg-gray-200 rounded-full"></div>
+                  </div>
+
+                  {/* Separator line */}
+                  <div className="h-[2px] w-full bg-gray-100"></div>
+
+                  {/* Main content row */}
+                  <div className="flex items-start space-x-4">
+                    {/* Circle icon skeleton */}
+                    <div className="w-12 h-12 rounded-full bg-gray-200 shrink-0"></div>
+                    {/* Content lines skeleton */}
+                    <div className="flex-1 space-y-2.5 pt-0.5">
+                      <div className="h-4 bg-gray-200 rounded-full w-3/4"></div>
+                      <div className="h-3 bg-gray-200 rounded-full w-1/2"></div>
+                      <div className="h-3 bg-gray-200 rounded-full w-2/3"></div>
+                      <div className="flex gap-2 pt-1">
+                        <div className="h-5 w-16 bg-gray-200 rounded-full"></div>
+                        <div className="h-5 w-20 bg-gray-200 rounded-full"></div>
+                        <div className="h-5 w-14 bg-gray-200 rounded-full"></div>
+                      </div>
+                    </div>
+                    {/* Action button skeleton */}
+                    <div className="hidden sm:block h-10 w-28 bg-gray-200 rounded-xl shrink-0 self-center"></div>
+                  </div>
+                </div>
+              ))}
             </div>
           ) : jobVacancies.length === 0 ? (
             <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-2xl border border-dashed border-gray-200 font-medium">
@@ -529,10 +567,14 @@ const Login = () => {
   };
 
   const renderLoginContent = () => (
-    <div className="max-w-[420px] mx-auto space-y-8 animate-fade-in-up py-4">
-      <div className="text-center">
+    <div className="max-w-[420px] mx-auto space-y-6 animate-fade-in-up py-4">
+      <div className="text-center space-y-2">
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 text-xs font-semibold rounded-full border border-emerald-200">
+          <ShieldCheck className="w-4 h-4 text-emerald-600" />
+          <span>Official Sarthak TMT Secured Portal</span>
+        </div>
         <h2 className="text-2xl font-extrabold text-gray-900 tracking-tight">Employee Login</h2>
-        <p className="text-sm text-gray-500 mt-2 font-medium">Enter your credentials to access your account.</p>
+        <p className="text-sm text-gray-500 font-medium">Enter your credentials to access your account.</p>
       </div>
 
       <form className="space-y-6" onSubmit={handleSubmit}>
@@ -611,6 +653,12 @@ const Login = () => {
           </div>
         </div>
       </form>
+
+      {/* Security & Access Notice */}
+      {/* <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-center text-xs text-slate-600 flex items-center justify-center gap-2">
+        <Shield className="w-4 h-4 text-[#800000] shrink-0" />
+        <span>256-Bit SSL Encrypted • Authorized Sarthak TMT Personnel Only</span>
+      </div> */}
     </div>
   );
 
@@ -619,8 +667,7 @@ const Login = () => {
       {/* Top Navbar */}
       <nav className="bg-[#800000] text-white px-4 sm:px-8 py-3 flex items-center justify-between sticky top-0 z-50 shadow-lg">
         <div className="flex items-center gap-3">
-          <img src={loginImage} alt="Logo" className="h-10 sm:h-14 w-auto object-contain bg-white p-1 sm:p-1.5 rounded-md" />
-          {/* <span className="font-extrabold text-xl tracking-tight hidden sm:block">Sarthak TMT</span> */}
+          <img src={loginImage} alt="Sarthak TMT Logo" className="h-10 sm:h-14 w-auto object-contain bg-white p-1 sm:p-1.5 rounded-md" />
         </div>
         <div className="flex items-center space-x-2 sm:space-x-4">
           <Link
@@ -654,11 +701,16 @@ const Login = () => {
       <div className="relative h-[35vh] sm:h-[45vh] min-h-[300px] sm:min-h-[350px] w-full flex items-center justify-center overflow-hidden">
         <div
           className="absolute inset-0 bg-cover bg-[center_25%] bg-no-repeat"
-          style={{ backgroundImage: 'url("https://images.unsplash.com/photo-1600880292203-757bb62b4baf?ixlib=rb-4.0.3&auto=format&fit=crop&w=2000&q=80")' }}
+          style={{ backgroundImage: 'url("/login-bg.jpg")' }}
         />
         <div className="absolute inset-0 bg-[#800000]/70 mix-blend-multiply" />
         <div className="absolute inset-0 bg-gradient-to-t from-gray-900/90 via-gray-900/40 to-transparent" />
-        <div className="relative z-10 text-center px-4 animate-fade-in-up transform sm:-translate-y-12">
+
+        <div className="relative z-10 text-center px-4 animate-fade-in-up transform sm:-translate-y-6">
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 backdrop-blur-md rounded-full text-white/90 text-xs font-semibold mb-3 border border-white/20">
+            <Building2 className="w-3.5 h-3.5 text-amber-400" />
+            <span>Sarthak TMT</span>
+          </div>
           <h1 className="text-4xl sm:text-5xl font-extrabold text-white tracking-tight drop-shadow-sm mb-4">
             HR Portal
           </h1>
@@ -678,6 +730,110 @@ const Login = () => {
           </div>
         </div>
       </div>
+
+      {/* Corporate Trust & Legal Footer */}
+      <footer className="bg-gray-900 text-gray-400 text-xs py-8 px-4 sm:px-8 border-t border-gray-800 mt-auto z-20">
+        <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div>
+            <div className="flex items-center gap-2 text-white font-bold text-sm mb-2">
+              <Building2 className="w-4 h-4 text-amber-400" />
+              <span>Sarthak TMT / SKA Ispat</span>
+            </div>
+            <p className="text-gray-400 text-xs leading-relaxed">
+              Official Human Resource Management System portal. Providing secure employee authentication, attendance tracking, leave requests, and career applications.
+            </p>
+          </div>
+          <div>
+            <h4 className="text-white font-bold text-xs uppercase tracking-wider mb-2">Corporate HR Support</h4>
+            <p className="text-gray-400">Email: <a href="mailto:hr@skaispat.in" className="text-gray-300 hover:text-white underline">hr@skaispat.in</a></p>
+            <p className="text-gray-400 mt-1">Phone: <a href="tel:+919109164455" className="text-gray-300 hover:text-white underline">+91 9109164455</a></p>
+            <p className="text-gray-400 mt-1">Plot No. 1,2,3,11,12 CSIDC Growth Centre, Industrial Area Siltara Phase-2, Raipur (CG) 493221</p>
+          </div>
+          <div>
+            <h4 className="text-white font-bold text-xs uppercase tracking-wider mb-2">Portal Security & Compliance</h4>
+            <div className="flex flex-col space-y-2">
+              <button onClick={() => setShowPrivacyModal(true)} className="text-left text-gray-400 hover:text-white transition-colors flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-amber-400" /> Privacy Policy & Data Protection
+              </button>
+              <button onClick={() => setShowTermsModal(true)} className="text-left text-gray-400 hover:text-white transition-colors flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-amber-400" /> Terms of Portal Usage
+              </button>
+            </div>
+          </div>
+        </div>
+        <div className="max-w-6xl mx-auto mt-6 pt-4 border-t border-gray-800 flex flex-col sm:flex-row items-center justify-between text-[11px] text-gray-500">
+          <p>© {new Date().getFullYear()} Sarthak TMT. All rights reserved.</p>
+          {/* <div className="flex items-center gap-2 mt-2 sm:mt-0">
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <span>256-Bit SSL Encrypted • Verified Domain (hr.sarthaktmt.com)</span>
+          </div> */}
+        </div>
+      </footer>
+
+      {/* Privacy Policy Modal */}
+      {showPrivacyModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-6 sm:p-8 shadow-2xl relative animate-fade-in-up">
+            <button
+              onClick={() => setShowPrivacyModal(false)}
+              className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <div className="flex items-center gap-3 mb-4 border-b pb-3">
+              <ShieldCheck className="w-6 h-6 text-[#800000]" />
+              <h3 className="text-xl font-bold text-gray-900">Privacy Policy & Data Protection</h3>
+            </div>
+            <div className="space-y-4 text-sm text-gray-600 leading-relaxed">
+              <p><strong>1. Introduction</strong><br />This Privacy Policy outlines how Sarthak TMT ollects, processes, and protects employee and candidate data on the HRMS portal (hr.sarthaktmt.com).</p>
+              <p><strong>2. Information Collection</strong><br />We collect personal details necessary for human resource management, including employment records, attendance timestamps, leave applications, contact information, and resume files submitted by candidates.</p>
+              <p><strong>3. Data Security & Encryption</strong><br />All transmitted data is encrypted using 256-Bit SSL/TLS standards. Access to credentials and personal records is strictly limited to authorized personnel.</p>
+              <p><strong>4. Third-Party Sharing</strong><br />We do not sell, rent, or trade employee or candidate data to third parties. Data is only processed internally for official company administrative procedures.</p>
+              <p><strong>5. Contact Information</strong><br />For data protection inquiries, contact HR administration at <strong>hr@skaispat.in</strong> or call <strong>+91 9109164455</strong>.</p>
+            </div>
+            <div className="mt-6 pt-4 border-t flex justify-end">
+              <button
+                onClick={() => setShowPrivacyModal(false)}
+                className="px-5 py-2.5 bg-[#800000] text-white font-bold rounded-xl text-sm hover:bg-[#600000] transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Terms of Portal Usage Modal */}
+      {showTermsModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-6 sm:p-8 shadow-2xl relative animate-fade-in-up">
+            <button
+              onClick={() => setShowTermsModal(false)}
+              className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <div className="flex items-center gap-3 mb-4 border-b pb-3">
+              <Building2 className="w-6 h-6 text-[#800000]" />
+              <h3 className="text-xl font-bold text-gray-900">Terms of Portal Usage</h3>
+            </div>
+            <div className="space-y-4 text-sm text-gray-600 leading-relaxed">
+              <p><strong>1. Authorized Access Only</strong><br />Access to this Human Resource Management System is restricted to active employees and authorized personnel of Sarthak TMT. Unauthorized access attempts are strictly prohibited.</p>
+              <p><strong>2. Credential Protection</strong><br />Users are responsible for maintaining the confidentiality of their login credentials. Any suspicious activity should be reported immediately to HR support.</p>
+              <p><strong>3. Official Records</strong><br />Attendance records, leave submissions, and employee logs generated in this system constitute official corporate records.</p>
+              <p><strong>4. Corporate System Compliance</strong><br />Usage of this portal must comply with Sarthak TMT internal IT security policies and code of conduct.</p>
+            </div>
+            <div className="mt-6 pt-4 border-t flex justify-end">
+              <button
+                onClick={() => setShowTermsModal(false)}
+                className="px-5 py-2.5 bg-[#800000] text-white font-bold rounded-xl text-sm hover:bg-[#600000] transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
