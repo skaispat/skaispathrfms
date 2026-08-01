@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { supabase } from '../supabaseClient';
+import { getApprovalFormDetails, updateApprovalFormAction } from '../api/approvalFormApi';
 import { FileText, User, Briefcase, Calendar, Clock, MessageSquare, Check, X, Shield, ChevronRight, Quote } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -23,40 +23,7 @@ const ApprovalForm = () => {
 
     const fetchRequest = async () => {
         try {
-            // Fetch Request
-            const { data, error } = await supabase
-                .from('leave_management')
-                .select('*')
-                .eq('id', id)
-                .single();
-
-            if (error) throw error;
-            if (!data) throw new Error('Request not found');
-
-            // Fetch Approver Details
-            // Fetch by emp_id (schema primary key)
-            let { data: approverData, error: approverError } = await supabase
-                .from('users')
-                .select('*')
-                .eq('emp_id', approverId)
-            // If not found by emp_id, try by UUID
-            if (!approverData) {
-                const { data: approverUuidData } = await supabase
-                    .from('users')
-                    .select('*')
-                    .eq('id', approverId)
-                    .maybeSingle();
-                approverData = approverUuidData;
-            }
-
-            // Fetch HR Name (for display purposes if needed)
-            const { data: hrData } = await supabase
-                .from('users')
-                .select('full_name, phone_number, emp_id')
-                .eq('department', 'HR')
-                .order('is_hod', { ascending: false })
-                .limit(1)
-                .maybeSingle();
+            const { data, approverData, hrData } = await getApprovalFormDetails(id, approverId);
 
             setRequest({
                 ...data,
@@ -177,38 +144,7 @@ const ApprovalForm = () => {
                 })
             };
 
-            const { error: updateError } = await supabase
-                .from('leave_management')
-                .update(updateData)
-                .eq('id', id);
-
-            if (updateError) throw updateError;
-
-            // Log Update
-            const logUpdateData = {
-                status: newStatus,
-                updated_at: new Date().toISOString(),
-                ...(isHodAction && {
-                    hod_action: logAction,
-                    hod_approval_time: new Date().toISOString(),
-                    hod_remarks: currentRemarks,
-                    hod_id: approver.emp_id,
-                    hod_name: approver.full_name
-                }),
-                ...(isHrAction && {
-                    hr_action: logAction,
-                    hr_approval_time: new Date().toISOString(),
-                    hr_remarks: currentRemarks,
-                    hr_id: approver.emp_id,
-                    hr_name: approver.full_name
-                })
-            };
-
-            await supabase
-                .from('logs')
-                .update(logUpdateData)
-                .eq('request_id', id)
-                .eq('request_type', 'Leave');
+            await updateApprovalFormAction(id, updateData, logUpdateData);
 
             toast.success(`Request ${action === 'approve' ? 'Approved' : 'Rejected'} Successfully`);
 

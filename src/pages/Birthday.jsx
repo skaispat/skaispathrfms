@@ -1,5 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient';
+import {
+  getEmployeesForBirthday,
+  getBirthdayRecords,
+  deleteBirthdayRecord,
+  uploadBirthdayPhoto,
+  insertBirthdayRecords,
+  updateBirthdayRecord
+} from '../api/birthdayApi';
 import useAuthStore from '../store/authStore';
 import { Search, Image as ImageIcon, Cake, Calendar, Gift, X, Plus, Trash2, Edit2, Upload, Check, PartyPopper } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -89,10 +96,7 @@ const Birthday = () => {
 
   const fetchEmployees = async () => {
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('emp_id, full_name');
-      if (error) throw error;
+      const data = await getEmployeesForBirthday();
       if (data) setEmployees(data);
     } catch (error) {
       console.error('Error fetching employees:', error);
@@ -102,12 +106,7 @@ const Birthday = () => {
   const fetchRecords = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('birthday')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
+      const data = await getBirthdayRecords();
       setRecords(data || []);
     } catch (error) {
       console.error('Error fetching birthdays/anniversaries:', error);
@@ -120,8 +119,7 @@ const Birthday = () => {
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this record?')) return;
     try {
-      const { error } = await supabase.from('birthday').delete().eq('id', id);
-      if (error) throw error;
+      await deleteBirthdayRecord(id);
       toast.success('Record deleted successfully');
       fetchRecords();
     } catch (error) {
@@ -184,19 +182,7 @@ const Birthday = () => {
   };
 
   const uploadPhoto = async (file) => {
-    if (!file) return null;
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${Math.random()}.${fileExt}`;
-    const filePath = `birthdays/${fileName}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from('images')
-      .upload(filePath, file);
-
-    if (uploadError) throw uploadError;
-
-    const { data } = supabase.storage.from('images').getPublicUrl(filePath);
-    return data.publicUrl;
+    return await uploadBirthdayPhoto(file);
   };
 
   const handleBulkSubmit = async (e) => {
@@ -235,8 +221,7 @@ const Birthday = () => {
       }
 
       if (recordsToInsert.length > 0) {
-        const { error } = await supabase.from('birthday').insert(recordsToInsert);
-        if (error) throw error;
+        await insertBirthdayRecords(recordsToInsert);
         toast.success(`Successfully added ${recordsToInsert.length} records.`);
         closeAddModal();
         fetchRecords();
@@ -287,12 +272,12 @@ const Birthday = () => {
         photoUrl = await uploadPhoto(editingRecord.photoFile);
       }
 
-      const { error } = await supabase.from('birthday').update({
+      await updateBirthdayRecord(editingRecord.id, {
         emp_id: editingRecord.emp_id,
         date_of_birth: editingRecord.date_of_birth || null,
         aniversary: editingRecord.aniversary || null,
         photo: photoUrl
-      }).eq('id', editingRecord.id);
+      });
 
       if (error) throw error;
       toast.success('Record updated successfully');

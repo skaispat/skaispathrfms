@@ -7,9 +7,9 @@ const useAuthStore = create(
       isAuthenticated: false,
       user: null,
       login: (userObj) => {
-        set({ 
-          isAuthenticated: true, 
-          user: userObj 
+        set({
+          isAuthenticated: true,
+          user: userObj
         });
       },
       logout: () => {

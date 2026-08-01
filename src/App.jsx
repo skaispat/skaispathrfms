@@ -9,7 +9,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const ApprovalForm = lazy(() => import('./pages/ApprovalForm'));
 const JobVacancy = lazy(() => import('./pages/JobVacancy'));
 const SocialSite = lazy(() => import('./pages/SocialSite'));
-const EmployeeEnquiry = lazy(() => import('./pages/EmployeeEnquiry'));
+const JobApplications = lazy(() => import('./pages/JobApplications'));
 const CallTracker = lazy(() => import('./pages/CallTracker'));
 const AfterJoiningWork = lazy(() => import('./pages/AfterJoiningWork'));
 const Leaving = lazy(() => import('./pages/Leaving'));
@@ -35,6 +35,7 @@ const TotalLeaveDetails = lazy(() => import('./pages/TotalLeaveDetails'));
 const JoiningForm = lazy(() => import('./pages/JoiningForm'));
 const Visitors = lazy(() => import('./pages/Visitors'));
 const Birthday = lazy(() => import('./pages/Birthday'));
+const EmployeeDetails = lazy(() => import('./pages/EmployeeDetails'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center min-h-screen">
@@ -66,13 +67,14 @@ function App() {
               <Route index element={<Dashboard />} />
               <Route path="job-vacancy" element={<JobVacancy />} />
               {/* <Route path="social-site" element={<SocialSite />} /> */}
-              <Route path="employee_enquiry" element={<EmployeeEnquiry />} />
+              <Route path="job-applications" element={<JobApplications />} />
               <Route path="call-tracker" element={<CallTracker />} />
               <Route path='joining' element={<Joining />} />
               <Route path="after-joining-work" element={<AfterJoiningWork />} />
               <Route path="leaving" element={<Leaving />} />
               <Route path="after-leaving-work" element={<AfterLeavingWork />} />
               <Route path="employee" element={<Employee />} />
+              <Route path="employee-details" element={<EmployeeDetails />} />
               <Route path="my-profile" element={<MyProfile />} />
               <Route path="my-attendance" element={<MyAttendance />} />
               <Route path="leave-request" element={<LeaveRequest />} />

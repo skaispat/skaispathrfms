@@ -32,13 +32,13 @@ const SocialSite = () => {
 
   const filteredPendingData = pendingData.filter(item => {
     const matchesSearch = item.post?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         item.indentNo?.toLowerCase().includes(searchTerm.toLowerCase());
+      item.indentNo?.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesSearch;
   });
 
   const filteredHistoryData = historyData.filter(item => {
     const matchesSearch = item.post?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         item.indentNo?.toLowerCase().includes(searchTerm.toLowerCase());
+      item.indentNo?.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesSearch;
   });
 
@@ -69,22 +69,20 @@ const SocialSite = () => {
         <div className="border-b border-gray-200">
           <nav className="flex -mb-px">
             <button
-              className={`py-4 px-6 font-medium text-sm border-b-2 ${
-                activeTab === 'pending'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
+              className={`py-4 px-6 font-medium text-sm border-b-2 ${activeTab === 'pending'
+                ? 'border-indigo-500 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
               onClick={() => setActiveTab('pending')}
             >
               <Clock size={16} className="inline mr-2" />
               Pending ({filteredPendingData.length})
             </button>
             <button
-              className={`py-4 px-6 font-medium text-sm border-b-2 ${
-                activeTab === 'history'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
+              className={`py-4 px-6 font-medium text-sm border-b-2 ${activeTab === 'history'
+                ? 'border-indigo-500 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
               onClick={() => setActiveTab('history')}
             >
               <CheckCircle size={16} className="inline mr-2" />

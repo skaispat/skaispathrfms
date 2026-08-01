@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, ChevronLeft, ChevronRight, Clock, MapPin, Plus, X } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { supabase } from '../supabaseClient';
+import { getCompanyCalendarEvents, addCompanyCalendarEvent } from '../api/companyCalendarApi';
 import { createPortal } from 'react-dom';
 
 const CompanyCalendar = () => {
@@ -25,15 +25,7 @@ const CompanyCalendar = () => {
   const fetchCalendarData = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('company_calender')
-        .select('*')
-        .order('date', { ascending: true });
-
-      if (error) {
-        throw error;
-      }
-
+      const data = await getCompanyCalendarEvents();
       setCompanyEvents(data || []);
     } catch (error) {
       console.error('Error fetching calendar data:', error);
@@ -60,14 +52,7 @@ const CompanyCalendar = () => {
 
     setSubmitting(true);
     try {
-      const { error } = await supabase
-        .from('company_calender')
-        .insert([{
-          ...newEvent,
-          timestamp: new Date().toISOString()
-        }]);
-
-      if (error) throw error;
+      await addCompanyCalendarEvent(newEvent);
 
       toast.success('Event added successfully');
       setIsModalOpen(false);

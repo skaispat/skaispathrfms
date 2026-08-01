@@ -13,7 +13,13 @@ import {
   EyeOff
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { supabase } from '../supabaseClient';
+import {
+  checkEmpIdExistsInUsers,
+  checkUsernameExistsInUsers,
+  getLastJoiningId,
+  uploadJoiningFormFile,
+  submitNewJoiningForm
+} from '../api/joiningFormApi';
 import loginImage from '../assets/logo.jpg';
 
 const DEPARTMENTS = [
@@ -102,10 +108,7 @@ const JoiningForm = () => {
       }
       setCheckingEmpId(true);
       try {
-        const { data, error } = await supabase
-          .from('users')
-          .select('emp_id')
-          .eq('emp_id', formData.empId);
+        const data = await checkEmpIdExistsInUsers(formData.empId);
 
         if (data && data.length > 0) {
           setEmpIdError('This Employee ID already exists.');
@@ -136,10 +139,7 @@ const JoiningForm = () => {
       }
       setCheckingUsername(true);
       try {
-        const { data, error } = await supabase
-          .from('users')
-          .select('username')
-          .eq('username', formData.username);
+        const data = await checkUsernameExistsInUsers(formData.username);
 
         if (data && data.length > 0) {
           setUsernameError('This username is already taken. Please try another.');
@@ -165,16 +165,7 @@ const JoiningForm = () => {
   useEffect(() => {
     const fetchLastId = async () => {
       try {
-        const { data, error } = await supabase
-          .from('joining_form')
-          .select('joining_id')
-          .order('created_at', { ascending: false })
-          .limit(1);
-
-        if (error) {
-          console.error('Error fetching last ID:', error);
-          return;
-        }
+        const data = await getLastJoiningId();
 
         let nextId = 'JOB001';
         if (data && data.length > 0 && data[0].joining_id) {
@@ -306,25 +297,7 @@ const JoiningForm = () => {
 
   // Upload file helper
   const uploadFile = async (file, path) => {
-    if (!file) return null;
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
-    const filePath = `${path}/${fileName}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from('images') // Using 'images' bucket as seen in project
-      .upload(filePath, file);
-
-    if (uploadError) {
-      console.error(`Error uploading ${path}:`, uploadError);
-      throw uploadError;
-    }
-
-    const { data } = supabase.storage
-      .from('images')
-      .getPublicUrl(filePath);
-
-    return data.publicUrl;
+    return await uploadJoiningFormFile(file, path);
   };
 
 
@@ -394,11 +367,7 @@ const JoiningForm = () => {
       // Trim password too
       payload.password = payload.password?.trim();
 
-      const { error: insertError } = await supabase
-        .from('joining_form')
-        .insert([payload]);
-
-      if (insertError) throw insertError;
+      await submitNewJoiningForm(payload);
 
       toast.success('Joining form submitted successfully!', { id: toastId });
 

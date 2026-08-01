@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient';
+import { getMisReports, getMisLeaveReportData } from '../api/misReportApi';
 import { RefreshCw, Download, FileText, BarChart2 } from 'lucide-react';
 import dayjs from 'dayjs';
 
@@ -32,15 +32,8 @@ const MisReport = () => {
       setLoading(true);
       setError(null);
 
-      // Fetch data from Supabase mis_report table
-      const { data, error } = await supabase
-        .from('mis_report')
-        .select('*')
-        .order('id', { ascending: true });
-
-      if (error) {
-        throw new Error(error.message);
-      }
+      // Fetch data from API
+      const data = await getMisReports();
 
       // Process the data
       const processedData = processSupabaseData(data);
@@ -103,35 +96,7 @@ const MisReport = () => {
       setLeaveLoading(true);
       setLeaveError(null);
 
-      // 1. Fetch all employees
-      const { data: employees, error: empError } = await supabase
-        .from('users')
-        .select('emp_id, full_name')
-        .order('emp_id', { ascending: true });
-
-      if (empError) throw new Error(empError.message);
-
-      // 2. Use selected Date Range
-      const startRange = dayjs(startDate);
-      const endRange = dayjs(endDate);
-      
-      // Validation: Ensure start <= end
-      if (startRange.isAfter(endRange)) {
-        setLeaveError("Start date cannot be after end date.");
-        setLeaveLoading(false);
-        return;
-      }
-
-      // 3. Fetch approved leaves that overlap with the selected range
-      // We need leaves where (start <= endRange) AND (end >= startRange)
-      const { data: leaves, error: leaveError } = await supabase
-        .from('leave_management')
-        .select('*')
-        .ilike('status', '%Approved%')
-        .lte('leave_date_start', endDate)
-        .gte('leave_date_end', startDate);
-
-      if (leaveError) throw new Error(leaveError.message);
+      const { employees, leaves } = await getMisLeaveReportData(startDate, endDate);
 
       // 4. Process data per employee
       const processedLeaves = employees.map(emp => {

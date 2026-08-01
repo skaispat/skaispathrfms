@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient';
+import {
+  getEmployeesForVisitors,
+  getVisitorsList,
+  updateVisitorApprovalStatus
+} from '../api/visitorsApi';
 import useAuthStore from '../store/authStore';
 import { Search, Image as ImageIcon, CheckCircle, XCircle, Clock, Calendar, Check, X } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -25,10 +29,7 @@ const Visitors = () => {
 
   const fetchEmployees = async () => {
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('emp_id, full_name');
-      if (error) throw error;
+      const data = await getEmployeesForVisitors();
       if (data) {
         setEmployees(data);
       }
@@ -40,19 +41,7 @@ const Visitors = () => {
   const fetchVisitors = async () => {
     setLoading(true);
     try {
-      let query = supabase
-        .from('visitors')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (!isAdmin) {
-        // If not admin, get only records matching logged in employee's emp_id
-        query = query.eq('person_to_meet', user?.emp_id);
-      }
-
-      const { data, error } = await query;
-
-      if (error) throw error;
+      const data = await getVisitorsList(isAdmin, user?.emp_id);
       setVisitors(data || []);
     } catch (error) {
       console.error('Error fetching visitors:', error);
@@ -71,16 +60,9 @@ const Visitors = () => {
 
   const handleApprovalAction = async (id, isApprove) => {
     try {
-      const { error } = await supabase
-        .from('visitors')
-        .update({
-          approval_status: isApprove,
-          approved_by: user?.full_name || user?.Name || 'System',
-          approved_at: getISTTimestamp()
-        })
-        .eq('id', id);
-
-      if (error) throw error;
+      const approverName = user?.full_name || user?.Name || 'System';
+      const timestamp = getISTTimestamp();
+      await updateVisitorApprovalStatus(id, isApprove, approverName, timestamp);
       toast.success(isApprove ? 'Visitor Approved' : 'Visitor Rejected');
       fetchVisitors();
     } catch (error) {

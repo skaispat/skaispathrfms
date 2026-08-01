@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Calendar, Filter, MoreVertical } from 'lucide-react';
-import { supabase } from '../supabaseClient';
+import { getPayrollRecords } from '../api/payrollApi';
 
 const Payroll = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -25,14 +25,8 @@ const Payroll = () => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        // Fetch data from Supabase payroll table
-        const { data, error } = await supabase
-          .from('payroll')
-          .select('*');
-
-        if (error) {
-          throw new Error(error.message);
-        }
+        // Fetch data from API
+        const data = await getPayrollRecords();
 
         if (data) {
           // Transform the data to match our structure

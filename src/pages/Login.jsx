@@ -3,7 +3,13 @@ import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { User, Lock, Loader2, Eye, EyeOff, CheckCircle2, Briefcase, ChevronRight, Users, Phone, Mail, MapPin, ShieldCheck, Shield, FileText, Building2, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useAuthStore from '../store/authStore';
-import { supabase } from '../supabaseClient';
+import {
+  getJobApplicantCount,
+  getActiveJobVacanciesWithCounts,
+  getUserByUsername,
+  uploadCandidateResume,
+  submitJobLead
+} from '../api/loginApi';
 import loginImage from '../assets/logo.jpg';
 
 // Clear language hint on load if needed
@@ -42,14 +48,8 @@ const Login = () => {
   useEffect(() => {
     if (selectedJob) {
       const fetchApplicantCount = async () => {
-        const { count, error } = await supabase
-          .from('job_leads')
-          .select('*', { count: 'exact', head: true })
-          .eq('job_id', selectedJob.id);
-
-        if (!error && count !== null) {
-          setApplicantCount(count);
-        }
+        const count = await getJobApplicantCount(selectedJob.id);
+        setApplicantCount(count);
       };
       fetchApplicantCount();
     }
@@ -66,26 +66,8 @@ const Login = () => {
       const fetchJobs = async () => {
         setLoadingJobs(true);
         try {
-          const { data, error } = await supabase
-            .from('job_vacancy')
-            .select('*')
-            .order('id', { ascending: false });
-          if (error) throw error;
-
-          if (data && data.length > 0) {
-            const jobsWithCounts = await Promise.all(
-              data.map(async (job) => {
-                const { count, error: countError } = await supabase
-                  .from('job_leads')
-                  .select('*', { count: 'exact', head: true })
-                  .eq('job_id', job.id);
-                return { ...job, applicantCount: countError ? 0 : (count || 0) };
-              })
-            );
-            setJobVacancies(jobsWithCounts);
-          } else {
-            setJobVacancies([]);
-          }
+          const jobs = await getActiveJobVacanciesWithCounts();
+          setJobVacancies(jobs);
         } catch (err) {
           console.error('Error fetching jobs:', err);
         } finally {
@@ -101,12 +83,8 @@ const Login = () => {
     setSubmitting(true);
 
     try {
-      // 1. Fetch user from Supabase 'users' table
-      const { data: user, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('username', username)
-        .single();
+      // 1. Fetch user from Supabase 'users' table via API
+      const { data: user, error } = await getUserByUsername(username);
 
       if (error) {
         if (error.code === 'PGRST116') {
@@ -163,46 +141,19 @@ const Login = () => {
     setSubmitLeadLoading(true);
 
     try {
-      let resumeUrl = '';
+      let resumeUrl = await uploadCandidateResume(candidateResume);
 
-      if (candidateResume) {
-        const fileExt = candidateResume.name.split('.').pop();
-        const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from('images')
-          .upload(fileName, candidateResume);
-
-        if (uploadError) {
-          console.warn('Could not upload to images bucket');
-          const { error: fallbackError } = await supabase.storage.from('images').upload(fileName, candidateResume);
-          if (fallbackError) {
-            throw new Error('Resume upload failed: ' + fallbackError.message);
-          } else {
-            const { data } = supabase.storage.from('images').getPublicUrl(fileName);
-            resumeUrl = data.publicUrl;
-          }
-        } else {
-          const { data } = supabase.storage.from('images').getPublicUrl(fileName);
-          resumeUrl = data.publicUrl;
-        }
-      }
-
-      const { error } = await supabase
-        .from('job_leads')
-        .insert([{
-          job_id: selectedJob.id,
-          post: selectedJob.post,
-          required_experience: selectedJob.experience || 'Fresher',
-          candidate_name: candidateName,
-          candidate_experience: candidateExperience ? (candidateExperience === '0' ? 'Fresher' : `${candidateExperience} ${candidateExperience === '1' ? 'Year' : 'Years'}`) : '',
-          candidate_phone: candidatePhone,
-          candidate_resume: resumeUrl,
-          skills: JSON.stringify(selectedSkills),
-          remark: candidateRemark,
-        }]);
-
-      if (error) throw error;
+      await submitJobLead({
+        job_id: selectedJob.id,
+        post: selectedJob.post,
+        required_experience: selectedJob.experience || 'Fresher',
+        candidate_name: candidateName,
+        candidate_experience: candidateExperience ? (candidateExperience === '0' ? 'Fresher' : `${candidateExperience} ${candidateExperience === '1' ? 'Year' : 'Years'}`) : '',
+        candidate_phone: candidatePhone,
+        candidate_resume: resumeUrl,
+        skills: JSON.stringify(selectedSkills),
+        remark: candidateRemark,
+      });
 
       toast.success('Application submitted successfully!');
       setSelectedJob(null);

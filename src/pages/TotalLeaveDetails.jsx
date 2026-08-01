@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { supabase } from "../supabaseClient";
+import { getTotalLeaveDetailsData, updateTotalLeaveRecordAndQuota } from "../api/totalLeaveDetailsApi";
 import { Search, Calendar, Download, X, ChevronRight, User } from "lucide-react";
 import toast from "react-hot-toast";
 import dayjs from "dayjs";
@@ -37,27 +37,11 @@ const TotalLeaveDetails = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const { data: userData, error: userError } = await supabase
-        .from("users")
-        .select("emp_id, full_name, department, designation")
-        .order("full_name");
-      if (userError) throw userError;
-      setUsers(userData || []);
-
-      const { data: leaveData, error: leaveError } = await supabase
-        .from("leave_management")
-        .select("*")
-        .order("leave_date_start", { ascending: false });
-      if (leaveError) throw leaveError;
-      setLeaves(leaveData || []);
-
-      const { data: quotaData, error: quotaError } = await supabase
-        .from("yearly_quota")
-        .select("*")
-        .eq("year", getFiscalYear());
-      if (quotaError) throw quotaError;
+      const { users: fetchedUsers, leaves: fetchedLeaves, quotaData: fetchedQuotaData } = await getTotalLeaveDetailsData(getFiscalYear());
+      setUsers(fetchedUsers);
+      setLeaves(fetchedLeaves);
       const quotaMap = {};
-      (quotaData || []).forEach(q => { quotaMap[q.emp_id] = q; });
+      fetchedQuotaData.forEach(q => { quotaMap[q.emp_id] = q; });
       setQuotas(quotaMap);
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -204,68 +188,8 @@ const TotalLeaveDetails = () => {
         return;
       }
 
-      // 1. Update leave_management
-      const { error: updateError } = await supabase
-        .from("leave_management")
-        .update({
-          casual: tempRecordData.casual,
-          earned: tempRecordData.earned,
-          unpaid: tempRecordData.unpaid,
-        })
-        .eq("id", record.id);
-
-      if (updateError) throw updateError;
-
-      // 2. Update yearly_quota (delta-based)
       const currentYear = getFiscalYear();
-      const { data: q } = await supabase
-        .from("yearly_quota")
-        .select("*")
-        .eq("emp_id", record.emp_id)
-        .eq("year", currentYear)
-        .maybeSingle();
-
-      if (q) {
-        let updatePayload = {};
-
-        // Handle Casual
-        if (deltaCasual !== 0) {
-          updatePayload.casual_leave_used = (q.casual_leave_used || 0) + deltaCasual;
-        }
-
-        // Handle Unpaid
-        if (deltaUnpaid !== 0) {
-          updatePayload.unpaid_leave_used = (q.unpaid_leave_used || 0) + deltaUnpaid;
-        }
-
-        // Handle Earned (including carry-forward logic)
-        if (deltaEarned !== 0) {
-          if (deltaEarned > 0) {
-            // Added more EL usage
-            const carried = q.carried_forward_el || 0;
-            if (carried >= deltaEarned) {
-              updatePayload.carried_forward_el = carried - deltaEarned;
-            } else {
-              updatePayload.carried_forward_el = 0;
-              updatePayload.earned_leave_used = (q.earned_leave_used || 0) + (deltaEarned - carried);
-            }
-          } else {
-            // Reduced EL usage (restore balance)
-            const absDelta = Math.abs(deltaEarned);
-            const used = q.earned_leave_used || 0;
-            if (used >= absDelta) {
-              updatePayload.earned_leave_used = used - absDelta;
-            } else {
-              updatePayload.earned_leave_used = 0;
-              updatePayload.carried_forward_el = (q.carried_forward_el || 0) + (absDelta - used);
-            }
-          }
-        }
-
-        if (Object.keys(updatePayload).length > 0) {
-          await supabase.from("yearly_quota").update(updatePayload).eq("id", q.id);
-        }
-      }
+      await updateTotalLeaveRecordAndQuota(record.id, record.emp_id, tempRecordData, deltaCasual, deltaEarned, deltaUnpaid, currentYear);
 
       toast.success("Record updated successfully");
       setEditingRecordId(null);

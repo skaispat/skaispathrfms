@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, Eye, FileText, X, Download, Clock, Phone, Briefcase } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { supabase } from '../supabaseClient';
+import { getJobLeadsForEnquiry } from '../api/employeeEnquiryApi';
 
-const EmployeeEnquiry = () => {
+const JobApplications = () => {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -21,13 +21,7 @@ const EmployeeEnquiry = () => {
   const fetchLeads = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('job_leads')
-        .select('*');
-
-      if (error) {
-        throw error;
-      }
+      const data = await getJobLeadsForEnquiry();
       setLeads(data || []);
     } catch (error) {
       console.error('Error fetching job leads:', error);
@@ -119,7 +113,7 @@ const EmployeeEnquiry = () => {
           </div>
           <p className="text-slate-500 mt-1 text-sm">View and manage candidate applications</p>
         </div>
-        
+
         {/* Search & Stats Wrapper */}
         <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3 w-full md:w-auto mt-2 md:mt-0">
           <div className="relative w-full md:w-72 lg:w-80">
@@ -487,4 +481,4 @@ const EmployeeEnquiry = () => {
   );
 };
 
-export default EmployeeEnquiry;
+export default JobApplications;

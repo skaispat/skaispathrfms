@@ -4,7 +4,11 @@ import { createPortal } from 'react-dom';
 import { Filter, Search, Clock, CheckCircle, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import useDataStore from '../store/dataStore';
 import toast from 'react-hot-toast';
-import { supabase } from '../supabaseClient';
+import {
+  getAllUsersForLeaving,
+  getEmployeeLeavingWithUsers,
+  insertEmployeeLeavingRecord
+} from '../api/leavingApi';
 
 const Leaving = () => {
   const [activeTab, setActiveTab] = useState('pending');
@@ -34,14 +38,8 @@ const Leaving = () => {
     setError(null);
 
     try {
-      // Fetch data from Supabase users table
-      const { data, error } = await supabase
-        .from('users')
-        .select('*');
-
-      if (error) {
-        throw new Error(`Supabase error: ${error.message}`);
-      }
+      // Fetch data from API
+      const data = await getAllUsersForLeaving();
 
       // Process data to match existing UI structure
       const processedData = data.map(item => ({
@@ -81,25 +79,7 @@ const Leaving = () => {
     setError(null);
 
     try {
-      // Fetch data from Supabase employee_leaving table joined with users
-      const { data, error } = await supabase
-        .from('employee_leaving')
-        .select(`
-          *,
-          users (
-            emp_id,
-            full_name,
-            joining_date,
-            designation,
-            department,
-            phone_number
-          )
-        `)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        throw new Error(`Supabase error: ${error.message}`);
-      }
+      const data = await getEmployeeLeavingWithUsers();
 
       // Process data to match existing UI structure
       // Note: employee_leaving stores the leaving details. 
@@ -272,22 +252,13 @@ const Leaving = () => {
       */
 
       // Then, insert the leaving record into the LEAVING table
-      const { error: insertError } = await supabase
-        .from('employee_leaving')
-        .insert([
-          {
-            emp_id: selectedItem.employeeNo,
-            reason_of_leaving: formData.reasonOfLeaving,
-            date_of_leaving: formattedLeavingDate,
-            planned_date: selectedItem.plannedDate || null,
-            actual_date: selectedItem.actual || null
-            // Other booleans default to false as per schema
-          }
-        ]);
-
-      if (insertError) {
-        throw new Error(`Failed to insert into LEAVING table: ${insertError.message}`);
-      }
+      await insertEmployeeLeavingRecord({
+        emp_id: selectedItem.employeeNo,
+        reason_of_leaving: formData.reasonOfLeaving,
+        date_of_leaving: formattedLeavingDate,
+        planned_date: selectedItem.plannedDate || null,
+        actual_date: selectedItem.actual || null
+      });
 
       setFormData({
         dateOfLeaving: '',

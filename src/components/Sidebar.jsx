@@ -29,7 +29,8 @@ import {
   BookPlus,
   Settings,
   UserPlus,
-  Gift
+  Gift,
+  Contact
 } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 
@@ -42,11 +43,23 @@ const Sidebar = ({ onClose }) => {
   const [attendanceOpen, setAttendanceOpen] = useState(() =>
     ['/attendance', '/attendancedaily'].includes(window.location.pathname)
   );
+  const [joiningLeavingOpen, setJoiningLeavingOpen] = useState(() =>
+    ['/joining', '/after-joining-work', '/leaving', '/after-leaving-work', '/employee'].includes(window.location.pathname)
+  );
+  const [jobEnquiryOpen, setJobEnquiryOpen] = useState(() =>
+    ['/job-vacancy', '/job-applications'].includes(window.location.pathname)
+  );
 
   // Automatically open/close based on route
   useEffect(() => {
     const isAttendancePage = ['/attendance', '/attendancedaily'].includes(location.pathname);
     setAttendanceOpen(isAttendancePage);
+
+    const isJoiningLeavingPage = ['/joining', '/after-joining-work', '/leaving', '/after-leaving-work', '/employee'].includes(location.pathname);
+    setJoiningLeavingOpen(isJoiningLeavingPage);
+
+    const isJobEnquiryPage = ['/job-vacancy', '/job-applications'].includes(location.pathname);
+    setJobEnquiryOpen(isJobEnquiryPage);
   }, [location.pathname]);
   const [currentLang, setCurrentLang] = useState('en');
   const [showLanguageHint, setShowLanguageHint] = useState(false);
@@ -399,14 +412,35 @@ const Sidebar = ({ onClose }) => {
   /* Combined Master Menu List for Permission Checking */
   const MASTER_MENU_ITEMS = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard', id: '/' },
-    { path: '/job-vacancy', icon: FileText, label: 'Job Vacancy', id: 'indent' },
-    { path: '/employee_enquiry', icon: Search, label: 'Job Applications', id: 'find-enquiry' },
+    {
+      type: 'dropdown',
+      icon: FileText,
+      label: 'Job Enquiry',
+      id: 'job-enquiry-dropdown',
+      isOpen: jobEnquiryOpen,
+      toggle: () => setJobEnquiryOpen(!jobEnquiryOpen),
+      items: [
+        { path: '/job-vacancy', label: 'Job Vacancy', id: 'indent' },
+        { path: '/job-applications', label: 'Job Applications', id: 'job-applications' }
+      ]
+    },
     // { path: '/call-tracker', icon: Phone, label: 'Enquiry Status', id: 'call-tracker' },
-    { path: '/joining', icon: NotebookPen, label: 'Employee Joining', id: 'joining' },
-    { path: '/after-joining-work', icon: UserCheck, label: 'After Joining Work', id: 'after-joining-work' },
-    { path: '/leaving', icon: UserX, label: 'Employee Leaving', id: 'leaving' },
-    { path: '/after-leaving-work', icon: UserMinus, label: 'After Leaving Work', id: 'after-leaving-work' },
-    { path: '/employee', icon: Users, label: 'Employee List', id: 'employee' },
+    {
+      type: 'dropdown',
+      icon: Users,
+      label: 'Employee Joining/Leaving',
+      id: 'joining-leaving-dropdown',
+      isOpen: joiningLeavingOpen,
+      toggle: () => setJoiningLeavingOpen(!joiningLeavingOpen),
+      items: [
+        { path: '/joining', label: 'Employee Joining', id: 'joining' },
+        { path: '/after-joining-work', label: 'After Joining Work', id: 'after-joining-work' },
+        { path: '/leaving', label: 'Employee Leaving', id: 'leaving' },
+        { path: '/after-leaving-work', label: 'After Leaving Work', id: 'after-leaving-work' },
+        { path: '/employee', label: 'Employee List', id: 'employee' }
+      ]
+    },
+    { path: '/employee-details', icon: Contact, label: 'Employee Details', id: 'employee-details' },
 
     // Employee Specific
     // { path: '/my-profile', icon: ProfileIcon, label: 'My Profile', id: 'my-profile' },
@@ -434,8 +468,8 @@ const Sidebar = ({ onClose }) => {
         { path: '/attendancedaily', label: 'Daily Report', id: 'attendancedaily' }
       ]
     },
-    { path: '/payroll', icon: BadgeDollarSign, label: 'Payroll', id: 'payroll' },
-    { path: '/misreport', icon: AlarmClockCheck, label: 'MIS Report', id: 'misreport' },
+    // { path: '/payroll', icon: BadgeDollarSign, label: 'Payroll', id: 'payroll' },
+    // { path: '/misreport', icon: AlarmClockCheck, label: 'MIS Report', id: 'misreport' },
     { path: '/settings', icon: Settings, label: 'Settings', id: 'settings' },
   ];
 
@@ -466,8 +500,12 @@ const Sidebar = ({ onClose }) => {
 
     // If no page_access defined (legacy users), fallback to basic employee pages
     if (!user?.page_access || !Array.isArray(user?.page_access)) {
-      const DEFAULT_ACCESS = ['/', 'my-profile', 'my-attendance', 'leave-request', 'gate-pass-request', 'visitors', 'birthday', 'my-salary', 'company-calendar'];
+      const DEFAULT_ACCESS = ['/', 'employee-details', 'my-profile', 'my-attendance', 'leave-request', 'gate-pass-request', 'visitors', 'birthday', 'my-salary', 'company-calendar'];
       return DEFAULT_ACCESS.includes(pageId);
+    }
+
+    if (pageId === 'job-applications') {
+      return user.page_access.includes('job-applications') || user.page_access.includes('find-enquiry');
     }
 
     return user.page_access.includes(pageId) || pageId === '/';
@@ -538,7 +576,7 @@ const Sidebar = ({ onClose }) => {
           currentLang={currentLang}
           handleLogout={handleLogout}
           toggleLanguage={toggleLanguage}
-          closeDropdown={() => setAttendanceOpen(false)}
+          closeDropdown={() => { setAttendanceOpen(false); setJoiningLeavingOpen(false); setJobEnquiryOpen(false); }}
         />
       </div>
 
@@ -556,7 +594,7 @@ const Sidebar = ({ onClose }) => {
             currentLang={currentLang}
             handleLogout={handleLogout}
             toggleLanguage={toggleLanguage}
-            closeDropdown={() => setAttendanceOpen(false)}
+            closeDropdown={() => { setAttendanceOpen(false); setJoiningLeavingOpen(false); setJobEnquiryOpen(false); }}
           />
         </div>
       </div>
@@ -575,7 +613,7 @@ const Sidebar = ({ onClose }) => {
             currentLang={currentLang}
             handleLogout={handleLogout}
             toggleLanguage={toggleLanguage}
-            closeDropdown={() => setAttendanceOpen(false)}
+            closeDropdown={() => { setAttendanceOpen(false); setJoiningLeavingOpen(false); setJobEnquiryOpen(false); }}
           />
         </div>
       </div>
@@ -595,7 +633,7 @@ const SidebarContent = ({ menuItems, onClose, isCollapsed = false, user, current
             <Users size={18} />
           </div>
           <span className="text-lg font-bold text-slate-800 tracking-tight">
-            {currentLang === 'en' ? 'HR FMS' : 'एचआर एफएमएस'}
+            {currentLang === 'en' ? 'HRMS' : 'एचआरएमएस'}
           </span>
           <div className="relative ml-auto flex items-center gap-2">
             <button

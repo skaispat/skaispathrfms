@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { supabase } from '../supabaseClient';
+import { getUsersForAttendance, upsertAttendanceSummaryBatch } from '../api/attendanceApi';
 
 const Attendance = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -27,11 +27,7 @@ const Attendance = () => {
 
     try {
       // Fetch users for name mapping
-      const { data: users, error: userError } = await supabase
-        .from('users')
-        .select('emp_id, full_name, designation');
-
-      if (userError) throw userError;
+      const users = await getUsersForAttendance();
 
       setAllUsers(users);
 
@@ -154,11 +150,7 @@ const Attendance = () => {
       const batchSize = 100;
       for (let i = 0; i < recordsToUpsert.length; i += batchSize) {
         const batch = recordsToUpsert.slice(i, i + batchSize);
-        const { error } = await supabase
-          .from('attendance_summary')
-          .upsert(batch, { onConflict: 'emp_id, year, month' });
-
-        if (error) throw error;
+        await upsertAttendanceSummaryBatch(batch);
       }
 
       // console.log("Auto-sync completed successfully");

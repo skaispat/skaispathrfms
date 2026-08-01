@@ -2,7 +2,13 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, X, Search, ChevronLeft, ChevronRight, ArrowUpDown, Edit, Trash2, CheckCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { supabase } from '../supabaseClient';
+import {
+  getLatestIndentNumber,
+  getJobVacancies,
+  completeJobVacancy,
+  deleteJobVacancy,
+  saveJobVacancy
+} from '../api/jobVacancyApi';
 
 const JobVacancy = () => {
   const [showModal, setShowModal] = useState(false);
@@ -79,17 +85,12 @@ const JobVacancy = () => {
   }, []);
 
   const generateIndentNumber = async () => {
-    try {
-      const { data } = await supabase.from('job_vacancy').select('indent_number').order('id', { ascending: false }).limit(1).single();
-      const lastNum = data?.indent_number ? (parseInt(data.indent_number.match(/\d+/)?.[0]) || 0) : 0;
-      return `REC-${String(lastNum + 1).padStart(2, '0')}`;
-    } catch (e) { console.error(e); return 'REC-01'; }
+    return await getLatestIndentNumber();
   };
 
   const fetchIndentDataFromSupabase = async () => {
     try {
-      const { data, error } = await supabase.from('job_vacancy').select('*').order('id', { ascending: false });
-      if (error) throw error;
+      const data = await getJobVacancies();
 
       const processedData = data.map(item => ({
         id: item.id,
@@ -157,14 +158,9 @@ const JobVacancy = () => {
 
     try {
       setLoading(true);
-      const { error } = await supabase.from('job_vacancy').update({ status: 'Completed' }).eq('id', id);
-
-      if (error) {
-        toast.error('Failed to complete: ' + error.message);
-      } else {
-        toast.success('Requirement marked as completed!');
-        await fetchIndentDataFromSupabase();
-      }
+      await completeJobVacancy(id);
+      toast.success('Requirement marked as completed!');
+      await fetchIndentDataFromSupabase();
     } catch (error) {
       toast.error('Something went wrong');
     } finally {
@@ -177,14 +173,9 @@ const JobVacancy = () => {
 
     try {
       setLoading(true);
-      const { error } = await supabase.from('job_vacancy').delete().eq('id', id);
-
-      if (error) {
-        toast.error('Failed to delete: ' + error.message);
-      } else {
-        toast.success('Job vacancy deleted successfully');
-        await fetchIndentDataFromSupabase();
-      }
+      await deleteJobVacancy(id);
+      toast.success('Job vacancy deleted successfully');
+      await fetchIndentDataFromSupabase();
     } catch (error) {
       toast.error('Something went wrong');
     } finally {
@@ -210,12 +201,7 @@ const JobVacancy = () => {
         skill_required: formData.skills.length > 0 ? formData.skills.join(', ') : null,
       };
 
-      const query = editingId
-        ? supabase.from('job_vacancy').update(payload).eq('id', editingId)
-        : supabase.from('job_vacancy').insert([{ ...payload, timestamp: new Date().toISOString(), indent_number: await generateIndentNumber() }]);
-
-      const { error } = await query;
-      if (error) throw error;
+      await saveJobVacancy(editingId, payload);
 
       toast.success(`Job vacancy ${editingId ? 'updated' : 'created'} successfully!`);
 

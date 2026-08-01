@@ -1,7 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useAuthStore from '../store/authStore';
-import { supabase } from '../supabaseClient';
+import {
+  getDashboardUsers,
+  getDashboardEmployeeLeaving,
+  getDashboardOperationalData,
+  getDashboardRecentVacancies,
+  updateDashboardBirthdayWish
+} from '../api/dashboardApi';
 import {
   BarChart,
   Bar,
@@ -107,11 +113,7 @@ const Dashboard = () => {
         const sixMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 5, 1).toISOString();
 
         // 1. Fetch Users Data (Active & Total)
-        const { data: usersData, error: usersError } = await supabase
-          .from('users')
-          .select('emp_id, is_active, department, designation, joining_date, full_name, profile_picture');
-
-        if (usersError) throw usersError;
+        const usersData = await getDashboardUsers();
 
         setUsersData(usersData || []);
 
@@ -223,11 +225,7 @@ const Dashboard = () => {
 
 
         // 2. Fetch Employee Leaving Data
-        const { data: leavingData, error: leavingError } = await supabase
-          .from('employee_leaving')
-          .select('date_of_leaving, actual_date');
-
-        if (leavingError) throw leavingError;
+        const leavingData = await getDashboardEmployeeLeaving();
 
         const currentMonthLeaves = leavingData.filter(l => {
           const d = l.actual_date || l.date_of_leaving;
@@ -272,27 +270,7 @@ const Dashboard = () => {
 
 
         // 4. Fetch Recent Operational Data
-        let leavesQuery = supabase.from('leave_management')
-          .select('id, employee_name, leave_type, status, leave_date_start, created_at')
-          .order('created_at', { ascending: false });
-        if (!isAdmin && user) leavesQuery = leavesQuery.eq('employee_name', user.full_name);
-
-        let gatepassQuery = supabase.from('gate_pass')
-          .select('id, emp_name, place_reason_to_visit, status, timestamp')
-          .order('timestamp', { ascending: false });
-        if (!isAdmin && user) gatepassQuery = gatepassQuery.eq('emp_name', user.full_name);
-
-        const [leavesRes, gatepassRes, applicantsRes, birthdaysRes] = await Promise.all([
-          leavesQuery.limit(5),
-          gatepassQuery.limit(5),
-          supabase.from('job_leads')
-            .select('id, candidate_name, post, candidate_experience, created_at')
-            .order('created_at', { ascending: false })
-            .limit(5),
-          supabase.from('birthday')
-            .select('*')
-            .order('created_at', { ascending: false })
-        ]);
+        const { leavesRes, gatepassRes, applicantsRes, birthdaysRes } = await getDashboardOperationalData(isAdmin, user);
 
         if (leavesRes.error) console.error(leavesRes.error);
         else setRecentLeaves(leavesRes.data || []);
@@ -304,23 +282,11 @@ const Dashboard = () => {
         else setRecentApplicants(applicantsRes.data || []);
 
         if (birthdaysRes.error) console.error(birthdaysRes.error);
-        else setBirthdayRecords(birthdaysRes.data || []);        // 6. Fetch Recent Job Vacancies
-        const { data: jobs, error: jobsError } = await supabase
-          .from('job_vacancy')
-          .select('*')
-          .order('id', { ascending: false })
-          .limit(3);
+        else setBirthdayRecords(birthdaysRes.data || []);
 
-        if (!jobsError && jobs) {
-          const jobsWithCounts = await Promise.all(jobs.map(async (job) => {
-            const { count } = await supabase
-              .from('job_leads')
-              .select('*', { count: 'exact', head: true })
-              .eq('post', job.post);
-            return { ...job, applied_count: count || 0 };
-          }));
-          setVacancies(jobsWithCounts);
-        }
+        // 6. Fetch Recent Job Vacancies
+        const jobsWithCounts = await getDashboardRecentVacancies();
+        setVacancies(jobsWithCounts);
 
       } catch (error) {
         // console.error("Error fetching dashboard data:", error);
@@ -424,12 +390,7 @@ const Dashboard = () => {
         ? `${sentByArray.join(', ')}, ${user.full_name.trim()}`
         : user.full_name.trim();
 
-      const { error } = await supabase
-        .from('birthday')
-        .update({ [column]: newSentBy })
-        .eq('id', record.id);
-
-      if (error) throw error;
+      await updateDashboardBirthdayWish(record.id, column, newSentBy);
 
 
 
@@ -1064,7 +1025,7 @@ const Dashboard = () => {
               )}
             </div>
             {recentApplicants.length > 0 && (
-              <button onClick={() => navigate('/employee_enquiry')} className="w-full mt-4 py-2.5 text-xs font-bold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors">
+              <button onClick={() => navigate('/job-applications')} className="w-full mt-4 py-2.5 text-xs font-bold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors">
                 View All Applicants
               </button>
             )}

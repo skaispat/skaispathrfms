@@ -23,7 +23,24 @@ import {
 } from "lucide-react";
 import * as XLSX from 'xlsx';
 import toast from "react-hot-toast";
-import { supabase } from "../supabaseClient";
+import {
+  getUsersForLeaveManagement,
+  getLeaveBalancesForUser,
+  getHodAndHrDetailsForEmp,
+  fetchPaginatedLeavesWithEmployee,
+  fetchCountWithQuery,
+  getExportLeaveRecords,
+  checkExistingLeaveConflict,
+  insertLeaveRequestRecord,
+  updateLeaveStatusAndLogs,
+  updateYearlyQuotaRecord,
+  insertYearlyQuotaRecord,
+  fetchSingleLeaveRecord,
+  updateLeaveCfUsed,
+  getYearlyQuotaForEmp,
+  getYearlyQuotasForEmpIds,
+  updateLeaveManagementRecord
+} from "../api/leaveManagementApi";
 import useAuthStore from "../store/authStore";
 
 // Fiscal year helper: April–March
@@ -276,14 +293,8 @@ const LeaveManagement = () => {
   // Fetch employees from Users table
   const fetchEmployees = async () => {
     try {
-      // Fetch data from Supabase users table
-      const { data, error } = await supabase
-        .from("users")
-        .select("emp_id, full_name, designation, department");
-
-      if (error) {
-        throw new Error(error.message);
-      }
+      // Fetch data from API
+      const data = await getUsersForLeaveManagement();
 
       // Process data to match existing structure
       const employeeData = data
@@ -316,30 +327,10 @@ const LeaveManagement = () => {
     if (!employeeId) return;
 
     try {
-      // console.log('Fetching balance for employee:', employeeId);
-      const { data: balanceData, error: balanceError } = await supabase
-        .from('employee_leave_balances')
-        .select('*')
-        .eq('emp_id', employeeId)
-        .maybeSingle();
-
-      if (balanceError) {
-        console.error('Error fetching employee balance:', balanceError);
-        return;
-      }
+      const currentYear = getFiscalYear();
+      const { balanceData, quotaData } = await getLeaveBalancesForUser(employeeId, employeeId, currentYear);
 
       if (balanceData) {
-        // console.log('Balance data found:', balanceData);
-
-        // Also fetch carry forward from yearly_quota
-        const currentYear = getFiscalYear();
-        const { data: quotaData } = await supabase
-          .from('yearly_quota')
-          .select('carried_forward_el')
-          .eq('emp_id', employeeId)
-          .eq('year', currentYear)
-          .maybeSingle();
-
         setLeaveBalances({
           casual: {
             total: 12,
@@ -355,7 +346,6 @@ const LeaveManagement = () => {
           unpaid: { used: balanceData.unpaid_leave_total_taken ?? 0 }
         });
       } else {
-        // Reset to defaults if no data found (or handle as 0 used)
         setLeaveBalances({
           casual: { total: 12, used: 0, remaining: 12 },
           earned: { total: 24, used: 0, remaining: 24 },
@@ -398,52 +388,23 @@ const LeaveManagement = () => {
     // Fetch HOD from team_members
     if (selectedEmployee && selectedEmployee.id) {
       try {
-        const { data: teamMember, error: teamError } = await supabase
-          .from("team_members")
-          .select("hod_id")
-          .eq("emp_id", selectedEmployee.id)
-          .maybeSingle();
-
-        if (teamError) throw teamError;
-
-        if (teamMember && teamMember.hod_id) {
-          // Now fetch HOD name and phone number from users
-          const { data: hodUser, error: hodError } = await supabase
-            .from("users")
-            .select("full_name, phone_number") // Fetch full_name and phone_number
-            .eq("emp_id", teamMember.hod_id)
-            .single();
-
-          if (hodError) throw hodError;
-
-          if (hodUser) {
-            setFormData((prev) => ({
-              ...prev,
-              hodName: hodUser.full_name,
-              hodId: teamMember.hod_id,
-              hodPhoneNumber: hodUser.phone_number || "",
-            }));
-            toast.success(`HOD found: ${hodUser.full_name}`);
-          }
+        const { teamMember, hodUser, hrData } = await getHodAndHrDetailsForEmp(selectedEmployee.id);
+        if (teamMember && teamMember.hod_id && hodUser) {
+          setFormData((prev) => ({
+            ...prev,
+            hodName: hodUser.full_name,
+            hodId: teamMember.hod_id,
+            hodPhoneNumber: hodUser.phone_number || "",
+          }));
+          toast.success(`HOD found: ${hodUser.full_name}`);
         } else {
-          // Default HOD logic if none assigned
           setFormData((prev) => ({
             ...prev,
             hodName: "",
             hodId: null,
             hodPhoneNumber: "",
           }));
-          // toast.success('Default HOD assigned: Pawan Tiwari');
         }
-
-        // Fetch HR Details
-        const { data: hrData } = await supabase
-          .from("users")
-          .select("full_name, emp_id")
-          .eq("department", "HR")
-          .order("is_hod", { ascending: false })
-          .limit(1)
-          .maybeSingle();
 
         // console.log(hrData, "data is coming formt eh ");
         // console.log(formData, "formdata");
@@ -597,52 +558,17 @@ const LeaveManagement = () => {
     if (!user) return { data: [], nextPage: undefined };
 
     const ITEMS_PER_PAGE = 10;
-
-    let query = supabase
-      .from("leave_management")
-      .select(`
-        *,
-        employee:users!leave_management_emp_id_fkey(phone_number)
-      `, { count: "exact" });
-
-    // 1. Role-based filtering
-    if (isHr) {
-      // HR/Admin sees all
-    } else if (isHod) {
-      // HOD sees their own requests AND requests where they are the HOD
-      query = query.or(`hod_id.eq.${user.emp_id},emp_id.eq.${user.emp_id}`);
-    } else {
-      // Regular user sees only their own
-      query = query.eq("emp_id", user.emp_id);
-    }
-
-    // 2. Tab-based filtering
-    if (activeTab === "pending") {
-      query = query.in("status", ["Pending", "Pending HOD", "Pending HR"]);
-    } else if (activeTab === "approved") {
-      query = query.ilike("status", "%Approved%");
-      // Apply date range filter for approved leaves
-      if (exportFromDate && exportToDate) {
-        query = query.gte("leave_date_start", exportFromDate).lte("leave_date_start", exportToDate);
-      }
-    } else if (activeTab === "rejected") {
-      query = query.ilike("status", "%Reject%");
-    }
-
-    // 3. Search
-    if (searchTerm) {
-      query = query.or(`employee_name.ilike.%${searchTerm}%,emp_id.ilike.%${searchTerm}%`);
-    }
-
-    // 4. Sorting & Pagination
-    const from = pageParam * ITEMS_PER_PAGE;
-    const to = from + ITEMS_PER_PAGE - 1;
-
-    const { data, error } = await query
-      .order("timestamp", { ascending: false })
-      .range(from, to);
-
-    if (error) throw new Error(error.message);
+    const data = await fetchPaginatedLeavesWithEmployee({
+      user,
+      isHr,
+      isHod,
+      activeTab,
+      exportFromDate,
+      exportToDate,
+      searchTerm,
+      pageParam,
+      itemsPerPage: ITEMS_PER_PAGE
+    });
 
     return {
       data: transformLeaveData(data),
@@ -653,10 +579,8 @@ const LeaveManagement = () => {
   const fetchTabCounts = async () => {
     if (!user) return { pending: 0, approved: 0, rejected: 0 };
 
-    const getBaseQuery = () => {
-      let q = supabase.from("leave_management").select("*", { count: "exact", head: true });
+    const applyRoleAndSearch = (q) => {
       if (isHr) {
-        // HR sees all
       } else if (isHod) {
         q = q.or(`hod_id.eq.${user.emp_id},emp_id.eq.${user.emp_id}`);
       } else {
@@ -668,25 +592,19 @@ const LeaveManagement = () => {
       return q;
     };
 
-    const getApprovedQuery = () => {
-      let q = getBaseQuery().ilike("status", "%Approved%");
-      if (exportFromDate && exportToDate) {
-        q = q.gte("leave_date_start", exportFromDate).lte("leave_date_start", exportToDate);
-      }
-      return q;
-    };
-
-    const [pendingRes, approvedRes, rejectedRes] = await Promise.all([
-      getBaseQuery().in("status", ["Pending", "Pending HOD", "Pending HR"]),
-      getApprovedQuery(),
-      getBaseQuery().ilike("status", "%Reject%"),
+    const [pending, approved, rejected] = await Promise.all([
+      fetchCountWithQuery((q) => applyRoleAndSearch(q).in("status", ["Pending", "Pending HOD", "Pending HR"])),
+      fetchCountWithQuery((q) => {
+        let res = applyRoleAndSearch(q).ilike("status", "%Approved%");
+        if (exportFromDate && exportToDate) {
+          res = res.gte("leave_date_start", exportFromDate).lte("leave_date_start", exportToDate);
+        }
+        return res;
+      }),
+      fetchCountWithQuery((q) => applyRoleAndSearch(q).ilike("status", "%Reject%")),
     ]);
 
-    return {
-      pending: pendingRes.count || 0,
-      approved: approvedRes.count || 0,
-      rejected: rejectedRes.count || 0,
-    };
+    return { pending, approved, rejected };
   };
 
   const { data: countsData } = useQuery({
@@ -740,13 +658,9 @@ const LeaveManagement = () => {
 
       const currentYear = getFiscalYear();
       try {
-        const { data, error } = await supabase
-          .from("yearly_quota")
-          .select("*")
-          .in("emp_id", empIds)
-          .eq("year", currentYear);
+        const data = await getYearlyQuotasForEmpIds(empIds, currentYear);
 
-        if (!error && data) {
+        if (data) {
           const quotaMap = {};
           data.forEach((q) => {
             quotaMap[q.emp_id] = q;
@@ -797,13 +711,7 @@ const LeaveManagement = () => {
       // 🔴 Check if user already requested leave today
       const today = new Date().toISOString().split("T")[0];
 
-      const { data: existingLeave, error: checkError } = await supabase
-        .from("leave_management")
-        .select("id")
-        .eq("emp_id", formData.employeeId)
-        .gte("created_at", `${today}T00:00:00`)
-        .lte("created_at", `${today}T23:59:59`)
-        .limit(1);
+      const existingLeave = await checkExistingLeaveConflict(formData.employeeId, formData.employeeName, formData.fromDate, formData.toDate);
 
 
 
@@ -846,36 +754,21 @@ const LeaveManagement = () => {
       };
 
       // Insert data into Supabase leave_management table
-      const { data, error } = await supabase
-        .from("leave_management")
-        .insert([insertData])
-        .select();
+      const logPayload = {
+        request_type: "Leave",
+        emp_id: formData.employeeId,
+        emp_name: formData.employeeName,
+        status: "Pending",
+        hod_id: formData.hodId,
+        hod_name: formData.hodName,
+        hr_id: formData.hrId,
+        hr_name: formData.hrName,
+      };
 
-      if (error) throw new Error(error.message);
+      const data = await insertLeaveRequestRecord(insertData, logPayload);
 
-      // Log creation
       if (data && data[0]) {
-        await supabase.from("logs").insert({
-          request_id: data[0].id,
-          request_type: "Leave",
-          emp_id: formData.employeeId,
-          emp_name: formData.employeeName,
-          status: "Pending",
-          hod_id: formData.hodId,
-          hod_name: formData.hodName,
-          hr_id: formData.hrId,
-          hr_name: formData.hrName,
-        });
-
-        // Send WhatsApp message to HOD if HOD is assigned and has phone number
-        // console.log(
-        //   "WhatsApp Debug - hodId:",
-        //   formData.hodId,
-        //   "hodPhoneNumber:",
-        //   formData.hodPhoneNumber,
-        // );
         if (formData.hodId && formData.hodPhoneNumber) {
-          // console.log("Sending WhatsApp message to HOD...");
           const totalDays = calculateDays(formData.fromDate, formData.toDate);
           const whatsappResult = await sendWhatsappMessageToHod({
             employeId: formData.hodId,
@@ -892,8 +785,6 @@ const LeaveManagement = () => {
             who: "hod",
           });
 
-          // console.log(whatsappResult, "whatsapp result");
-
           if (whatsappResult.success) {
             toast.success("WhatsApp notification sent to HOD!");
           } else {
@@ -901,13 +792,8 @@ const LeaveManagement = () => {
               "WhatsApp notification failed:",
               whatsappResult.error,
             );
-            // Don't show error toast as leave request was successful
           }
         }
-      }
-
-      if (error) {
-        throw new Error(error.message);
       }
 
       toast.success("Leave Request submitted successfully!");
@@ -1043,15 +929,6 @@ const LeaveManagement = () => {
         }),
       };
 
-      // Update the leave request in Supabase
-      const { error: updateError } = await supabase
-        .from("leave_management")
-        .update(updateData)
-        .eq("id", targetRow.id);
-
-      if (updateError) throw new Error(updateError.message);
-
-      // Update Log
       const logUpdate = {
         status: newStatus,
         ...(isHod && {
@@ -1069,11 +946,9 @@ const LeaveManagement = () => {
           hr_remarks: rowRemarks.hr || "",
         }),
       };
-      await supabase
-        .from("logs")
-        .update(logUpdate)
-        .eq("request_id", targetRow.id)
-        .eq("request_type", "Leave");
+
+      // Update the leave request in Supabase
+      await updateLeaveStatusAndLogs(targetRow.id, updateData, logUpdate);
 
       // Update yearly_quota when leave is approved
       if (newStatus === "Approved") {
@@ -1088,12 +963,7 @@ const LeaveManagement = () => {
         for (const update of updates) {
           const { count, column } = update;
           try {
-            const { data: existingQuota } = await supabase
-              .from("yearly_quota")
-              .select("*")
-              .eq("emp_id", employeeId)
-              .eq("year", currentYear)
-              .maybeSingle();
+            const existingQuota = await getYearlyQuotaForEmp(employeeId, currentYear);
 
             if (existingQuota) {
               let updatePayload = {};
@@ -1109,15 +979,12 @@ const LeaveManagement = () => {
                   cfUsed = carriedForward;
                 }
                 // Save consumption to the request record
-                await supabase.from("leave_management").update({ cf_el_used: cfUsed }).eq("id", targetRow.id);
+                await updateLeaveCfUsed(targetRow.id, cfUsed);
               } else {
                 updatePayload[column] = (existingQuota[column] || 0) + count;
               }
 
-              await supabase
-                .from("yearly_quota")
-                .update(updatePayload)
-                .eq("id", existingQuota.id);
+              await updateYearlyQuotaRecord(existingQuota.id, updatePayload);
             } else {
               const insertPayload = {
                 emp_id: employeeId,
@@ -1129,7 +996,7 @@ const LeaveManagement = () => {
                 earned_leave_limit: 24,
                 carried_forward_el: 0
               };
-              await supabase.from("yearly_quota").insert(insertPayload);
+              await insertYearlyQuotaRecord(insertPayload);
             }
           } catch (err) { console.error("Quota error:", err); }
         }
@@ -1277,14 +1144,6 @@ const LeaveManagement = () => {
           }),
         };
 
-        const { error: updateError } = await supabase
-          .from("leave_management")
-          .update(updateData)
-          .eq("id", row.id);
-
-        if (updateError) throw updateError;
-
-        // Log
         const logUpdate = {
           status: newStatus,
           ...(isHodUser && {
@@ -1292,19 +1151,18 @@ const LeaveManagement = () => {
             hod_id: user.emp_id,
             hod_action: "Approved",
             hod_approval_time: new Date().toISOString(),
+            hod_remarks: rowRemarks.hod || "",
           }),
           ...(isHrUser && {
             hr_name: user.full_name || user.Name,
             hr_id: user.emp_id,
             hr_action: "Approved",
             hr_approval_time: new Date().toISOString(),
+            hr_remarks: rowRemarks.hr || "",
           }),
         };
-        await supabase
-          .from("logs")
-          .update(logUpdate)
-          .eq("request_id", row.id)
-          .eq("request_type", "Leave");
+
+        await updateLeaveStatusAndLogs(row.id, updateData, logUpdate);
 
         // Quota fix
         if (newStatus === "Approved") {
@@ -1318,7 +1176,7 @@ const LeaveManagement = () => {
 
           for (const update of updates) {
             const { count, column } = update;
-            const { data: q } = await supabase.from("yearly_quota").select("*").eq("emp_id", employeeId).eq("year", currentYear).maybeSingle();
+            const q = await getYearlyQuotaForEmp(employeeId, currentYear);
             if (q) {
               let updatePayload = {};
               if (update.type === "Earned") {
@@ -1332,13 +1190,13 @@ const LeaveManagement = () => {
                   updatePayload.earned_leave_used = (q.earned_leave_used || 0) + (count - carriedForward);
                   cfUsed = carriedForward;
                 }
-                await supabase.from("leave_management").update({ cf_el_used: cfUsed }).eq("id", row.id);
+                await updateLeaveCfUsed(row.id, cfUsed);
               } else {
                 updatePayload[column] = (q[column] || 0) + count;
               }
-              await supabase.from("yearly_quota").update(updatePayload).eq("id", q.id);
+              await updateYearlyQuotaRecord(q.id, updatePayload);
             } else {
-              await supabase.from("yearly_quota").insert({
+              await insertYearlyQuotaRecord({
                 emp_id: employeeId, year: currentYear,
                 casual_leave_limit: 12, earned_leave_limit: 24,
                 carried_forward_el: 0,
@@ -1454,14 +1312,6 @@ const LeaveManagement = () => {
           }),
         };
 
-        const { error: updateError } = await supabase
-          .from("leave_management")
-          .update(updateData)
-          .eq("id", row.id);
-
-        if (updateError) throw updateError;
-
-        // Log
         const logUpdate = {
           status: newStatus,
           ...(isHodUser && {
@@ -1479,11 +1329,8 @@ const LeaveManagement = () => {
             hr_remarks: rowRemarks.hr || "",
           }),
         };
-        await supabase
-          .from("logs")
-          .update(logUpdate)
-          .eq("request_id", row.id)
-          .eq("request_type", "Leave");
+
+        await updateLeaveStatusAndLogs(row.id, updateData, logUpdate);
 
         // WhatsApp
         try {
@@ -1519,15 +1366,7 @@ const LeaveManagement = () => {
       setExportLoading(true);
 
       // Fetch all approved leaves for the custom date range
-      const { data, error } = await supabase
-        .from('leave_management')
-        .select('*')
-        .eq('status', 'Approved')
-        .gte('leave_date_start', exportFromDate)
-        .lte('leave_date_start', exportToDate)
-        .order('leave_date_start', { ascending: true });
-
-      if (error) throw error;
+      const data = await getExportLeaveRecords({ status: 'Approved', startDate: exportFromDate, endDate: exportToDate });
 
       if (!data || data.length === 0) {
         toast.error('No approved leaves found for the current month');
@@ -1689,12 +1528,7 @@ const LeaveManagement = () => {
       }
 
       // Update leave_management
-      const { error: updateError } = await supabase
-        .from("leave_management")
-        .update(updateData)
-        .eq("id", originalItem.id);
-
-      if (updateError) throw updateError;
+      await updateLeaveManagementRecord(originalItem.id, updateData);
 
       // Handle Quota updates if counts changed
       const countsChanged =
@@ -1713,12 +1547,7 @@ const LeaveManagement = () => {
         ].filter(u => u.old !== u.new);
 
         for (const update of quotaUpdates) {
-          const { data: q } = await supabase
-            .from("yearly_quota")
-            .select("*")
-            .eq("emp_id", employeeId)
-            .eq("year", currentYear)
-            .maybeSingle();
+          const q = await getYearlyQuotaForEmp(employeeId, currentYear);
 
           if (q) {
             let updatePayload = {};
@@ -1746,7 +1575,7 @@ const LeaveManagement = () => {
             } else {
               updatePayload[update.column] = (q[update.column] || 0) + diff;
             }
-            await supabase.from("yearly_quota").update(updatePayload).eq("id", q.id);
+            await updateYearlyQuotaRecord(q.id, updatePayload);
           }
         }
       }
@@ -1774,597 +1603,989 @@ const LeaveManagement = () => {
       });
   };
 
-
-
   const leaveTypes = ["Casual Leave", "Earned Leave", "UnPaid Leave"];
 
   const renderPendingLeavesTable = (data = []) => (
-    <table className="min-w-full divide-y divide-slate-100">
-      <thead className="sticky top-0 z-10 border-b bg-slate-50 border-slate-200">
-        <tr>
-          <th className="w-4 px-4 py-3 sm:px-6 sm:py-4"></th>
-          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            <div className="flex items-center gap-2">
+    <>
+      <div className="hidden md:block overflow-x-auto">
+        <table className="min-w-full divide-y divide-slate-100">
+          <thead className="sticky top-0 z-10 border-b bg-slate-50 border-slate-200">
+            <tr>
+              <th className="w-4 px-4 py-3 sm:px-6 sm:py-4"></th>
+              <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={leaves.length > 0 && selectedIds.length === leaves.length}
+                    onChange={(e) => handleSelectAll(e.target.checked)}
+                    className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 border-slate-300"
+                  />
+                  <span>Select All</span>
+                </div>
+              </th>
+              <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                Status
+              </th>
+              <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                Employee ID
+              </th>
+              <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                Name
+              </th>
+              <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                From
+              </th>
+              <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                To
+              </th>
+              <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                Days
+              </th>
+              <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                Reason
+              </th>
+              <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                Leave Type
+              </th>
+              <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                HOD Name
+              </th>
+              {showHodColumn && (
+                <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                  HOD Remarks
+                </th>
+              )}
+              {showHrColumn && (
+                <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                  HR Remarks
+                </th>
+              )}
+              <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-slate-100">
+            {data.length > 0 ? (
+              data.map((item, index) => (
+                <tr key={index} className="transition-colors bg-yellow-50 hover:bg-yellow-100">
+                  <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
+                    <div className="h-2.5 w-2.5 rounded-full bg-yellow-500"></div>
+                  </td>
+                  <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
+                    {((user?.is_hod &&
+                      (item.status === "Pending" ||
+                        item.status === "Pending HOD") &&
+                      (item.hodName === user?.full_name ||
+                        item.hodName === user?.Name)) ||
+                      ((user?.role === "hr" ||
+                        user?.role === "HR" ||
+                        user?.role === "admin" ||
+                        user?.role === "Admin" ||
+                        user?.Admin === "Yes") &&
+                        (item.status === "Pending HR" ||
+                          item.status === "Pending" ||
+                          item.status === "Pending HOD"))) && (
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.includes(item.id)}
+                          onChange={() => handleCheckboxChange(item.id, item)}
+                          className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 border-slate-300"
+                        />
+                      )}
+                  </td>
+                  <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
+                    <span
+                      className={`px-2 py-1 text-xs font-semibold rounded-full ${item.status?.toString().toLowerCase().includes("approved")
+                        ? "bg-green-100 text-green-800"
+                        : item.status?.toString().toLowerCase().includes("rejected")
+                          ? "bg-red-100 text-red-800"
+                          : item.status === "Pending" || item.status === "Pending HOD"
+                            ? "bg-yellow-100 text-yellow-800"
+                            : "bg-blue-100 text-blue-800"
+                        }`}
+                    >
+                      {item.status === "Pending" || item.status === "Pending HOD"
+                        ? "Pending HOD"
+                        : item.status?.includes("Rejected")
+                          ? "Rejected"
+                          : item.status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
+                    {item.employeeId}
+                  </td>
+                  <td className="px-4 py-3 text-sm font-medium sm:px-6 sm:py-4 whitespace-nowrap text-slate-900">
+                    <div className="flex flex-col">
+                      <span>{item.employeeName}</span>
+                      {rowQuotas[item.employeeId] ? (
+                        <div className="flex gap-1.5 mt-1 text-[9px] font-bold uppercase tracking-tighter">
+                          <span className="text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded border border-emerald-100">
+                            EL: {(rowQuotas[item.employeeId].earned_leave_limit || 24) - (rowQuotas[item.employeeId].earned_leave_used || 0)}
+                          </span>
+                          <span className="text-indigo-700 bg-indigo-50 px-1 py-0.5 rounded border border-indigo-100">
+                            CL: {(rowQuotas[item.employeeId].casual_leave_limit || 12) - (rowQuotas[item.employeeId].casual_leave_used || 0)}
+                          </span>
+                          <span className="text-purple-700 bg-purple-50 px-1 py-0.5 rounded border border-purple-100">
+                            CF: {rowQuotas[item.employeeId].carried_forward_el || 0}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex gap-1.5 mt-1 text-[9px] font-bold uppercase tracking-tighter opacity-60">
+                          <span className="text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded border border-emerald-100">EL: 24</span>
+                          <span className="text-indigo-700 bg-indigo-50 px-1 py-0.5 rounded border border-indigo-100">CL: 12</span>
+                          <span className="text-purple-700 bg-purple-50 px-1 py-0.5 rounded border border-purple-100">CF: 0</span>
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-600">
+                    {(selectedRow?.id === item.id || (isHr && selectedIds.includes(item.id))) ? (
+                      <input
+                        type="date"
+                        value={editableDates[item.id]?.from || ""}
+                        onChange={(e) => handleDateChange(item.id, "from", e.target.value)}
+                        className="p-1 text-sm border rounded border-slate-300"
+                      />
+                    ) : (
+                      formatDate(item.startDate)
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-600">
+                    {(selectedRow?.id === item.id || (isHr && selectedIds.includes(item.id))) ? (
+                      <input
+                        type="date"
+                        value={editableDates[item.id]?.to || ""}
+                        onChange={(e) => handleDateChange(item.id, "to", e.target.value)}
+                        className="p-1 text-sm border rounded border-slate-300"
+                      />
+                    ) : (
+                      formatDate(item.endDate)
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
+                    <div className="flex flex-col">
+                      <span className="text-slate-700">
+                        {(selectedRow?.id === item.id || (isHr && selectedIds.includes(item.id)))
+                          ? calculateDays(editableDates[item.id]?.from, editableDates[item.id]?.to)
+                          : item.days} days
+                      </span>
+                      {item.monthSplit && (
+                        <span className="text-xs text-slate-500 flex items-center gap-1">
+                          <span className="text-slate-400">↳</span> {item.monthSplit}
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
+                    {item.reason}
+                  </td>
+                  <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
+                    {isHr && (item.status === "Pending HR" || item.status === "Pending" || item.status === "Pending HOD") && (selectedRow?.id === item.id || selectedIds.includes(item.id)) ? (
+                      <div
+                        className="relative flex flex-col gap-1.5 p-2 bg-slate-50 rounded-lg border border-slate-200 min-w-[140px]"
+                        onFocus={() => setActivePopupId(item.id)}
+                        onBlur={(e) => {
+                          if (!e.currentTarget.contains(e.relatedTarget)) {
+                            setActivePopupId(null);
+                          }
+                        }}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex flex-col">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase">CL:</span>
+                            <span className="text-[8px] text-indigo-600 font-black">
+                              Rem: {(rowQuotas[item.employeeId]?.casual_leave_limit || 12) - (rowQuotas[item.employeeId]?.casual_leave_used || 0)}
+                            </span>
+                          </div>
+                          <input
+                            type="number"
+                            value={leaveCounts[item.id]?.casual || 0}
+                            onChange={(e) => handleCountChange(item.id, "casual", e.target.value)}
+                            className="w-14 px-1.5 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-mono"
+                            min="0"
+                            step="1"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex flex-col">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase">EL:</span>
+                            <span className="text-[8px] text-emerald-600 font-black">
+                              Rem: {((rowQuotas[item.employeeId]?.earned_leave_limit || 24) - (rowQuotas[item.employeeId]?.earned_leave_used || 0)) + (rowQuotas[item.employeeId]?.carried_forward_el || 0)}
+                            </span>
+                          </div>
+                          <input
+                            type="number"
+                            value={leaveCounts[item.id]?.earned || 0}
+                            onChange={(e) => handleCountChange(item.id, "earned", e.target.value)}
+                            className="w-14 px-1.5 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-mono"
+                            min="0"
+                            step="1"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase">LOP:</span>
+                          <input
+                            type="number"
+                            value={leaveCounts[item.id]?.unpaid || 0}
+                            onChange={(e) => handleCountChange(item.id, "unpaid", e.target.value)}
+                            className="w-14 px-1.5 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-mono"
+                            min="0"
+                            step="1"
+                          />
+                        </div>
+                        <div className={`border-t border-slate-200 pt-1 mt-1 text-[10px] font-bold flex justify-between ${Math.abs(((leaveCounts[item.id]?.casual || 0) + (leaveCounts[item.id]?.earned || 0) + (leaveCounts[item.id]?.unpaid || 0)) - calculateDays(editableDates[item.id]?.from, editableDates[item.id]?.to)) > 0.01
+                          ? "text-red-500"
+                          : "text-green-600"
+                          }`}>
+                          <span>Total:</span>
+                          <span>{((leaveCounts[item.id]?.casual || 0) + (leaveCounts[item.id]?.earned || 0) + (leaveCounts[item.id]?.unpaid || 0)).toFixed(0)} / {calculateDays(editableDates[item.id]?.from, editableDates[item.id]?.to)}</span>
+                        </div>
+
+                        {/* Leave Detail Popup (Inline) */}
+                        {activePopupId === item.id && (() => {
+                          const from = editableDates[item.id]?.from;
+                          const to = editableDates[item.id]?.to;
+                          const leaveType = item.leaveType;
+
+                          if (!from || !to || !leaveType) return null;
+
+                          let leaveWarning = null;
+                          let leaveNote = null;
+
+                          const appliedDays = calculateDays(from, to);
+                          const targetDate = new Date(from);
+                          const fyMonthIndex = targetDate.getMonth() >= 3 ? targetDate.getMonth() - 2 : targetDate.getMonth() + 10;
+
+                          const maxAccEL = fyMonthIndex * 2;
+                          const maxAccCL = fyMonthIndex * 1;
+
+                          const quota = rowQuotas[item.employeeId] || {};
+                          const usedEL = quota.earned_leave_used || 0;
+                          const usedCL = quota.casual_leave_used || 0;
+                          const carriedForwardEL = quota.carried_forward_el || 0;
+
+                          const availableAccEL = Math.max(0, maxAccEL + carriedForwardEL - usedEL);
+                          const availableAccCL = Math.max(0, maxAccCL - usedCL);
+
+                          if (leaveType === 'UnPaid Leave') {
+                            leaveWarning = `आपने कुल ${appliedDays} दिन की छुट्टी के लिए आवेदन किया है। आपने LWP (बिना वेतन की छुट्टी) का चयन किया है। आपके पूरे ${appliedDays} दिन का वेतन काटा जाएगा।`;
+                          } else {
+                            const effectiveCL = Math.min(3, availableAccCL);
+                            const maxPaidPossible = Math.min(10, effectiveCL + availableAccEL);
+                            const totalAvailable = availableAccEL + availableAccCL;
+
+                            if (appliedDays > maxPaidPossible) {
+                              const lwpDays = appliedDays - maxPaidPossible;
+                              if (totalAvailable > maxPaidPossible) {
+                                leaveWarning = `आपने कुल ${appliedDays} दिन की छुट्टी के लिए आवेदन किया है। आपके पास कुल ${totalAvailable} छुट्टियां (EL: ${availableAccEL}, CL: ${availableAccCL}) हैं, लेकिन आप एक बार में अधिकतम 10 दिन (जिसमें अधिकतम 3 CL शामिल हो सकते हैं) की ही सवेतन छुट्टी ले सकते हैं। अतः आपके अतिरिक्त ${lwpDays} दिन LWP (बिना वेतन) माने जाएंगे।`;
+                              } else {
+                                leaveWarning = `आपने कुल ${appliedDays} दिन की छुट्टी के लिए आवेदन किया है। आपके पास केवल ${totalAvailable} छुट्टियां (EL: ${availableAccEL}, CL: ${availableAccCL}) उपलब्ध हैं। आपके अतिरिक्त ${lwpDays} दिन LWP (बिना वेतन) माने जाएंगे।`;
+                              }
+                            } else {
+                              leaveNote = `आपने कुल ${appliedDays} दिन की छुट्टी के लिए आवेदन किया है। आपके पास पर्याप्त छुट्टियां (कुल: ${totalAvailable} -> EL: ${availableAccEL}, CL: ${availableAccCL}) उपलब्ध हैं। आपके वेतन से कोई कटौती नहीं होगी।`;
+                            }
+                          }
+
+                          if (leaveWarning) {
+                            return (
+                              <div className="absolute z-[60] bottom-full mb-2 left-1/2 -translate-x-1/2 w-[280px] sm:top-1/2 sm:-translate-y-1/2 sm:right-full sm:mr-3 sm:left-auto sm:translate-x-0 sm:bottom-auto sm:mb-0 sm:w-80 bg-rose-50 border border-rose-200 rounded-xl p-3 shadow-2xl animate-in fade-in zoom-in duration-200">
+                                <div className="flex gap-2 items-start">
+                                  <AlertCircle className="text-rose-600 shrink-0 mt-0.5" size={16} />
+                                  <div>
+                                    <p className="text-xs font-bold text-rose-900 leading-snug">छुट्टी अलर्ट</p>
+                                    <p className="text-[10px] text-rose-700 mt-0.5 font-medium leading-relaxed whitespace-normal text-left">{leaveWarning}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          } else if (leaveNote) {
+                            return (
+                              <div className="absolute z-[60] bottom-full mb-2 left-1/2 -translate-x-1/2 w-[280px] sm:top-1/2 sm:-translate-y-1/2 sm:right-full sm:mr-3 sm:left-auto sm:translate-x-0 sm:bottom-auto sm:mb-0 sm:w-80 bg-emerald-50 border border-emerald-200 rounded-xl p-3 shadow-2xl animate-in fade-in zoom-in duration-200">
+                                <div className="flex gap-2 items-start">
+                                  <CheckCircle className="text-emerald-600 shrink-0 mt-0.5" size={16} />
+                                  <div>
+                                    <p className="text-xs font-bold text-emerald-900 leading-snug">छुट्टी विवरण</p>
+                                    <p className="text-[10px] text-emerald-700 mt-0.5 font-medium leading-relaxed whitespace-normal text-left">{leaveNote}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
+                      </div>
+                    ) : (
+                      <div className="flex flex-col">
+                        <span className="font-medium text-slate-700">{item.leaveType}</span>
+                        {(item.casual > 0 || item.earned > 0 || item.unpaid > 0) && (
+                          <div className="flex gap-1.5 mt-1">
+                            {item.casual > 0 && <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[10px] font-bold">CL: {item.casual}</span>}
+                            {item.earned > 0 && <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold">EL: {item.earned}</span>}
+                            {item.unpaid > 0 && <span className="px-1.5 py-0.5 bg-rose-50 text-rose-600 rounded text-[10px] font-bold">LOP: {item.unpaid}</span>}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={13} className="px-6 py-12 text-center text-slate-500">
+                  No pending leave requests found.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Mobile Card View */}
+      <div className="block md:hidden space-y-3 p-3">
+        {data.length > 0 && (
+          <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+            <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700">
               <input
                 type="checkbox"
                 checked={leaves.length > 0 && selectedIds.length === leaves.length}
                 onChange={(e) => handleSelectAll(e.target.checked)}
                 className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 border-slate-300"
               />
-              <span>Select All</span>
-            </div>
-          </th>
-          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            Status
-          </th>
-          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            Employee ID
-          </th>
-          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            Name
-          </th>
-          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            From
-          </th>
-          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            To
-          </th>
-          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            Days
-          </th>
-          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            Reason
-          </th>
-          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            Leave Type
-          </th>
-          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            HOD Name
-          </th>
-          {showHodColumn && (
-            <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-              HOD Remarks
-            </th>
-          )}
-          {showHrColumn && (
-            <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-              HR Remarks
-            </th>
-          )}
-          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            Actions
-          </th>
-        </tr>
-      </thead>
-      <tbody className="bg-white divide-y divide-slate-100">
+              <span>Select All ({data.length})</span>
+            </label>
+            {selectedIds.length > 0 && (
+              <span className="text-[11px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
+                {selectedIds.length} Selected
+              </span>
+            )}
+          </div>
+        )}
         {data.length > 0 ? (
-          data.map((item, index) => (
-            <tr key={index} className="transition-colors bg-yellow-50 hover:bg-yellow-100">
-              <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
-                <div className="h-2.5 w-2.5 rounded-full bg-yellow-500"></div>
-              </td>
-              <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
-                {((user?.is_hod &&
-                  (item.status === "Pending" ||
-                    item.status === "Pending HOD") &&
-                  (item.hodName === user?.full_name ||
-                    item.hodName === user?.Name)) ||
-                  ((user?.role === "hr" ||
-                    user?.role === "HR" ||
-                    user?.role === "admin" ||
-                    user?.role === "Admin" ||
-                    user?.Admin === "Yes") &&
-                    (item.status === "Pending HR" ||
-                      item.status === "Pending" ||
-                      item.status === "Pending HOD"))) && (
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.includes(item.id)}
-                      onChange={() => handleCheckboxChange(item.id, item)}
-                      className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 border-slate-300"
-                    />
-                  )}
-              </td>
-              <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
-                <span
-                  className={`px-2 py-1 text-xs font-semibold rounded-full ${item.status?.toString().toLowerCase().includes("approved")
-                    ? "bg-green-100 text-green-800"
-                    : item.status?.toString().toLowerCase().includes("rejected")
-                      ? "bg-red-100 text-red-800"
-                      : item.status === "Pending" || item.status === "Pending HOD"
-                        ? "bg-yellow-100 text-yellow-800"
-                        : "bg-blue-100 text-blue-800"
-                    }`}
-                >
-                  {item.status === "Pending" || item.status === "Pending HOD"
-                    ? "Pending HOD"
-                    : item.status?.includes("Rejected")
-                      ? "Rejected"
-                      : item.status}
-                </span>
-              </td>
-              <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                {item.employeeId}
-              </td>
-              <td className="px-4 py-3 text-sm font-medium sm:px-6 sm:py-4 whitespace-nowrap text-slate-900">
-                <div className="flex flex-col">
-                  <span>{item.employeeName}</span>
-                  {rowQuotas[item.employeeId] ? (
+          data.map((item, index) => {
+            const isAuthorized =
+              ((user?.is_hod &&
+                (item.status === "Pending" || item.status === "Pending HOD") &&
+                (item.hodName === user?.full_name || item.hodName === user?.Name)) ||
+                ((user?.role === "hr" ||
+                  user?.role === "HR" ||
+                  user?.role === "admin" ||
+                  user?.role === "Admin" ||
+                  user?.Admin === "Yes") &&
+                  (item.status === "Pending HR" ||
+                    item.status === "Pending" ||
+                    item.status === "Pending HOD")));
+
+            const isSelected = selectedIds.includes(item.id);
+            const rowDates = editableDates[item.id] || {};
+            const rowCounts = leaveCounts[item.id] || { casual: item.casual, earned: item.earned, unpaid: item.unpaid };
+
+            const startDate = rowDates.from || item.startDate;
+            const endDate = rowDates.to || item.endDate;
+            const daysCount = calculateDays(startDate, endDate);
+            const totalCounts = (rowCounts.casual || 0) + (rowCounts.earned || 0) + (rowCounts.unpaid || 0);
+            const originalDays = item.days || calculateDays(item.startDate, item.endDate);
+            const isInvalid = daysCount > originalDays || totalCounts > originalDays;
+
+            const quota = rowQuotas[item.employeeId];
+
+            return (
+              <div
+                key={item.id || index}
+                className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-3 border-l-4 border-l-yellow-500 hover:shadow-md transition-all"
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                  <div className="flex items-center gap-2">
+                    {isAuthorized && (
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => handleCheckboxChange(item.id, item)}
+                        className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 border-slate-300"
+                      />
+                    )}
+                    <span className="text-xs font-semibold text-slate-500">ID: {item.employeeId}</span>
+                  </div>
+                  <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                    {item.status === "Pending" || item.status === "Pending HOD" ? "Pending HOD" : item.status}
+                  </span>
+                </div>
+
+                {/* Name & Quotas */}
+                <div>
+                  <h4 className="text-base font-bold text-slate-900">{item.employeeName}</h4>
+                  {quota ? (
                     <div className="flex gap-1.5 mt-1 text-[9px] font-bold uppercase tracking-tighter">
-                      <span className="text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded border border-emerald-100">
-                        EL: {(rowQuotas[item.employeeId].earned_leave_limit || 24) - (rowQuotas[item.employeeId].earned_leave_used || 0)}
+                      <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
+                        EL: {(quota.earned_leave_limit || 24) - (quota.earned_leave_used || 0)}
                       </span>
-                      <span className="text-indigo-700 bg-indigo-50 px-1 py-0.5 rounded border border-indigo-100">
-                        CL: {(rowQuotas[item.employeeId].casual_leave_limit || 12) - (rowQuotas[item.employeeId].casual_leave_used || 0)}
+                      <span className="text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
+                        CL: {(quota.casual_leave_limit || 12) - (quota.casual_leave_used || 0)}
                       </span>
-                      <span className="text-purple-700 bg-purple-50 px-1 py-0.5 rounded border border-purple-100">
-                        CF: {rowQuotas[item.employeeId].carried_forward_el || 0}
+                      <span className="text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-100">
+                        CF: {quota.carried_forward_el || 0}
                       </span>
                     </div>
                   ) : (
                     <div className="flex gap-1.5 mt-1 text-[9px] font-bold uppercase tracking-tighter opacity-60">
-                      <span className="text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded border border-emerald-100">EL: 24</span>
-                      <span className="text-indigo-700 bg-indigo-50 px-1 py-0.5 rounded border border-indigo-100">CL: 12</span>
-                      <span className="text-purple-700 bg-purple-50 px-1 py-0.5 rounded border border-purple-100">CF: 0</span>
+                      <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">EL: 24</span>
+                      <span className="text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">CL: 12</span>
+                      <span className="text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-100">CF: 0</span>
                     </div>
                   )}
                 </div>
-              </td>
-              <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-600">
-                {(selectedRow?.id === item.id || (isHr && selectedIds.includes(item.id))) ? (
-                  <input
-                    type="date"
-                    value={editableDates[item.id]?.from || ""}
-                    onChange={(e) => handleDateChange(item.id, "from", e.target.value)}
-                    className="p-1 text-sm border rounded border-slate-300"
-                  />
-                ) : (
-                  formatDate(item.startDate)
-                )}
-              </td>
-              <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-600">
-                {(selectedRow?.id === item.id || (isHr && selectedIds.includes(item.id))) ? (
-                  <input
-                    type="date"
-                    value={editableDates[item.id]?.to || ""}
-                    onChange={(e) => handleDateChange(item.id, "to", e.target.value)}
-                    className="p-1 text-sm border rounded border-slate-300"
-                  />
-                ) : (
-                  formatDate(item.endDate)
-                )}
-              </td>
-              <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                <div className="flex flex-col">
-                  <span className="text-slate-700">
-                    {(selectedRow?.id === item.id || (isHr && selectedIds.includes(item.id)))
-                      ? calculateDays(editableDates[item.id]?.from, editableDates[item.id]?.to)
-                      : item.days} days
-                  </span>
-                  {item.monthSplit && (
-                    <span className="text-xs text-slate-500 flex items-center gap-1">
-                      <span className="text-slate-400">↳</span> {item.monthSplit}
-                    </span>
-                  )}
-                </div>
-              </td>
-              <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                {item.reason}
-              </td>
-              <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                {isHr && (item.status === "Pending HR" || item.status === "Pending" || item.status === "Pending HOD") && (selectedRow?.id === item.id || selectedIds.includes(item.id)) ? (
-                  <div
-                    className="relative flex flex-col gap-1.5 p-2 bg-slate-50 rounded-lg border border-slate-200 min-w-[140px]"
-                    onFocus={() => setActivePopupId(item.id)}
-                    onBlur={(e) => {
-                      if (!e.currentTarget.contains(e.relatedTarget)) {
-                        setActivePopupId(null);
-                      }
-                    }}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex flex-col">
-                        <span className="text-[10px] font-bold text-slate-500 uppercase">CL:</span>
-                        <span className="text-[8px] text-indigo-600 font-black">
-                          Rem: {(rowQuotas[item.employeeId]?.casual_leave_limit || 12) - (rowQuotas[item.employeeId]?.casual_leave_used || 0)}
-                        </span>
-                      </div>
+
+                {/* Dates & Duration */}
+                <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-slate-400 block">From</span>
+                    {isSelected ? (
                       <input
-                        type="number"
-                        value={leaveCounts[item.id]?.casual || 0}
-                        onChange={(e) => handleCountChange(item.id, "casual", e.target.value)}
-                        className="w-14 px-1.5 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-mono"
-                        min="0"
-                        step="1"
+                        type="date"
+                        value={editableDates[item.id]?.from || ""}
+                        onChange={(e) => handleDateChange(item.id, "from", e.target.value)}
+                        className="p-1 text-xs border rounded border-slate-300 w-full mt-0.5 bg-white"
                       />
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex flex-col">
-                        <span className="text-[10px] font-bold text-slate-500 uppercase">EL:</span>
-                        <span className="text-[8px] text-emerald-600 font-black">
-                          Rem: {((rowQuotas[item.employeeId]?.earned_leave_limit || 24) - (rowQuotas[item.employeeId]?.earned_leave_used || 0)) + (rowQuotas[item.employeeId]?.carried_forward_el || 0)}
-                        </span>
-                      </div>
-                      <input
-                        type="number"
-                        value={leaveCounts[item.id]?.earned || 0}
-                        onChange={(e) => handleCountChange(item.id, "earned", e.target.value)}
-                        className="w-14 px-1.5 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-mono"
-                        min="0"
-                        step="1"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase">LOP:</span>
-                      <input
-                        type="number"
-                        value={leaveCounts[item.id]?.unpaid || 0}
-                        onChange={(e) => handleCountChange(item.id, "unpaid", e.target.value)}
-                        className="w-14 px-1.5 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-mono"
-                        min="0"
-                        step="1"
-                      />
-                    </div>
-                    <div className={`border-t border-slate-200 pt-1 mt-1 text-[10px] font-bold flex justify-between ${Math.abs(((leaveCounts[item.id]?.casual || 0) + (leaveCounts[item.id]?.earned || 0) + (leaveCounts[item.id]?.unpaid || 0)) - calculateDays(editableDates[item.id]?.from, editableDates[item.id]?.to)) > 0.01
-                      ? "text-red-500"
-                      : "text-green-600"
-                      }`}>
-                      <span>Total:</span>
-                      <span>{((leaveCounts[item.id]?.casual || 0) + (leaveCounts[item.id]?.earned || 0) + (leaveCounts[item.id]?.unpaid || 0)).toFixed(0)} / {calculateDays(editableDates[item.id]?.from, editableDates[item.id]?.to)}</span>
-                    </div>
-
-                    {/* Leave Detail Popup (Inline) */}
-                    {activePopupId === item.id && (() => {
-                      const from = editableDates[item.id]?.from;
-                      const to = editableDates[item.id]?.to;
-                      const leaveType = item.leaveType;
-
-                      if (!from || !to || !leaveType) return null;
-
-                      let leaveWarning = null;
-                      let leaveNote = null;
-
-                      const appliedDays = calculateDays(from, to);
-                      const targetDate = new Date(from);
-                      const fyMonthIndex = targetDate.getMonth() >= 3 ? targetDate.getMonth() - 2 : targetDate.getMonth() + 10;
-
-                      const maxAccEL = fyMonthIndex * 2;
-                      const maxAccCL = fyMonthIndex * 1;
-
-                      const quota = rowQuotas[item.employeeId] || {};
-                      const usedEL = quota.earned_leave_used || 0;
-                      const usedCL = quota.casual_leave_used || 0;
-                      const carriedForwardEL = quota.carried_forward_el || 0;
-
-                      const availableAccEL = Math.max(0, maxAccEL + carriedForwardEL - usedEL);
-                      const availableAccCL = Math.max(0, maxAccCL - usedCL);
-
-                      if (leaveType === 'UnPaid Leave') {
-                        leaveWarning = `आपने कुल ${appliedDays} दिन की छुट्टी के लिए आवेदन किया है। आपने LWP (बिना वेतन की छुट्टी) का चयन किया है। आपके पूरे ${appliedDays} दिन का वेतन काटा जाएगा।`;
-                      } else {
-                        const effectiveCL = Math.min(3, availableAccCL);
-                        const maxPaidPossible = Math.min(10, effectiveCL + availableAccEL);
-                        const totalAvailable = availableAccEL + availableAccCL;
-
-                        if (appliedDays > maxPaidPossible) {
-                          const lwpDays = appliedDays - maxPaidPossible;
-                          if (totalAvailable > maxPaidPossible) {
-                            leaveWarning = `आपने कुल ${appliedDays} दिन की छुट्टी के लिए आवेदन किया है। आपके पास कुल ${totalAvailable} छुट्टियां (EL: ${availableAccEL}, CL: ${availableAccCL}) हैं, लेकिन आप एक बार में अधिकतम 10 दिन (जिसमें अधिकतम 3 CL शामिल हो सकते हैं) की ही सवेतन छुट्टी ले सकते हैं। अतः आपके अतिरिक्त ${lwpDays} दिन LWP (बिना वेतन) माने जाएंगे।`;
-                          } else {
-                            leaveWarning = `आपने कुल ${appliedDays} दिन की छुट्टी के लिए आवेदन किया है। आपके पास केवल ${totalAvailable} छुट्टियां (EL: ${availableAccEL}, CL: ${availableAccCL}) उपलब्ध हैं। आपके अतिरिक्त ${lwpDays} दिन LWP (बिना वेतन) माने जाएंगे।`;
-                          }
-                        } else {
-                          leaveNote = `आपने कुल ${appliedDays} दिन की छुट्टी के लिए आवेदन किया है। आपके पास पर्याप्त छुट्टियां (कुल: ${totalAvailable} -> EL: ${availableAccEL}, CL: ${availableAccCL}) उपलब्ध हैं। आपके वेतन से कोई कटौती नहीं होगी।`;
-                        }
-                      }
-
-                      if (leaveWarning) {
-                        return (
-                          <div className="absolute z-[60] bottom-full mb-2 left-1/2 -translate-x-1/2 w-[280px] sm:top-1/2 sm:-translate-y-1/2 sm:right-full sm:mr-3 sm:left-auto sm:translate-x-0 sm:bottom-auto sm:mb-0 sm:w-80 bg-rose-50 border border-rose-200 rounded-xl p-3 shadow-2xl animate-in fade-in zoom-in duration-200">
-                            <div className="flex gap-2 items-start">
-                              <AlertCircle className="text-rose-600 shrink-0 mt-0.5" size={16} />
-                              <div>
-                                <p className="text-xs font-bold text-rose-900 leading-snug">छुट्टी अलर्ट</p>
-                                <p className="text-[10px] text-rose-700 mt-0.5 font-medium leading-relaxed whitespace-normal text-left">{leaveWarning}</p>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      } else if (leaveNote) {
-                        return (
-                          <div className="absolute z-[60] bottom-full mb-2 left-1/2 -translate-x-1/2 w-[280px] sm:top-1/2 sm:-translate-y-1/2 sm:right-full sm:mr-3 sm:left-auto sm:translate-x-0 sm:bottom-auto sm:mb-0 sm:w-80 bg-emerald-50 border border-emerald-200 rounded-xl p-3 shadow-2xl animate-in fade-in zoom-in duration-200">
-                            <div className="flex gap-2 items-start">
-                              <CheckCircle className="text-emerald-600 shrink-0 mt-0.5" size={16} />
-                              <div>
-                                <p className="text-xs font-bold text-emerald-900 leading-snug">छुट्टी विवरण</p>
-                                <p className="text-[10px] text-emerald-700 mt-0.5 font-medium leading-relaxed whitespace-normal text-left">{leaveNote}</p>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()}
+                    ) : (
+                      <span className="font-semibold text-slate-700">{formatDate(item.startDate)}</span>
+                    )}
                   </div>
-                ) : (
-                  <div className="flex flex-col">
-                    <span className="font-medium text-slate-700">{item.leaveType}</span>
-                    {(item.casual > 0 || item.earned > 0 || item.unpaid > 0) && (
-                      <div className="flex gap-1.5 mt-1">
-                        {item.casual > 0 && <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[10px] font-bold">CL: {item.casual}</span>}
-                        {item.earned > 0 && <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold">EL: {item.earned}</span>}
-                        {item.unpaid > 0 && <span className="px-1.5 py-0.5 bg-rose-50 text-rose-600 rounded text-[10px] font-bold">LOP: {item.unpaid}</span>}
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-slate-400 block">To</span>
+                    {isSelected ? (
+                      <input
+                        type="date"
+                        value={editableDates[item.id]?.to || ""}
+                        onChange={(e) => handleDateChange(item.id, "to", e.target.value)}
+                        className="p-1 text-xs border rounded border-slate-300 w-full mt-0.5 bg-white"
+                      />
+                    ) : (
+                      <span className="font-semibold text-slate-700">{formatDate(item.endDate)}</span>
+                    )}
+                  </div>
+                  <div className="col-span-2 pt-1 border-t border-slate-200/60 flex items-center justify-between">
+                    <span className="text-slate-600">
+                      Duration: <strong className="text-slate-900">{daysCount} days</strong>
+                    </span>
+                    {item.monthSplit && (
+                      <span className="text-[11px] text-slate-500">↳ {item.monthSplit}</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Details */}
+                <div className="space-y-1 text-xs text-slate-600">
+                  <div className="flex justify-between">
+                    <span className="font-medium text-slate-500">Leave Type:</span>
+                    <span className="font-semibold text-slate-800">{item.leaveType}</span>
+                  </div>
+                  {item.reason && (
+                    <div>
+                      <span className="font-medium text-slate-500 block">Reason:</span>
+                      <p className="text-slate-800 italic mt-0.5 bg-slate-50 p-2 rounded border border-slate-100">{item.reason}</p>
+                    </div>
+                  )}
+                  <div className="flex justify-between pt-1">
+                    <span className="font-medium text-slate-500">HOD:</span>
+                    <span className="text-slate-700">{item.hodName || "-"}</span>
+                  </div>
+                </div>
+
+                {/* Remarks & Allocation if Selected */}
+                {isSelected && (
+                  <div className="space-y-2 pt-2 border-t border-slate-200">
+                    {isHod && (
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">HOD Remarks:</label>
+                        <input
+                          type="text"
+                          placeholder="Add HOD Remarks..."
+                          value={remarksInputs[item.id]?.hod || ""}
+                          onChange={(e) => handleRemarkChange(item.id, "hod", e.target.value)}
+                          className="w-full p-2 text-xs border rounded-lg border-slate-300 focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                    )}
+                    {isHr && (
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">HR Remarks:</label>
+                        <input
+                          type="text"
+                          placeholder="Add HR Remarks..."
+                          value={remarksInputs[item.id]?.hr || ""}
+                          onChange={(e) => handleRemarkChange(item.id, "hr", e.target.value)}
+                          className="w-full p-2 text-xs border rounded-lg border-slate-300 focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                    )}
+
+                    {isHr && (item.status === "Pending HR" || item.status === "Pending" || item.status === "Pending HOD") && (
+                      <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 space-y-2">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase block">Leave Allocation (CL/EL/LOP)</span>
+                        <div className="grid grid-cols-3 gap-2 text-center">
+                          <div className="bg-white p-1.5 rounded border border-slate-200">
+                            <span className="text-[10px] font-bold text-indigo-600 block">CL</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.5"
+                              value={rowCounts.casual}
+                              onChange={(e) => handleCountChange(item.id, "casual", parseFloat(e.target.value) || 0)}
+                              className="w-full text-center text-xs border rounded border-slate-300 p-1 font-semibold"
+                            />
+                          </div>
+                          <div className="bg-white p-1.5 rounded border border-slate-200">
+                            <span className="text-[10px] font-bold text-emerald-600 block">EL</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.5"
+                              value={rowCounts.earned}
+                              onChange={(e) => handleCountChange(item.id, "earned", parseFloat(e.target.value) || 0)}
+                              className="w-full text-center text-xs border rounded border-slate-300 p-1 font-semibold"
+                            />
+                          </div>
+                          <div className="bg-white p-1.5 rounded border border-slate-200">
+                            <span className="text-[10px] font-bold text-rose-600 block">LOP</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.5"
+                              value={rowCounts.unpaid}
+                              onChange={(e) => handleCountChange(item.id, "unpaid", parseFloat(e.target.value) || 0)}
+                              className="w-full text-center text-xs border rounded border-slate-300 p-1 font-semibold"
+                            />
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
                 )}
-              </td>
-              <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                {item.hodName}
-              </td>
-              {showHodColumn && (
-                <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                  {user?.is_hod &&
-                    (item.status === "Pending" ||
-                      item.status === "Pending HOD") &&
-                    selectedRow?.id === item.id ? (
-                    <input
-                      type="text"
-                      placeholder="HOD Remarks"
-                      value={remarksInputs[item.id]?.hod || ""}
-                      onChange={(e) =>
-                        handleRemarkChange(item.id, "hod", e.target.value)
-                      }
-                      className="w-full min-w-[200px] px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent shadow-sm transition-all"
-                      onClick={(e) => e.stopPropagation()}
-                    />
+
+                {/* Actions */}
+                <div className="flex gap-2 pt-2 border-t border-slate-100">
+                  {isAuthorized ? (
+                    <>
+                      <button
+                        onClick={() => handleLeaveAction("accept", item)}
+                        disabled={!isSelected || loading || isInvalid}
+                        className={`flex-1 py-2 text-xs font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-sm text-center ${!isSelected || loading || isInvalid ? "opacity-60 cursor-not-allowed" : ""
+                          }`}
+                      >
+                        {loading && actionInProgress === "accept" ? "Accepting..." : "Accept"}
+                      </button>
+                      <button
+                        onClick={() => handleLeaveAction("rejected", item)}
+                        disabled={!isSelected || loading}
+                        className={`flex-1 py-2 text-xs font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors shadow-sm text-center ${!isSelected || loading ? "opacity-60 cursor-not-allowed" : ""
+                          }`}
+                      >
+                        {loading && actionInProgress === "rejected" ? "Rejecting..." : "Reject"}
+                      </button>
+                    </>
                   ) : (
-                    item.hodRemarks || "-"
+                    <span className="text-xs italic text-slate-400 w-full text-center py-1">
+                      {item.status === "Pending" || item.status === "Pending HOD"
+                        ? "Waiting for HOD"
+                        : item.status === "Pending HR"
+                          ? "Waiting for HR"
+                          : "-"}
+                    </span>
                   )}
-                </td>
-              )}
-              {showHrColumn && (
-                <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                  {isHr &&
-                    item.status === "Pending HR" &&
-                    (selectedRow?.id === item.id || selectedIds.includes(item.id)) ? (
-                    <input
-                      type="text"
-                      placeholder="HR Remarks"
-                      value={remarksInputs[item.id]?.hr || ""}
-                      onChange={(e) =>
-                        handleRemarkChange(item.id, "hr", e.target.value)
-                      }
-                      className="w-full min-w-[200px] px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent shadow-sm transition-all"
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  ) : (
-                    item.hrRemarks || "-"
-                  )}
-                </td>
-              )}
-              <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                {(() => {
-                  const originalDays = item.days || calculateDays(item.startDate, item.endDate);
-                  const rowDates = editableDates[item.id] || {};
-                  const rowCounts = leaveCounts[item.id] || { casual: 0, earned: 0, unpaid: 0 };
-
-                  const newStartDate = rowDates.from || item.startDate;
-                  const newEndDate = rowDates.to || item.endDate;
-                  const newDays = calculateDays(newStartDate, newEndDate);
-                  const totalNewCounts = (rowCounts.casual || 0) + (rowCounts.earned || 0) + (rowCounts.unpaid || 0);
-
-                  const isDaysInvalid = newDays > originalDays;
-                  const isCountsInvalid = totalNewCounts > originalDays;
-                  const isInvalid = isDaysInvalid || isCountsInvalid;
-
-                  return (
-                    <div className="flex flex-col gap-1">
-                      {isInvalid && selectedIds.includes(item.id) && (
-                        <div className="text-[10px] text-red-500 font-medium leading-tight max-w-[120px] whitespace-normal">
-                          {isDaysInvalid ? `आप ${originalDays} दिन से ज्यादा अप्रूव नहीं कर सकते।` : `छुट्टियों का विवरण ${originalDays} दिन से ज्यादा है।`}
-                        </div>
-                      )}
-                      <div className="flex space-x-2">
-                        {(user?.is_hod &&
-                          (item.status === "Pending" ||
-                            item.status === "Pending HOD") &&
-                          (item.hodName === user?.full_name ||
-                            item.hodName === user?.Name)) ||
-                          ((user?.role === "hr" ||
-                            user?.role === "HR" ||
-                            user?.role === "admin" ||
-                            user.role === "Admin" ||
-                            user?.Admin === "Yes") &&
-                            (item.status === "Pending HR" ||
-                              item.status === "Pending" ||
-                              item.status === "Pending HOD")) ? (
-                          <>
-                            <button
-                              onClick={() => handleLeaveAction("accept", item)}
-                              disabled={
-                                !selectedIds.includes(item.id) || loading || isInvalid
-                              }
-                              className={`px-3 py-1.5 text-xs font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-sm ${!selectedIds.includes(item.id) || loading || isInvalid
-                                ? "opacity-75 cursor-not-allowed"
-                                : ""
-                                }`}
-                            >
-                              {loading &&
-                                actionInProgress === "accept" ? (
-                                <span className="flex items-center">
-                                  <svg
-                                    className="w-3 h-3 mr-1 text-white animate-spin"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <circle
-                                      className="opacity-25"
-                                      cx="12"
-                                      cy="12"
-                                      r="10"
-                                      stroke="currentColor"
-                                      strokeWidth="4"
-                                    ></circle>
-                                    <path
-                                      className="opacity-75"
-                                      fill="currentColor"
-                                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                    ></path>
-                                  </svg>
-                                  Accepting
-                                </span>
-                              ) : (
-                                "Accept"
-                              )}
-                            </button>
-                            <button
-                              onClick={() => handleLeaveAction("rejected", item)}
-                              disabled={!selectedIds.includes(item.id) || loading}
-                              className={`px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors shadow-sm ${!selectedIds.includes(item.id) ||
-                                (loading && actionInProgress === "accept")
-                                ? "opacity-75 cursor-not-allowed"
-                                : ""
-                                }`}
-                            >
-                              {loading &&
-                                actionInProgress === "rejected" ? (
-                                <span className="flex items-center">
-                                  <svg
-                                    className="w-3 h-3 mr-1 text-white animate-spin"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <circle
-                                      className="opacity-25"
-                                      cx="12"
-                                      cy="12"
-                                      r="10"
-                                      stroke="currentColor"
-                                      strokeWidth="4"
-                                    ></circle>
-                                    <path
-                                      className="opacity-75"
-                                      fill="currentColor"
-                                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                    ></path>
-                                  </svg>
-                                  Rejecting
-                                </span>
-                              ) : (
-                                "Reject"
-                              )}
-                            </button>
-                          </>
-                        ) : // Fallback for HR when status is Pending (HOD has not approved yet)
-                          (user?.role === "hr" ||
-                            user?.role === "HR" ||
-                            user?.role === "admin" ||
-                            user?.role === "Admin" ||
-                            user?.Admin === "Yes") &&
-                            (item.status === "Pending" ||
-                              item.status === "Pending HOD") ? (
-                            <span className="text-xs italic font-medium text-orange-500">
-                              Waiting for HOD
-                            </span>
-                          ) : (
-                            <span className="text-xs italic text-slate-400">
-                              {item.status === "Pending" ||
-                                item.status === "Pending HOD"
-                                ? "Waiting for HOD"
-                                : item.status === "Pending HR"
-                                  ? "Waiting for HR"
-                                  : "-"}
-                            </span>
-                          )}
-                      </div>
-                    </div>
-                  );
-                })()}
-              </td>
-            </tr>
-          ))
+                </div>
+              </div>
+            );
+          })
         ) : (
-          <tr>
-            <td colSpan={13} className="px-6 py-12 text-center text-slate-500">
-              No pending leave requests found.
-            </td>
-          </tr>
+          <div className="p-8 text-center text-slate-500 bg-white rounded-xl border border-slate-200">
+            No pending leave requests found.
+          </div>
         )}
-      </tbody>
-    </table>
+      </div>
+    </>
   );
 
   const renderApprovedLeavesTable = (data = []) => (
-    <table className="min-w-full divide-y divide-slate-100">
-      <thead className="sticky top-0 z-10 border-b bg-slate-50 border-slate-200">
-        <tr>
-          <th className="w-4 px-4 py-3 sm:px-6 sm:py-4"></th>
-          {isAdmin && (
-            <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-              Actions
-            </th>
-          )}
-          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            Status
-          </th>
-          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            Employee ID
-          </th>
-          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            Name
-          </th>
-          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            From
-          </th>
-          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            To
-          </th>
-          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            Days
-          </th>
-          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            Reason
-          </th>
-          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            Leave Type
-          </th>
-          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            HOD Name
-          </th>
-          {showHodColumn && (
-            <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-              HOD Key Remarks
-            </th>
-          )}
-          {showHrColumn && (
-            <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-              HR Key Remarks
-            </th>
-          )}
-        </tr>
-      </thead>
-      <tbody className="bg-white divide-y divide-slate-100">
-        {data.length > 0 ? (
-          data.map((item, index) => (
-            <tr key={index} className={`transition-colors ${item.isActive ? 'bg-green-50 hover:bg-green-100' : 'bg-slate-50 hover:bg-slate-100'}`}>
-              <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
-                <div className={`h-2.5 w-2.5 rounded-full ${item.isActive ? 'bg-green-500' : 'bg-slate-400'}`}></div>
-              </td>
+    <>
+      <div className="hidden md:block overflow-x-auto">
+        <table className="min-w-full divide-y divide-slate-100">
+          <thead className="sticky top-0 z-10 border-b bg-slate-50 border-slate-200">
+            <tr>
+              <th className="w-4 px-4 py-3 sm:px-6 sm:py-4"></th>
               {isAdmin && (
-                <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                  <div className="flex space-x-2">
+                <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                  Actions
+                </th>
+              )}
+              <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                Status
+              </th>
+              <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                Employee ID
+              </th>
+              <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                Name
+              </th>
+              <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                From
+              </th>
+              <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                To
+              </th>
+              <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                Days
+              </th>
+              <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                Reason
+              </th>
+              <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                Leave Type
+              </th>
+              <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                HOD Name
+              </th>
+              {showHodColumn && (
+                <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                  HOD Key Remarks
+                </th>
+              )}
+              {showHrColumn && (
+                <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                  HR Key Remarks
+                </th>
+              )}
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-slate-100">
+            {data.length > 0 ? (
+              data.map((item, index) => (
+                <tr key={index} className={`transition-colors ${item.isActive ? 'bg-green-50 hover:bg-green-100' : 'bg-slate-50 hover:bg-slate-100'}`}>
+                  <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
+                    <div className={`h-2.5 w-2.5 rounded-full ${item.isActive ? 'bg-green-500' : 'bg-slate-400'}`}></div>
+                  </td>
+                  {isAdmin && (
+                    <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
+                      <div className="flex space-x-2">
+                        {editingApprovedId === item.id ? (
+                          <>
+                            <button
+                              onClick={() => handleSaveApproved(item)}
+                              disabled={loading}
+                              className="px-2 py-1 text-xs font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-sm disabled:opacity-50"
+                            >
+                              {loading ? "..." : "Save"}
+                            </button>
+                            <button
+                              onClick={handleCancelEdit}
+                              disabled={loading}
+                              className="px-2 py-1 text-xs font-medium text-white bg-slate-500 rounded-lg hover:bg-slate-600 transition-colors shadow-sm disabled:opacity-50"
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => handleEditApproved(item)}
+                            className="px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+                          >
+                            Edit
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  )}
+                  <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
+                    <span className="px-2 py-1 text-xs font-semibold text-green-800 bg-green-100 rounded-full">
+                      {item.status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
+                    {item.employeeId}
+                  </td>
+                  <td className="px-4 py-3 text-sm font-medium sm:px-6 sm:py-4 whitespace-nowrap text-slate-900">
+                    <div className="flex flex-col">
+                      <span>{item.employeeName}</span>
+                      {rowQuotas[item.employeeId] ? (
+                        <div className="flex gap-1.5 mt-1 text-[9px] font-bold uppercase tracking-tighter">
+                          <span className="text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded border border-emerald-100">
+                            EL: {(rowQuotas[item.employeeId].earned_leave_limit || 24) - (rowQuotas[item.employeeId].earned_leave_used || 0)}
+                          </span>
+                          <span className="text-indigo-700 bg-indigo-50 px-1 py-0.5 rounded border border-indigo-100">
+                            CL: {(rowQuotas[item.employeeId].casual_leave_limit || 12) - (rowQuotas[item.employeeId].casual_leave_used || 0)}
+                          </span>
+                          <span className="text-purple-700 bg-purple-50 px-1 py-0.5 rounded border border-purple-100">
+                            CF: {rowQuotas[item.employeeId].carried_forward_el || 0}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex gap-1.5 mt-1 text-[9px] font-bold uppercase tracking-tighter opacity-60">
+                          <span className="text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded border border-emerald-100">EL: 24</span>
+                          <span className="text-indigo-700 bg-indigo-50 px-1 py-0.5 rounded border border-indigo-100">CL: 12</span>
+                          <span className="text-purple-700 bg-purple-50 px-1 py-0.5 rounded border border-purple-100">CF: 0</span>
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-600">
                     {editingApprovedId === item.id ? (
+                      <input
+                        type="date"
+                        value={tempApprovedData.startDate || ""}
+                        onChange={(e) => setTempApprovedData({ ...tempApprovedData, startDate: e.target.value })}
+                        className="p-1 text-sm border rounded border-slate-300 focus:ring-1 focus:ring-indigo-500"
+                      />
+                    ) : (
+                      formatDate(item.startDate)
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-600">
+                    {editingApprovedId === item.id ? (
+                      <input
+                        type="date"
+                        value={tempApprovedData.endDate || ""}
+                        onChange={(e) => setTempApprovedData({ ...tempApprovedData, endDate: e.target.value })}
+                        className="p-1 text-sm border rounded border-slate-300 focus:ring-1 focus:ring-indigo-500"
+                      />
+                    ) : (
+                      formatDate(item.endDate)
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
+                    <div className="flex flex-col">
+                      <span className="text-slate-700">
+                        {editingApprovedId === item.id
+                          ? calculateDays(tempApprovedData.startDate, tempApprovedData.endDate)
+                          : item.days} days
+                      </span>
+                      {item.monthSplit && (
+                        <span className="text-xs text-slate-500 flex items-center gap-1">
+                          <span className="text-slate-400">↳</span> {item.monthSplit}
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
+                    {item.reason}
+                  </td>
+                  <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
+                    {editingApprovedId === item.id ? (
+                      <div className="flex flex-col gap-1.5 p-2 bg-slate-50 rounded-lg border border-slate-200 min-w-[140px]">
+                        <select
+                          value={tempApprovedData.leaveType}
+                          onChange={(e) => setTempApprovedData({ ...tempApprovedData, leaveType: e.target.value })}
+                          className="w-full mb-1 p-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500"
+                        >
+                          {leaveTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase">CL:</span>
+                          <input
+                            type="number"
+                            value={tempApprovedData.casual}
+                            onChange={(e) => setTempApprovedData({ ...tempApprovedData, casual: parseFloat(e.target.value) || 0 })}
+                            className="w-14 px-1.5 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 font-mono"
+                            min="0"
+                            step="1"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase">EL:</span>
+                          <input
+                            type="number"
+                            value={tempApprovedData.earned}
+                            onChange={(e) => setTempApprovedData({ ...tempApprovedData, earned: parseFloat(e.target.value) || 0 })}
+                            className="w-14 px-1.5 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 font-mono"
+                            min="0"
+                            step="1"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase">LOP:</span>
+                          <input
+                            type="number"
+                            value={tempApprovedData.unpaid}
+                            onChange={(e) => setTempApprovedData({ ...tempApprovedData, unpaid: parseFloat(e.target.value) || 0 })}
+                            className="w-14 px-1.5 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 font-mono"
+                            min="0"
+                            step="1"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col">
+                        <span className="font-medium text-slate-700">{item.leaveType}</span>
+                        {(item.casual > 0 || item.earned > 0 || item.unpaid > 0) && (
+                          <div className="flex gap-1.5 mt-1">
+                            {item.casual > 0 && <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[10px] font-bold">CL: {item.casual}</span>}
+                            {item.earned > 0 && <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold">EL: {item.earned}</span>}
+                            {item.unpaid > 0 && <span className="px-1.5 py-0.5 bg-rose-50 text-rose-600 rounded text-[10px] font-bold">LOP: {item.unpaid}</span>}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
+                    {item.hodName}
+                  </td>
+                  {showHodColumn && (
+                    <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
+                      {item.hodRemarks || "-"}
+                    </td>
+                  )}
+                  {showHrColumn && (
+                    <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
+                      {item.hrRemarks || "-"}
+                    </td>
+                  )}
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={isAdmin ? 14 : 13} className="px-6 py-12 text-center text-slate-500">
+                  No approved leave requests found.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Mobile Cards */}
+      <div className="block md:hidden space-y-3 p-3">
+        {data.length > 0 ? (
+          data.map((item, index) => {
+            const quota = rowQuotas[item.employeeId];
+            const isEditing = editingApprovedId === item.id;
+
+            return (
+              <div
+                key={item.id || index}
+                className={`bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-3 border-l-4 ${item.isActive ? "border-l-green-500" : "border-l-slate-400"
+                  }`}
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <div className="flex items-center gap-2">
+                    <div className={`h-2.5 w-2.5 rounded-full ${item.isActive ? "bg-green-500" : "bg-slate-400"}`} />
+                    <span className="text-xs font-semibold text-slate-500">ID: {item.employeeId}</span>
+                  </div>
+                  <span className="px-2.5 py-0.5 text-xs font-semibold text-green-800 bg-green-100 rounded-full">
+                    {item.status}
+                  </span>
+                </div>
+
+                {/* Name & Quotas */}
+                <div>
+                  <h4 className="text-base font-bold text-slate-900">{item.employeeName}</h4>
+                  {quota ? (
+                    <div className="flex gap-1.5 mt-1 text-[9px] font-bold uppercase tracking-tighter">
+                      <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
+                        EL: {(quota.earned_leave_limit || 24) - (quota.earned_leave_used || 0)}
+                      </span>
+                      <span className="text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
+                        CL: {(quota.casual_leave_limit || 12) - (quota.casual_leave_used || 0)}
+                      </span>
+                      <span className="text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-100">
+                        CF: {quota.carried_forward_el || 0}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex gap-1.5 mt-1 text-[9px] font-bold uppercase tracking-tighter opacity-60">
+                      <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">EL: 24</span>
+                      <span className="text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">CL: 12</span>
+                      <span className="text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-100">CF: 0</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Dates & Duration */}
+                <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-slate-400 block">From</span>
+                    {isEditing ? (
+                      <input
+                        type="date"
+                        value={tempApprovedData.startDate || ""}
+                        onChange={(e) => setTempApprovedData({ ...tempApprovedData, startDate: e.target.value })}
+                        className="p-1 text-xs border rounded border-slate-300 w-full mt-0.5 bg-white"
+                      />
+                    ) : (
+                      <span className="font-semibold text-slate-700">{formatDate(item.startDate)}</span>
+                    )}
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-slate-400 block">To</span>
+                    {isEditing ? (
+                      <input
+                        type="date"
+                        value={tempApprovedData.endDate || ""}
+                        onChange={(e) => setTempApprovedData({ ...tempApprovedData, endDate: e.target.value })}
+                        className="p-1 text-xs border rounded border-slate-300 w-full mt-0.5 bg-white"
+                      />
+                    ) : (
+                      <span className="font-semibold text-slate-700">{formatDate(item.endDate)}</span>
+                    )}
+                  </div>
+                  <div className="col-span-2 pt-1 border-t border-slate-200/60 flex items-center justify-between">
+                    <span className="text-slate-600">
+                      Duration: <strong className="text-slate-900">{isEditing ? calculateDays(tempApprovedData.startDate, tempApprovedData.endDate) : item.days} days</strong>
+                    </span>
+                    {item.monthSplit && <span className="text-[11px] text-slate-500">↳ {item.monthSplit}</span>}
+                  </div>
+                </div>
+
+                {/* Details */}
+                <div className="space-y-1 text-xs text-slate-600">
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium text-slate-500">Type:</span>
+                    <span className="font-semibold text-slate-800">{item.leaveType}</span>
+                  </div>
+                  {(item.casual > 0 || item.earned > 0 || item.unpaid > 0) && (
+                    <div className="flex gap-1.5 mt-1">
+                      {item.casual > 0 && <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[10px] font-bold">CL: {item.casual}</span>}
+                      {item.earned > 0 && <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold">EL: {item.earned}</span>}
+                      {item.unpaid > 0 && <span className="px-1.5 py-0.5 bg-rose-50 text-rose-600 rounded text-[10px] font-bold">LOP: {item.unpaid}</span>}
+                    </div>
+                  )}
+                  {item.reason && (
+                    <div className="pt-1">
+                      <span className="font-medium text-slate-500 block">Reason:</span>
+                      <p className="text-slate-800 italic mt-0.5 bg-slate-50 p-2 rounded border border-slate-100">{item.reason}</p>
+                    </div>
+                  )}
+                  <div className="flex justify-between pt-1">
+                    <span className="font-medium text-slate-500">HOD:</span>
+                    <span className="text-slate-700">{item.hodName || "-"}</span>
+                  </div>
+                  {showHodColumn && item.hodRemarks && (
+                    <div className="text-[11px]">
+                      <span className="font-medium text-slate-500">HOD Remarks:</span> {item.hodRemarks}
+                    </div>
+                  )}
+                  {showHrColumn && item.hrRemarks && (
+                    <div className="text-[11px]">
+                      <span className="font-medium text-slate-500">HR Remarks:</span> {item.hrRemarks}
+                    </div>
+                  )}
+                </div>
+
+                {/* Admin Actions */}
+                {isAdmin && (
+                  <div className="pt-2 border-t border-slate-100 flex justify-end gap-2">
+                    {isEditing ? (
                       <>
                         <button
                           onClick={() => handleSaveApproved(item)}
                           disabled={loading}
-                          className="px-2 py-1 text-xs font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-sm disabled:opacity-50"
+                          className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-sm disabled:opacity-50"
                         >
                           {loading ? "..." : "Save"}
                         </button>
                         <button
                           onClick={handleCancelEdit}
                           disabled={loading}
-                          className="px-2 py-1 text-xs font-medium text-white bg-slate-500 rounded-lg hover:bg-slate-600 transition-colors shadow-sm disabled:opacity-50"
+                          className="px-3 py-1.5 text-xs font-medium text-white bg-slate-500 rounded-lg hover:bg-slate-600 transition-colors shadow-sm disabled:opacity-50"
                         >
                           Cancel
                         </button>
@@ -2378,281 +2599,218 @@ const LeaveManagement = () => {
                       </button>
                     )}
                   </div>
-                </td>
-              )}
-              <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
-                <span className="px-2 py-1 text-xs font-semibold text-green-800 bg-green-100 rounded-full">
-                  {item.status}
-                </span>
-              </td>
-              <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                {item.employeeId}
-              </td>
-              <td className="px-4 py-3 text-sm font-medium sm:px-6 sm:py-4 whitespace-nowrap text-slate-900">
-                <div className="flex flex-col">
-                  <span>{item.employeeName}</span>
-                  {rowQuotas[item.employeeId] ? (
-                    <div className="flex gap-1.5 mt-1 text-[9px] font-bold uppercase tracking-tighter">
-                      <span className="text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded border border-emerald-100">
-                        EL: {(rowQuotas[item.employeeId].earned_leave_limit || 24) - (rowQuotas[item.employeeId].earned_leave_used || 0)}
-                      </span>
-                      <span className="text-indigo-700 bg-indigo-50 px-1 py-0.5 rounded border border-indigo-100">
-                        CL: {(rowQuotas[item.employeeId].casual_leave_limit || 12) - (rowQuotas[item.employeeId].casual_leave_used || 0)}
-                      </span>
-                      <span className="text-purple-700 bg-purple-50 px-1 py-0.5 rounded border border-purple-100">
-                        CF: {rowQuotas[item.employeeId].carried_forward_el || 0}
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="flex gap-1.5 mt-1 text-[9px] font-bold uppercase tracking-tighter opacity-60">
-                      <span className="text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded border border-emerald-100">EL: 24</span>
-                      <span className="text-indigo-700 bg-indigo-50 px-1 py-0.5 rounded border border-indigo-100">CL: 12</span>
-                      <span className="text-purple-700 bg-purple-50 px-1 py-0.5 rounded border border-purple-100">CF: 0</span>
-                    </div>
-                  )}
-                </div>
-              </td>
-              <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-600">
-                {editingApprovedId === item.id ? (
-                  <input
-                    type="date"
-                    value={tempApprovedData.startDate || ""}
-                    onChange={(e) => setTempApprovedData({ ...tempApprovedData, startDate: e.target.value })}
-                    className="p-1 text-sm border rounded border-slate-300 focus:ring-1 focus:ring-indigo-500"
-                  />
-                ) : (
-                  formatDate(item.startDate)
                 )}
-              </td>
-              <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-600">
-                {editingApprovedId === item.id ? (
-                  <input
-                    type="date"
-                    value={tempApprovedData.endDate || ""}
-                    onChange={(e) => setTempApprovedData({ ...tempApprovedData, endDate: e.target.value })}
-                    className="p-1 text-sm border rounded border-slate-300 focus:ring-1 focus:ring-indigo-500"
-                  />
-                ) : (
-                  formatDate(item.endDate)
-                )}
-              </td>
-              <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                <div className="flex flex-col">
-                  <span className="text-slate-700">
-                    {editingApprovedId === item.id
-                      ? calculateDays(tempApprovedData.startDate, tempApprovedData.endDate)
-                      : item.days} days
-                  </span>
-                  {item.monthSplit && (
-                    <span className="text-xs text-slate-500 flex items-center gap-1">
-                      <span className="text-slate-400">↳</span> {item.monthSplit}
-                    </span>
-                  )}
-                </div>
-              </td>
-              <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                {item.reason}
-              </td>
-              <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                {editingApprovedId === item.id ? (
-                  <div className="flex flex-col gap-1.5 p-2 bg-slate-50 rounded-lg border border-slate-200 min-w-[140px]">
-                    <select
-                      value={tempApprovedData.leaveType}
-                      onChange={(e) => setTempApprovedData({ ...tempApprovedData, leaveType: e.target.value })}
-                      className="w-full mb-1 p-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500"
-                    >
-                      {leaveTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase">CL:</span>
-                      <input
-                        type="number"
-                        value={tempApprovedData.casual}
-                        onChange={(e) => setTempApprovedData({ ...tempApprovedData, casual: parseFloat(e.target.value) || 0 })}
-                        className="w-14 px-1.5 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 font-mono"
-                        min="0"
-                        step="1"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase">EL:</span>
-                      <input
-                        type="number"
-                        value={tempApprovedData.earned}
-                        onChange={(e) => setTempApprovedData({ ...tempApprovedData, earned: parseFloat(e.target.value) || 0 })}
-                        className="w-14 px-1.5 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 font-mono"
-                        min="0"
-                        step="1"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase">LOP:</span>
-                      <input
-                        type="number"
-                        value={tempApprovedData.unpaid}
-                        onChange={(e) => setTempApprovedData({ ...tempApprovedData, unpaid: parseFloat(e.target.value) || 0 })}
-                        className="w-14 px-1.5 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 font-mono"
-                        min="0"
-                        step="1"
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col">
-                    <span className="font-medium text-slate-700">{item.leaveType}</span>
-                    {(item.casual > 0 || item.earned > 0 || item.unpaid > 0) && (
-                      <div className="flex gap-1.5 mt-1">
-                        {item.casual > 0 && <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[10px] font-bold">CL: {item.casual}</span>}
-                        {item.earned > 0 && <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold">EL: {item.earned}</span>}
-                        {item.unpaid > 0 && <span className="px-1.5 py-0.5 bg-rose-50 text-rose-600 rounded text-[10px] font-bold">LOP: {item.unpaid}</span>}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </td>
-              <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                {item.hodName}
-              </td>
-              {showHodColumn && (
-                <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                  {item.hodRemarks || "-"}
-                </td>
-              )}
-              {showHrColumn && (
-                <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                  {item.hrRemarks || "-"}
-                </td>
-              )}
-            </tr>
-          ))
+              </div>
+            );
+          })
         ) : (
-          <tr>
-            <td colSpan={isAdmin ? 14 : 13} className="px-6 py-12 text-center text-slate-500">
-              No approved leave requests found.
-            </td>
-          </tr>
+          <div className="p-8 text-center text-slate-500 bg-white rounded-xl border border-slate-200">
+            No approved leave requests found.
+          </div>
         )}
-      </tbody>
-    </table>
+      </div>
+    </>
   );
 
   const renderRejectedLeavesTable = (data = []) => (
-    <table className="min-w-full divide-y divide-slate-100">
-      <thead className="sticky top-0 z-10 border-b bg-slate-50 border-slate-200">
-        <tr>
-          <th className="w-4 px-4 py-3 sm:px-6 sm:py-4"></th>
-          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            Status
-          </th>
-          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            Employee ID
-          </th>
-          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            Name
-          </th>
-          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            From
-          </th>
-          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            To
-          </th>
-          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            Days
-          </th>
-          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            Reason
-          </th>
-          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            Leave Type
-          </th>
-          <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-            HOD Name
-          </th>
-          {showHodColumn && (
-            <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-              HOD Key Remarks
-            </th>
-          )}
-          {showHrColumn && (
-            <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
-              HR Key Remarks
-            </th>
-          )}
-        </tr>
-      </thead>
-      <tbody className="bg-white divide-y divide-slate-100">
-        {data.length > 0 ? (
-          data.map((item, index) => (
-            <tr key={index} className="transition-colors bg-red-50 hover:bg-red-100">
-              <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
-                <div className="h-2.5 w-2.5 rounded-full bg-red-500"></div>
-              </td>
-              <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
-                <span className="px-2 py-1 text-xs font-semibold text-red-800 bg-red-100 rounded-full">
-                  {item.status}
-                </span>
-              </td>
-              <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                {item.employeeId}
-              </td>
-              <td className="px-4 py-3 text-sm font-medium sm:px-6 sm:py-4 whitespace-nowrap text-slate-900">
-                {item.employeeName}
-              </td>
-              <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-600">
-                {formatDate(item.startDate)}
-              </td>
-              <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-600">
-                {formatDate(item.endDate)}
-              </td>
-              <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                <div className="flex flex-col">
-                  <span className="text-slate-700">{item.days} days</span>
-                  {item.monthSplit && (
-                    <span className="text-xs text-slate-500 flex items-center gap-1">
-                      <span className="text-slate-400">↳</span> {item.monthSplit}
-                    </span>
-                  )}
-                </div>
-              </td>
-              <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                {item.reason}
-              </td>
-              <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                <div className="flex flex-col">
-                  <span className="font-medium text-slate-700">{item.leaveType}</span>
-                  {(item.casual > 0 || item.earned > 0 || item.unpaid > 0) && (
-                    <div className="flex gap-1.5 mt-1">
-                      {item.casual > 0 && <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[10px] font-bold">CL: {item.casual}</span>}
-                      {item.earned > 0 && <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold">EL: {item.earned}</span>}
-                      {item.unpaid > 0 && <span className="px-1.5 py-0.5 bg-rose-50 text-rose-600 rounded text-[10px] font-bold">LOP: {item.unpaid}</span>}
-                    </div>
-                  )}
-                </div>
-              </td>
-              <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                {item.hodName}
-              </td>
+    <>
+      <div className="hidden md:block overflow-x-auto">
+        <table className="min-w-full divide-y divide-slate-100">
+          <thead className="sticky top-0 z-10 border-b bg-slate-50 border-slate-200">
+            <tr>
+              <th className="w-4 px-4 py-3 sm:px-6 sm:py-4"></th>
+              <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                Status
+              </th>
+              <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                Employee ID
+              </th>
+              <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                Name
+              </th>
+              <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                From
+              </th>
+              <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                To
+              </th>
+              <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                Days
+              </th>
+              <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                Reason
+              </th>
+              <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                Leave Type
+              </th>
+              <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                HOD Name
+              </th>
               {showHodColumn && (
-                <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                  {item.hodRemarks || "-"}
-                </td>
+                <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                  HOD Key Remarks
+                </th>
               )}
               {showHrColumn && (
-                <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                  {item.hrRemarks || "-"}
-                </td>
+                <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
+                  HR Key Remarks
+                </th>
               )}
             </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-slate-100">
+            {data.length > 0 ? (
+              data.map((item, index) => (
+                <tr key={index} className="transition-colors bg-red-50 hover:bg-red-100">
+                  <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
+                    <div className="h-2.5 w-2.5 rounded-full bg-red-500"></div>
+                  </td>
+                  <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
+                    <span className="px-2 py-1 text-xs font-semibold text-red-800 bg-red-100 rounded-full">
+                      {item.status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
+                    {item.employeeId}
+                  </td>
+                  <td className="px-4 py-3 text-sm font-medium sm:px-6 sm:py-4 whitespace-nowrap text-slate-900">
+                    {item.employeeName}
+                  </td>
+                  <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-600">
+                    {formatDate(item.startDate)}
+                  </td>
+                  <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-600">
+                    {formatDate(item.endDate)}
+                  </td>
+                  <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
+                    <div className="flex flex-col">
+                      <span className="text-slate-700">{item.days} days</span>
+                      {item.monthSplit && (
+                        <span className="text-xs text-slate-500 flex items-center gap-1">
+                          <span className="text-slate-400">↳</span> {item.monthSplit}
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
+                    {item.reason}
+                  </td>
+                  <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
+                    <div className="flex flex-col">
+                      <span className="font-medium text-slate-700">{item.leaveType}</span>
+                      {(item.casual > 0 || item.earned > 0 || item.unpaid > 0) && (
+                        <div className="flex gap-1.5 mt-1">
+                          {item.casual > 0 && <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[10px] font-bold">CL: {item.casual}</span>}
+                          {item.earned > 0 && <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold">EL: {item.earned}</span>}
+                          {item.unpaid > 0 && <span className="px-1.5 py-0.5 bg-rose-50 text-rose-600 rounded text-[10px] font-bold">LOP: {item.unpaid}</span>}
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
+                    {item.hodName}
+                  </td>
+                  {showHodColumn && (
+                    <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
+                      {item.hodRemarks || "-"}
+                    </td>
+                  )}
+                  {showHrColumn && (
+                    <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
+                      {item.hrRemarks || "-"}
+                    </td>
+                  )}
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={10} className="px-6 py-12 text-center text-slate-500">
+                  No rejected leave requests found.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Mobile Cards */}
+      <div className="block md:hidden space-y-3 p-3">
+        {data.length > 0 ? (
+          data.map((item, index) => (
+            <div
+              key={item.id || index}
+              className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-3 border-l-4 border-l-red-500"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                <div className="flex items-center gap-2">
+                  <div className="h-2.5 w-2.5 rounded-full bg-red-500" />
+                  <span className="text-xs font-semibold text-slate-500">ID: {item.employeeId}</span>
+                </div>
+                <span className="px-2.5 py-0.5 text-xs font-semibold text-red-800 bg-red-100 rounded-full">
+                  {item.status}
+                </span>
+              </div>
+
+              {/* Name */}
+              <div>
+                <h4 className="text-base font-bold text-slate-900">{item.employeeName}</h4>
+              </div>
+
+              {/* Dates & Duration */}
+              <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block">From</span>
+                  <span className="font-semibold text-slate-700">{formatDate(item.startDate)}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block">To</span>
+                  <span className="font-semibold text-slate-700">{formatDate(item.endDate)}</span>
+                </div>
+                <div className="col-span-2 pt-1 border-t border-slate-200/60 flex items-center justify-between">
+                  <span className="text-slate-600">
+                    Duration: <strong className="text-slate-900">{item.days} days</strong>
+                  </span>
+                  {item.monthSplit && <span className="text-[11px] text-slate-500">↳ {item.monthSplit}</span>}
+                </div>
+              </div>
+
+              {/* Details */}
+              <div className="space-y-1 text-xs text-slate-600">
+                <div className="flex justify-between">
+                  <span className="font-medium text-slate-500">Type:</span>
+                  <span className="font-semibold text-slate-800">{item.leaveType}</span>
+                </div>
+                {item.reason && (
+                  <div>
+                    <span className="font-medium text-slate-500 block">Reason:</span>
+                    <p className="text-slate-800 italic mt-0.5 bg-slate-50 p-2 rounded border border-slate-100">{item.reason}</p>
+                  </div>
+                )}
+                <div className="flex justify-between pt-1">
+                  <span className="font-medium text-slate-500">HOD:</span>
+                  <span className="text-slate-700">{item.hodName || "-"}</span>
+                </div>
+                {showHodColumn && item.hodRemarks && (
+                  <div className="text-[11px]">
+                    <span className="font-medium text-slate-500">HOD Remarks:</span> {item.hodRemarks}
+                  </div>
+                )}
+                {showHrColumn && item.hrRemarks && (
+                  <div className="text-[11px]">
+                    <span className="font-medium text-slate-500">HR Remarks:</span> {item.hrRemarks}
+                  </div>
+                )}
+              </div>
+            </div>
           ))
         ) : (
-          <tr>
-            <td colSpan={10} className="px-6 py-12 text-center text-slate-500">
-              No rejected leave requests found.
-            </td>
-          </tr>
+          <div className="p-8 text-center text-slate-500 bg-white rounded-xl border border-slate-200">
+            No rejected leave requests found.
+          </div>
         )}
-      </tbody>
-    </table>
+      </div>
+    </>
   );
 
   const renderPagination = () => {
@@ -2693,22 +2851,33 @@ const LeaveManagement = () => {
   return (
     <div className="flex flex-col h-full gap-4 overflow-hidden sm:gap-6">
       {/* Header */}
-      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center shrink-0">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-extrabold text-[#800000] tracking-tight">
-            Leave Management
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Manage employee leave requests and history
-          </p>
+      <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center shrink-0">
+        <div className="flex items-center justify-between w-full md:w-auto gap-3">
+          <div>
+            <h1 className="text-xl sm:text-2xl font-extrabold text-[#800000] tracking-tight">
+              Leave Management
+            </h1>
+            <p className="mt-0.5 text-xs sm:text-sm text-slate-500">
+              Manage employee leave requests and history
+            </p>
+          </div>
+          {/* New Request Button beside header on mobile */}
+          <button
+            onClick={() => setShowModal(true)}
+            className="inline-flex items-center justify-center px-3 sm:px-4 py-2 border border-transparent rounded-lg shadow-sm text-xs sm:text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 h-[38px] sm:h-[42px] whitespace-nowrap shrink-0 md:hidden"
+          >
+            <Plus size={16} className="mr-1" />
+            New Request
+          </button>
         </div>
-        <div className="flex flex-col-2 gap-3 w-full md:flex-row md:w-auto md:items-center md:justify-end">
+
+        <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto justify-start md:justify-end">
           {selectedIds.length > 0 && (
-            <>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
               <button
                 onClick={handleAcceptAll}
                 disabled={bulkLoading}
-                className="inline-flex items-center justify-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed w-full md:w-auto"
+                className="inline-flex items-center justify-center flex-1 sm:flex-initial px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-xs sm:text-sm font-medium text-white bg-green-600 hover:bg-green-700 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed h-[42px]"
               >
                 {bulkLoading ? (
                   <>
@@ -2720,15 +2889,15 @@ const LeaveManagement = () => {
                   </>
                 ) : (
                   <>
-                    <Check size={18} className="mr-2" />
-                    Accept All ({selectedIds.length})
+                    <Check size={18} className="mr-1.5" />
+                    Accept ({selectedIds.length})
                   </>
                 )}
               </button>
               <button
                 onClick={handleRejectAll}
                 disabled={bulkLoading}
-                className="inline-flex items-center justify-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed w-full md:w-auto"
+                className="inline-flex items-center justify-center flex-1 sm:flex-initial px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-xs sm:text-sm font-medium text-white bg-red-600 hover:bg-red-700 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed h-[42px]"
               >
                 {bulkLoading ? (
                   <>
@@ -2740,18 +2909,16 @@ const LeaveManagement = () => {
                   </>
                 ) : (
                   <>
-                    <X size={18} className="mr-2" />
-                    Reject All ({selectedIds.length})
+                    <X size={18} className="mr-1.5" />
+                    Reject ({selectedIds.length})
                   </>
                 )}
               </button>
-            </>
+            </div>
           )}
 
-        </div>
-        <div className="grid grid-cols-2 gap-2 w-full md:flex md:w-auto md:items-center">
-          {activeTab === "approved" && isHr ? (
-            <div className="flex items-center gap-1 p-1 border rounded-lg bg-emerald-50 border-emerald-200 shadow-sm overflow-hidden h-[42px]">
+          {activeTab === "approved" && isHr && (
+            <div className="flex items-center gap-1.5 p-1 border rounded-lg bg-emerald-50 border-emerald-200 shadow-sm shrink-0 min-h-[42px] max-w-full overflow-x-auto">
               <div className="flex items-center gap-1.5 px-2 border-r border-emerald-200 shrink-0">
                 <div className="flex flex-col">
                   <span className="text-[8px] font-bold text-emerald-600 uppercase leading-none">From</span>
@@ -2759,7 +2926,7 @@ const LeaveManagement = () => {
                     type="date"
                     value={exportFromDate}
                     onChange={(e) => setExportFromDate(e.target.value)}
-                    className="bg-transparent border-none focus:ring-0 text-[10px] sm:text-xs font-bold text-emerald-800 cursor-pointer p-0 w-24 sm:w-28 h-4"
+                    className="bg-transparent border-none focus:ring-0 text-[10px] sm:text-xs font-bold text-emerald-800 cursor-pointer p-0 w-20 sm:w-24 h-4"
                   />
                 </div>
                 <div className="flex flex-col">
@@ -2768,33 +2935,33 @@ const LeaveManagement = () => {
                     type="date"
                     value={exportToDate}
                     onChange={(e) => setExportToDate(e.target.value)}
-                    className="bg-transparent border-none focus:ring-0 text-[10px] sm:text-xs font-bold text-emerald-800 cursor-pointer p-0 w-24 sm:w-28 h-4"
+                    className="bg-transparent border-none focus:ring-0 text-[10px] sm:text-xs font-bold text-emerald-800 cursor-pointer p-0 w-20 sm:w-24 h-4"
                   />
                 </div>
               </div>
               <button
                 onClick={handleExportToExcel}
                 disabled={exportLoading}
-                className="inline-flex items-center justify-center px-2 py-1 text-[10px] sm:text-xs font-bold text-emerald-700 hover:text-emerald-900 transition-all disabled:opacity-50 group whitespace-nowrap"
+                className="inline-flex items-center justify-center px-2.5 py-1 text-[10px] sm:text-xs font-bold text-emerald-700 hover:text-emerald-900 transition-all disabled:opacity-50 group whitespace-nowrap"
                 title="Export approved leaves for selected range"
               >
                 {exportLoading ? (
                   <Clock size={12} className="mr-1 animate-spin text-emerald-600" />
                 ) : (
                   <FileSpreadsheet
-                    size={12}
+                    size={14}
                     className="mr-1 text-emerald-600 group-hover:scale-110 transition-transform"
                   />
                 )}
                 {exportLoading ? "..." : "Export"}
               </button>
             </div>
-          ) : (
-            <div className="hidden md:block"></div> // Spacer for grid if export hidden
           )}
+
+          {/* Desktop New Request button */}
           <button
             onClick={() => setShowModal(true)}
-            className="inline-flex items-center justify-center px-3 py-2.5 border border-transparent rounded-lg shadow-sm text-xs sm:text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 h-[42px] whitespace-nowrap"
+            className="hidden md:inline-flex items-center justify-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-xs sm:text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 h-[42px] whitespace-nowrap"
           >
             <Plus size={16} className="mr-1.5" />
             New Request

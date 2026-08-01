@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Filter, Search, Clock, CheckCircle, ImageIcon } from "lucide-react";
 import useDataStore from "../store/dataStore";
 import toast from 'react-hot-toast';
-import { supabase } from '../supabaseClient';
+import { getEmployeeJoiningData, getEmployeeLeavingData } from '../api/employeeApi';
 
 const Employee = () => {
   const [activeTab, setActiveTab] = useState("joining");
@@ -26,15 +26,7 @@ const Employee = () => {
     setError(null);
 
     try {
-      const { data, error } = await supabase
-        .from('joining_form')
-        .select(`
-          *,
-          after_joining (
-            emp_id
-          )
-        `);
-      if (error) throw new Error(`Supabase error: ${error.message}`);
+      const data = await getEmployeeJoiningData();
 
       const processedData = data.map(item => {
         // Check if after_joining exists and is an array (Supabase returns array for 1:N) or object
@@ -82,20 +74,7 @@ const Employee = () => {
     setError(null);
 
     try {
-      const { data, error } = await supabase
-        .from('employee_leaving')
-        .select(`
-          *,
-          users (
-            full_name,
-            joining_date,
-            designation,
-            department,
-            phone_number
-          )
-        `);
-
-      if (error) throw new Error(`Supabase error: ${error.message}`);
+      const data = await getEmployeeLeavingData();
 
       const processedData = data.map(item => ({
         id: item.id,

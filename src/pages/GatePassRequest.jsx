@@ -2,7 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Clock, Calendar, Plus, User, FileText, CheckCircle, AlertCircle, X, MapPin, Briefcase, Users, Shield, Search, ChevronDown, Phone, Image as ImageIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { supabase } from '../supabaseClient';
+import {
+  getGatePassRequestUserData,
+  uploadGatePassRequestAttachment,
+  submitGatePassRequest
+} from '../api/gatePassRequestApi';
 import useAuthStore from '../store/authStore';
 import { sendGatePassMessageToHr } from '../whatsappMessageSender/sendGatePassWhatsapp';
 
@@ -48,12 +52,7 @@ const GatePassRequest = () => {
   const fetchUserDataAndHistory = async () => {
     setLoading(true);
     try {
-      // 0. Fetch Current User Details (is_hod, phone_number)
-      const { data: currentUserData } = await supabase
-        .from('users')
-        .select('is_hod, phone_number')
-        .eq('emp_id', user.emp_id)
-        .single();
+      const { currentUserData, teamData, hodUser, hrData, historyData } = await getGatePassRequestUserData(user.emp_id);
 
       if (currentUserData) {
         setIsUserHod(currentUserData.is_hod);
@@ -64,20 +63,7 @@ const GatePassRequest = () => {
         }
       }
 
-      // 1. Fetch HOD Details
-      const { data: teamData } = await supabase
-        .from('team_members')
-        .select('hod_id')
-        .eq('emp_id', user.emp_id)
-        .maybeSingle();
-
       if (teamData?.hod_id) {
-        const { data: hodUser } = await supabase
-          .from('users')
-          .select('full_name, department, phone_number')
-          .eq('emp_id', teamData.hod_id)
-          .single();
-
         if (hodUser) {
           setHodDetails({ name: hodUser.full_name, id: teamData.hod_id, department: hodUser.department, phone: hodUser.phone_number });
         } else {
@@ -87,31 +73,13 @@ const GatePassRequest = () => {
         setHodDetails({ name: 'Not Assigned', id: null });
       }
 
-      // 2. Fetch HR Details
-      const { data: hrData } = await supabase
-        .from('users')
-        .select('full_name, emp_id')
-        .eq('department', 'HR')
-        .order('is_hod', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
       if (hrData) {
         setHrDetails({ name: hrData.full_name, id: hrData.emp_id });
       } else {
         setHrDetails({ name: 'Pawan Tiwari', id: 1 });
       }
 
-      // 3. Fetch Gate Pass History for this user
-      const { data: historyData, error: historyError } = await supabase
-        .from('gate_pass')
-        .select('*, users(full_name)')
-        .eq('emp_id', user.emp_id)
-        .order('timestamp', { ascending: false });
-
-      if (historyError) throw historyError;
-
-      const flattenedHistory = historyData.map(item => ({
+      const flattenedHistory = (historyData || []).map(item => ({
         ...item,
         employee_name: item.users?.full_name || 'Unknown'
       }));
@@ -166,22 +134,7 @@ const GatePassRequest = () => {
 
   const uploadImageToDrive = async (file) => {
     try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `gate-passes/${Date.now()}.${fileExt}`;
-
-      const { error } = await supabase
-        .storage
-        .from('images')
-        .upload(fileName, file);
-
-      if (error) throw error;
-
-      const { data: { publicUrl } } = supabase
-        .storage
-        .from('images')
-        .getPublicUrl(fileName);
-
-      return publicUrl;
+      return await uploadGatePassRequestAttachment(file);
     } catch (error) {
       console.error('Image upload error:', error);
       throw error;
@@ -252,26 +205,18 @@ const GatePassRequest = () => {
         hr_name: hrDetails.name
       };
 
-      const { data, error } = await supabase
-        .from('gate_pass')
-        .insert([insertData])
-        .select();
+      const logData = {
+        request_type: 'Gate Pass',
+        emp_id: user.emp_id,
+        emp_name: user?.full_name || user?.Name || 'User',
+        status: insertData.status,
+        hod_id: hodDetails.id,
+        hod_name: isUserHod ? 'HR' : hodDetails.name,
+        hr_id: hrDetails.id,
+        hr_name: hrDetails.name
+      };
 
-      if (error) throw error;
-
-      if (data && data[0]) {
-        await supabase.from('logs').insert({
-          request_id: data[0].id,
-          request_type: 'Gate Pass',
-          emp_id: user.emp_id,
-          emp_name: user?.full_name || user?.Name || 'User',
-          status: insertData.status,
-          hod_id: hodDetails.id,
-          hod_name: isUserHod ? 'HR' : hodDetails.name,
-          hr_id: hrDetails.id,
-          hr_name: hrDetails.name
-        });
-      }
+      const data = await submitGatePassRequest(insertData, logData);
 
       // Send WhatsApp notification
       if (data && data[0]) {

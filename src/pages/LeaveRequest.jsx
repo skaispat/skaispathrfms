@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Clock, Calendar, Plus, User, FileText, CheckCircle, AlertCircle, X, History, Briefcase, Users, Search, ChevronDown, Shield, Send, CloudFog } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { supabase } from '../supabaseClient';
+import { getLeaveRequestInitialData, createLeaveRequestWithLog } from '../api/leaveRequestApi';
 import useAuthStore from '../store/authStore';
 import { sendWhatsappMessageToHod } from "../whatsappMessageSender/whatsappMessageSender.js";
 import { calculateLeaveSplitsDayByDay } from "../utils/leaveCalculations.js";
@@ -51,37 +51,21 @@ const LeaveRequest = () => {
   const fetchUserDataAndHistory = async () => {
     setLoading(true);
     try {
-      // 1. Fetch HOD Details
-      const { data: teamData } = await supabase
-        .from('team_members')
-        .select('hod_id')
-        .eq('emp_id', user.emp_id)
-        .maybeSingle();
+      const {
+        teamData,
+        hodUser,
+        hrData,
+        userData,
+        historyData,
+        balanceData,
+        quotaData
+      } = await getLeaveRequestInitialData(user.emp_id, getFiscalYear());
 
-      if (teamData?.hod_id) {
-        const { data: hodUser } = await supabase
-          .from('users')
-          .select('full_name, department, phone_number')
-          .eq('emp_id', teamData.hod_id)
-          .single();
-
-        if (hodUser) {
-          setHodDetails({ name: hodUser.full_name, id: teamData.hod_id, department: hodUser.department, phone_number: hodUser.phone_number });
-        } else {
-          setHodDetails({ name: 'Not Assigned', id: null });
-        }
+      if (teamData?.hod_id && hodUser) {
+        setHodDetails({ name: hodUser.full_name, id: teamData.hod_id, department: hodUser.department, phone_number: hodUser.phone_number });
       } else {
         setHodDetails({ name: 'Not Assigned', id: null });
       }
-
-      // 2. Fetch HR Details
-      const { data: hrData } = await supabase
-        .from('users')
-        .select('full_name, emp_id')
-        .eq('department', 'HR')
-        .order('is_hod', { ascending: false })
-        .limit(1)
-        .maybeSingle();
 
       if (hrData) {
         setHrDetails({ name: hrData.full_name, id: hrData.emp_id });
@@ -89,40 +73,11 @@ const LeaveRequest = () => {
         setHrDetails({ name: 'Pawan Tiwari', id: 1 });
       }
 
-      // 3. Fetch current user details for leave access permission
-      const { data: userData } = await supabase
-        .from('users')
-        .select('is_leave_allowed')
-        .eq('emp_id', user.emp_id)
-        .single();
-
       if (userData) {
         setIsLeaveAllowedByAdmin(userData.is_leave_allowed !== false);
       }
 
-      // 4. Fetch Leave History
-      const { data: historyData, error: historyError } = await supabase
-        .from('leave_management')
-        .select('*')
-        .eq('emp_id', user.emp_id)
-        .order('timestamp', { ascending: false });
-
-      if (historyError) throw historyError;
       setLeaveHistory(historyData);
-
-      // 5. Fetch leave balances from view
-      const { data: balanceData } = await supabase
-        .from('employee_leave_balances')
-        .select('*')
-        .eq('emp_id', user.emp_id)
-        .maybeSingle();
-
-      const { data: quotaData } = await supabase
-        .from('yearly_quota')
-        .select('carried_forward_el')
-        .eq('emp_id', user.emp_id)
-        .eq('year', getFiscalYear())
-        .maybeSingle();
 
       const carriedForwardEL = quotaData?.carried_forward_el || 0;
 
@@ -281,40 +236,38 @@ const LeaveRequest = () => {
         hr_name: hrDetails.name
       };
 
-      const { data, error } = await supabase.from('leave_management').insert([insertData]).select();
-      if (error) throw error;
+      const logData = {
+        request_type: 'Leave',
+        emp_id: user.emp_id,
+        emp_name: user.full_name || user.Name,
+        status: insertData.status,
+        hod_id: hodDetails.id,
+        hod_name: hodDetails.name,
+        hr_id: hrDetails.id,
+        hr_name: hrDetails.name
+      };
 
-      if (data && data[0]) {
-        await supabase.from('logs').insert({
-          request_id: data[0].id,
-          request_type: 'Leave',
-          emp_id: user.emp_id,
-          emp_name: user.full_name || user.Name,
-          status: insertData.status,
-          hod_id: hodDetails.id,
-          hod_name: hodDetails.name,
-          hr_id: hrDetails.id,
-          hr_name: hrDetails.name
-        });
+      const data = await createLeaveRequestWithLog(insertData, logData);
 
-        if (hodDetails.id && hodDetails.phone_number) {
-          const totalDays = calculateDays(formData.fromDate, formData.toDate);
-          await sendWhatsappMessageToHod({
-            employeId: hodDetails.id,
-            tableid: data[0].id,
-            hodPhoneNumber: hodDetails.phone_number,
-            employeeName: user.full_name || user.Name,
-            empId: user.emp_id,
-            department: user.department || user.designation || user.role,
-            leaveType: formData.leaveType,
-            fromDate: formData.fromDate,
-            toDate: formData.toDate,
-            totalDays: totalDays,
-            reason: formData.reason,
-            who: "hod",
-          });
+        if (data && data[0]) {
+          if (hodDetails.id && hodDetails.phone_number) {
+            const totalDays = calculateDays(formData.fromDate, formData.toDate);
+            await sendWhatsappMessageToHod({
+              employeId: hodDetails.id,
+              tableid: data[0].id,
+              hodPhoneNumber: hodDetails.phone_number,
+              employeeName: user.full_name || user.Name,
+              empId: user.emp_id,
+              department: user.department || user.designation || user.role,
+              leaveType: formData.leaveType,
+              fromDate: formData.fromDate,
+              toDate: formData.toDate,
+              totalDays: totalDays,
+              reason: formData.reason,
+              who: "hod",
+            });
+          }
         }
-      }
 
       toast.success('Leave Request Submitted Successfully');
       setShowModal(false);

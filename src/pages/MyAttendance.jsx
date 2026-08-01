@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { supabase } from '../supabaseClient';
+import { getMyAttendanceInitialData, markMyAttendancePunch } from '../api/myAttendanceApi';
 import { Calendar, Clock, CheckCircle, XCircle, ChevronDown, Activity, AlertCircle, FileText, MapPin, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -142,51 +142,13 @@ const MyAttendance = () => {
     setError(null);
 
     try {
-      const { data: userData } = await supabase
-        .from('users')
-        .select('week_off')
-        .eq('emp_id', user.emp_id)
-        .single();
-
-      if (userData?.week_off) {
-        setWeekOff(userData.week_off);
-      }
-
-      // Fetch Leaves for the user
-      const { data: leavesData } = await supabase
-        .from('leave_management')
-        .select('leave_date_start, leave_date_end, status')
-        .eq('emp_id', user.emp_id)
-        .eq('status', 'Approved');
-
-      setUserLeaves(leavesData || []);
-
       const currentYear = new Date().getFullYear();
+      const { weekOff, userLeaves, dailyRecords } = await getMyAttendanceInitialData(user.emp_id, currentYear);
 
-      // 1. Fetch from Biomax API
-      const response = await fetch(`${import.meta.env.VITE_BIOMETRIC_API_URL}&FromDate=${currentYear}-01-01&ToDate=${currentYear}-12-31`);
-      if (!response.ok) {
-        throw new Error(`API Error: ${response.statusText}`);
+      if (weekOff) {
+        setWeekOff(weekOff);
       }
-      const rawApiData = await response.json();
-      const userLogs = rawApiData.filter(log => String(log.UserId) === String(user.emp_id));
-
-      const groupedData = {};
-      userLogs.forEach(log => {
-        const dateStr = log.LogDate.split('T')[0];
-        if (!groupedData[dateStr]) {
-          groupedData[dateStr] = { date: dateStr, logs: [] };
-        }
-        groupedData[dateStr].logs.push(log.LogDate);
-      });
-
-      // 2. Fetch manual punches from attendance_daily
-      const { data: dailyRecords } = await supabase
-        .from('attendance_daily')
-        .select('*')
-        .eq('emp_id', user.emp_id)
-        .gte('date', `${currentYear}-01-01`)
-        .lte('date', `${currentYear}-12-31`);
+      setUserLeaves(userLeaves);
 
       const manualDataMap = {};
       if (dailyRecords) {
@@ -294,87 +256,7 @@ const MyAttendance = () => {
     try {
       const { year, dateStr, timeStr, monthName, dayName } = getISTDateDetails();
 
-      // Fetch full user details to post all columns
-      const { data: fullUser } = await supabase.from('users').select('*').eq('emp_id', userObj.emp_id).single();
-
-      const { data: existingRecord } = await supabase
-        .from('attendance_daily')
-        .select('*')
-        .eq('emp_id', userObj.emp_id)
-        .eq('date', dateStr)
-        .maybeSingle();
-
-      let upsertData = {
-        emp_id: userObj.emp_id,
-        date: dateStr,
-        year: year,
-        month_name: monthName,
-        day: dayName,
-        company_name: "SKAISPAT",
-        name: fullUser?.full_name || userObj.Name || `User ${userObj.emp_id}`,
-        designation: fullUser?.designation || "-",
-        holiday: "No",
-        working_day: "Yes",
-        n_holiday: "",
-        status: "P",
-      };
-
-      if (existingRecord) {
-        let workingHours = '0h 0m';
-        let presentMinutes = 0;
-        let overtimeHours = '0h 0m';
-        let inTimeStr = existingRecord.in_time;
-
-        if (inTimeStr) {
-          const inDate = new Date(`${dateStr}T${inTimeStr}`);
-          const outDate = new Date(`${dateStr}T${timeStr}`);
-          const diffMs = outDate - inDate;
-          if (diffMs > 0) {
-            const h = Math.floor(diffMs / 3600000);
-            const m = Math.floor((diffMs % 3600000) / 60000);
-            workingHours = `${h}h ${m}m`;
-            presentMinutes = h * 60 + m;
-
-            const nineHoursMs = 9 * 60 * 60 * 1000;
-            if (diffMs > nineHoursMs) {
-              const ot = diffMs - nineHoursMs;
-              const otH = Math.floor(ot / 3600000);
-              const otM = Math.floor((ot % 3600000) / 60000);
-              overtimeHours = `${otH}h ${otM}m`;
-            }
-          }
-        }
-
-        upsertData = {
-          ...existingRecord,
-          ...upsertData,
-          out_time: timeStr,
-          punch_miss: "No",
-          working_hours: workingHours,
-          present_minutes: presentMinutes,
-          early_out: "0",
-          overtime_hours: overtimeHours,
-          remarks: existingRecord.remarks ? (existingRecord.remarks.includes('Mobile') ? existingRecord.remarks : `${existingRecord.remarks}, Mobile Out`) : "Mobile Out"
-        };
-      } else {
-        upsertData = {
-          ...upsertData,
-          in_time: timeStr,
-          out_time: "",
-          working_hours: "0h 0m",
-          present_minutes: 0,
-          early_out: "0",
-          overtime_hours: "0h 0m",
-          punch_miss: "Yes",
-          remarks: "Mobile In"
-        };
-      }
-
-      const { error } = await supabase
-        .from('attendance_daily')
-        .upsert([upsertData], { onConflict: "emp_id, date" });
-
-      if (error) throw error;
+      await markMyAttendancePunch(userObj.emp_id, dateStr, year, monthName, dayName, timeStr, userObj.Name);
 
       toast.success("Attendance Marked Successfully!");
       fetchAttendanceData();

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { supabase } from '../supabaseClient';
+import { getGatePassApprovalData, updateGatePassApprovalAction } from '../api/gatepassApprovalApi';
 import { FileText, User, Briefcase, Calendar, Clock, MessageSquare, Check, X, Shield, ChevronRight, Quote, MapPin, Phone, Image as ImageIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { sendGatePassMessageToHr, sendGatePassApprovedToEmployee, sendGatePassRejectedToEmployee } from '../whatsappMessageSender/sendGatePassWhatsapp';
@@ -24,52 +24,7 @@ const GatePassApproval = () => {
 
     const fetchRequest = async () => {
         try {
-            // Fetch Request
-            const { data, error } = await supabase
-                .from('gate_pass')
-                .select('*, users(full_name, emp_id, phone_number)')
-                .eq('id', id)
-                .single();
-
-            if (error) throw error;
-            if (!data) throw new Error('Request not found');
-
-            // Fetch Approver Details
-            // Try fetching by full_name first
-            let { data: approverData, error: approverError } = await supabase
-                .from('users')
-                .select('*')
-                .eq('full_name', approverId)
-                .maybeSingle();
-
-            // If not found by full_name, try by emp_id
-            if (!approverData) {
-                const { data: approverEmpData } = await supabase
-                    .from('users')
-                    .select('*')
-                    .eq('emp_id', approverId)
-                    .maybeSingle();
-                approverData = approverEmpData;
-            }
-
-            // If still not found, try by UUID
-            if (!approverData) {
-                const { data: approverUuidData } = await supabase
-                    .from('users')
-                    .select('*')
-                    .eq('id', approverId)
-                    .maybeSingle();
-                approverData = approverUuidData;
-            }
-
-            // Fetch HR Name
-            const { data: hrData } = await supabase
-                .from('users')
-                .select('full_name, phone_number, emp_id')
-                .eq('department', 'HR')
-                .order('is_hod', { ascending: false })
-                .limit(1)
-                .maybeSingle();
+            const { data, approverData, hrData } = await getGatePassApprovalData(id, approverId);
 
             // Prepare request object
             setRequest({
@@ -179,38 +134,7 @@ const GatePassApproval = () => {
                 })
             };
 
-            const { error: updateError } = await supabase
-                .from('gate_pass')
-                .update(updateData)
-                .eq('id', id);
-
-            if (updateError) throw updateError;
-
-            // Log Update
-            const logUpdateData = {
-                status: newStatus,
-                updated_at: new Date().toISOString(),
-                ...(isHodAction && {
-                    hod_action: logAction,
-                    hod_approval_time: new Date().toISOString(),
-                    hod_remarks: currentRemarks,
-                    hod_id: approver.emp_id,
-                    hod_name: approver.full_name
-                }),
-                ...(isHrAction && {
-                    hr_action: logAction,
-                    hr_approval_time: new Date().toISOString(),
-                    hr_remarks: currentRemarks,
-                    hr_id: approver.emp_id,
-                    hr_name: approver.full_name
-                })
-            };
-
-            await supabase
-                .from('logs')
-                .update(logUpdateData)
-                .eq('request_id', id)
-                .eq('request_type', 'Gate Pass');
+            await updateGatePassApprovalAction(id, updateData, logUpdateData);
 
             // Send WhatsApp message to HR when HOD approves (status becomes "Pending HR")
             if (newStatus === 'Pending HR') {

@@ -4,7 +4,15 @@ import * as XLSX from 'xlsx';
 import { createPortal } from 'react-dom';
 import { Search, X, Check, Clock, Calendar, Plus, User, Briefcase, FileText, Users, ChevronDown, MapPin, Phone, Image as ImageIcon, Shield, CheckCircle, Download, FileSpreadsheet } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { supabase } from '../supabaseClient';
+import {
+  getEmployeesForGatePass,
+  getHodAndHrForEmployee,
+  getGatePasses,
+  updateGatePassStatus,
+  getApprovedGatePassesForExport,
+  uploadGatePassImage,
+  checkAndCreateGatePass
+} from '../api/gatePassApi';
 import useAuthStore from '../store/authStore';
 import {
   sendGatePassMessageToHr,
@@ -89,11 +97,7 @@ const GatePass = () => {
 
   const fetchEmployees = async () => {
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('emp_id, full_name, phone_number');
-
-      if (error) throw error;
+      const data = await getEmployeesForGatePass();
 
       if (data) {
         setEmployees(data.map(e => ({
@@ -121,45 +125,25 @@ const GatePass = () => {
 
     if (selectedEmployee?.id) {
       try {
-        const { data: teamMember } = await supabase
-          .from('team_members')
-          .select('hod_id')
-          .eq('emp_id', selectedEmployee.id)
-          .maybeSingle();
+        const { teamMember, hodUser, hrData } = await getHodAndHrForEmployee(selectedEmployee.id);
 
         if (teamMember?.hod_id) {
-          const { data: hodUser } = await supabase
-            .from('users')
-            .select('full_name')
-            .eq('emp_id', teamMember.hod_id)
-            .single();
-
           if (hodUser) {
             setFormData(prev => ({ ...prev, hodName: hodUser.full_name, hodId: teamMember.hod_id }));
           } else {
             setFormData(prev => ({ ...prev, hodName: '', hodId: null }));
           }
         } else {
-          // No HOD assigned in team_members
           setFormData(prev => ({ ...prev, hodName: '', hodId: null }));
         }
-
-        // Fetch HR Details
-        const { data: hrData } = await supabase
-          .from('users')
-          .select('full_name, emp_id')
-          .eq('department', 'HR')
-          .order('is_hod', { ascending: false })
-          .limit(1)
-          .maybeSingle();
 
         if (hrData) {
           setFormData(prev => ({ ...prev, hrName: hrData.full_name, hrId: hrData.emp_id }));
         } else {
           setFormData(prev => ({ ...prev, hrName: 'Pawan Tiwari', hrId: 1 }));
         }
-      } catch (error) {
-        console.error('Error fetching HOD/HR:', error);
+      } catch (err) {
+        console.error('Error fetching HOD/HR details:', err);
       }
     }
   };
@@ -190,12 +174,7 @@ const GatePass = () => {
     setError(null);
 
     try {
-      const { data, error } = await supabase
-        .from('gate_pass')
-        .select('*, users(full_name, phone_number, emp_id)')
-        .order('timestamp', { ascending: false });
-
-      if (error) throw error;
+      const data = await getGatePasses();
 
       const enrichedData = data.map(item => ({
         ...item,
@@ -265,22 +244,15 @@ const GatePass = () => {
     const currentRowRemarks = remarksInputs[request.id] || {};
 
     try {
-      const { error } = await supabase
-        .from('gate_pass')
-        .update({
-          status: newStatus,
-          ...(isHod && { hod_remarks: currentRowRemarks.hod || '' }),
-          ...(isHr && {
-            hr_remarks: currentRowRemarks.hr || '',
-            hr_name: user.full_name || user.Name
-          })
+      const updatePayload = {
+        status: newStatus,
+        ...(isHod && { hod_remarks: currentRowRemarks.hod || '' }),
+        ...(isHr && {
+          hr_remarks: currentRowRemarks.hr || '',
+          hr_name: user.full_name || user.Name
         })
-        .eq('id', request.id);
+      };
 
-      if (error) throw error;
-
-      // Update Logs
-      // Update Logs
       const logUpdates = {
         status: newStatus,
         ...(isHod && {
@@ -298,7 +270,8 @@ const GatePass = () => {
           hr_remarks: currentRowRemarks.hr || ''
         })
       };
-      await supabase.from('logs').update(logUpdates).eq('request_id', request.id).eq('request_type', 'Gate Pass');
+
+      await updateGatePassStatus(request.id, updatePayload, logUpdates);
 
       toast.success(`Request ${action === 'approve' ? 'Approved' : 'Rejected'}`);
 
@@ -425,37 +398,41 @@ const GatePass = () => {
       setExportLoading(true);
 
       const selectedDate = dayjs().year(exportYear).month(exportMonth);
-      const startOfMonth = selectedDate.startOf('month').format('YYYY-MM-DDTHH:mm:ss');
-      const endOfMonth = selectedDate.endOf('month').format('YYYY-MM-DDTHH:mm:ss');
+      const startOfMonth = selectedDate.startOf('month').toISOString();
+      const endOfMonth = selectedDate.endOf('month').toISOString();
 
-      // Fetch all approved gate passes for the current month
-      const { data, error } = await supabase
-        .from('gate_pass')
-        .select(`
-          *,
-          users(full_name, emp_id)
-        `)
-        .eq('status', 'Approved')
-        .gte('departure_from_plant', startOfMonth)
-        .lte('departure_from_plant', endOfMonth)
-        .order('departure_from_plant', { ascending: true });
+      let data = [];
+      try {
+        const fetched = await getApprovedGatePassesForExport(startOfMonth, endOfMonth);
+        if (fetched && fetched.length > 0) {
+          data = fetched;
+        }
+      } catch (err) {
+        console.warn('DB export query failed, using local filtered state:', err);
+      }
 
-      if (error) throw error;
+      // Fallback: Use in-memory filtered approved passes if DB returned empty
+      if (!data || data.length === 0) {
+        data = approvedPasses.filter(item => {
+          const passDate = dayjs(item.departure_from_plant || item.timestamp);
+          return passDate.isValid() && passDate.month() === exportMonth && passDate.year() === exportYear;
+        });
+      }
 
       if (!data || data.length === 0) {
-        toast.error('No approved gate passes found for the current month');
+        toast.error(`No approved gate passes found for ${selectedDate.format('MMMM YYYY')}`);
         return;
       }
 
       // Format data for Excel
       const excelData = data.map(item => ({
-        'Employee ID': item.emp_id || item.users?.emp_id,
-        'Employee Name': item.emp_name || item.users?.full_name,
-        'Destination & Reason': item.place_reason_to_visit,
+        'Employee ID': item.emp_id || item.users?.emp_id || '-',
+        'Employee Name': item.employee_name || item.emp_name || item.users?.full_name || '-',
+        'Destination & Reason': item.place_reason_to_visit || '-',
         'Departure': item.departure_from_plant ? dayjs(new Date(item.departure_from_plant).toLocaleString('en-US', { timeZone: 'UTC' })).format('DD/MM/YYYY hh:mm A') : '-',
         'Arrival': item.arrival_at_plant ? dayjs(new Date(item.arrival_at_plant).toLocaleString('en-US', { timeZone: 'UTC' })).format('DD/MM/YYYY hh:mm A') : '-',
-        'WhatsApp Number': item.employee_whatsapp_number,
-        'HOD Name': item.hod_name,
+        'WhatsApp Number': item.employee_whatsapp_number || '-',
+        'HOD Name': item.hod_name || '-',
         'HOD Remarks': item.hod_remarks || '-',
         'HR Name': item.hr_name || '-',
         'HR Remarks': item.hr_remarks || '-',
@@ -499,22 +476,7 @@ const GatePass = () => {
 
   const uploadImageToDrive = async (file) => {
     try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `gate-passes/${Date.now()}.${fileExt}`;
-
-      const { error } = await supabase
-        .storage
-        .from('images')
-        .upload(fileName, file);
-
-      if (error) throw error;
-
-      const { data: { publicUrl } } = supabase
-        .storage
-        .from('images')
-        .getPublicUrl(fileName);
-
-      return publicUrl;
+      return await uploadGatePassImage(file);
     } catch (error) {
       console.error('Image upload error:', error);
       throw error;
@@ -581,59 +543,39 @@ const GatePass = () => {
         0, 23, 59, 59
       ).toISOString();
 
-      // 1️⃣ Check: One request per day
-      const { data: todayRequests, error: todayError } = await supabase
-        .from("gate_pass")
-        .select("id")
-        .eq("emp_id", formData.employeeId)
-        .gte("timestamp", todayStart)
-        .lte("timestamp", todayEnd);
+      const logPayload = {
+        request_type: 'Gate Pass',
+        emp_id: formData.employeeId,
+        emp_name: formData.employeeName,
+        status: (formData.hodName === 'HR' || formData.hodId === 1 || formData.hodName === 'Pawan Tiwari') ? 'Pending HR' : 'Pending',
+        hod_id: formData.hodId,
+        hod_name: formData.hodName,
+        hr_id: formData.hrId,
+        hr_name: formData.hrName
+      };
 
-      if (todayError) {
-        toast.error("Error checking daily limit");
+      const result = await checkAndCreateGatePass(
+        formData.employeeId,
+        todayStart,
+        todayEnd,
+        firstDayOfMonth,
+        lastDayOfMonth,
+        insertData,
+        logPayload
+      );
+
+      if (result.error) {
+        toast.error(result.error);
         return;
       }
-
-      if (todayRequests.length > 0) {
-        toast.error("Only 1 gate pass request allowed per day");
+      if (!result.data) {
+        toast.error("Failed to create Gate Pass");
         return;
       }
+      const data = result.data;
 
-      // 2️⃣ Check: Max 3 per month
-      const { data: monthlyRequests, error: monthError } = await supabase
-        .from("gate_pass")
-        .select("id")
-        .eq("emp_id", formData.employeeId)
-        .gte("timestamp", firstDayOfMonth)
-        .lte("timestamp", lastDayOfMonth);
-
-      if (monthError) {
-        toast.error("Error checking monthly limit");
-        return;
-      }
-
-      if (monthlyRequests.length >= 3) {
-        toast.error("You can only request 3 gate passes in a month");
-        return;
-      }
-
-      const { data, error } = await supabase.from('gate_pass').insert([insertData]).select();
-      if (error) throw error;
-
+      // WhatsApp Notification for New Gate Pass
       if (data && data[0]) {
-        await supabase.from('logs').insert({
-          request_id: data[0].id,
-          request_type: 'Gate Pass',
-          emp_id: formData.employeeId,
-          emp_name: formData.employeeName,
-          status: (formData.hodName === 'HR' || formData.hodId === 1 || formData.hodName === 'Pawan Tiwari') ? 'Pending HR' : 'Pending',
-          hod_id: formData.hodId,
-          hod_name: formData.hodName,
-          hr_id: formData.hrId,
-          hr_name: formData.hrName
-        });
-
-        // WhatsApp Notification for New Gate Pass
         (async () => {
           try {
             const formatDateTime = (dateStr) => {
@@ -656,7 +598,6 @@ const GatePass = () => {
             const statusLabel = insertData.status;
 
             if (statusLabel === 'Pending HR') {
-              // console.log("📤 Sending Gate Pass WhatsApp to HR...");
               await sendGatePassMessageToHr({
                 employeId: formData.hrId || 'HR',
                 tableid: data[0].id,
@@ -702,219 +643,361 @@ const GatePass = () => {
     });
 
     return (
-      <div className="overflow-auto flex-1 custom-scrollbar">
-        <table className="min-w-full divide-y divide-slate-100">
-          <thead className="bg-slate-50 sticky top-0 z-10 border-b border-slate-200">
-            <tr>
-              <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                {activeTab === 'pending' && applicableItems.length > 0 && (
-                  <input
-                    type="checkbox"
-                    checked={selectedRows.length === applicableItems.length && applicableItems.length > 0}
-                    onChange={() => handleSelectAll(applicableItems)}
-                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-slate-300 rounded"
-                    title="Select All Applicable"
-                  />
+      <>
+        {/* Desktop Table View */}
+        <div className="hidden md:block overflow-auto flex-1 custom-scrollbar">
+          <table className="min-w-full divide-y divide-slate-100">
+            <thead className="bg-slate-50 sticky top-0 z-10 border-b border-slate-200">
+              <tr>
+                <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  {activeTab === 'pending' && applicableItems.length > 0 && (
+                    <input
+                      type="checkbox"
+                      checked={selectedRows.length === applicableItems.length && applicableItems.length > 0}
+                      onChange={() => handleSelectAll(applicableItems)}
+                      className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-slate-300 rounded"
+                      title="Select All Applicable"
+                    />
+                  )}
+                </th>
+                <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Employee</th>
+                <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Time</th>
+                <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Details</th>
+                <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">HOD</th>
+                {showHodColumn && <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">HOD Remarks</th>}
+                {showHrColumn && <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">HR Remarks</th>}
+                <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Attachment</th>
+                {activeTab === 'pending' && (
+                  <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
                 )}
-              </th>
-              <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Employee</th>
-              <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Time</th>
-              <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Details</th>
-              <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">HOD</th>
-              {showHodColumn && <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">HOD Remarks</th>}
-              {showHrColumn && <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">HR Remarks</th>}
-              <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
-              <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Attachment</th>
-              {activeTab === 'pending' && (
-                <th className="px-4 py-3 sm:px-6 sm:py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 bg-white">
+              {data.length > 0 ? (
+                data.map((item) => (
+                  <tr key={item.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
+                      {((user?.is_hod && (item.status === 'Pending' || item.status === 'Pending HOD') && (item.hod_name === user?.full_name || item.hod_name === user?.Name)) ||
+                        ((user?.role === 'hr' || user?.role === 'HR' || user?.role === 'admin' || user?.role === 'Admin' || user?.Admin === 'Yes') && item.status === 'Pending HR')) && (
+                          <input
+                            type="checkbox"
+                            checked={selectedRows.includes(item.id)}
+                            onChange={() => handleCheckboxChange(item.id)}
+                            className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-slate-300 rounded"
+                          />
+                        )}
+                    </td>
+                    <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-slate-900 text-sm">{item.employee_name}</span>
+                        <span className="text-xs text-slate-500">{item.emp_id}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
+                      <div className="flex flex-col text-sm text-slate-600">
+                        <span>Out: {formatDate(item.departure_from_plant)}</span>
+                        {item.arrival_at_plant && <span>In: {formatDate(item.arrival_at_plant)}</span>}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 sm:px-6 sm:py-4">
+                      <p className="text-sm text-slate-500 max-w-xs truncate" title={item.place_reason_to_visit}>{item.place_reason_to_visit}</p>
+                      <a href={`tel:${item.employee_whatsapp_number}`} className="text-xs text-indigo-500 hover:underline">{item.employee_whatsapp_number}</a>
+                    </td>
+                    <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-500">{item.hod_name}</td>
+                    {showHodColumn && (
+                      <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-500">
+                        {user?.is_hod && (item.status === 'Pending' || item.status === 'Pending HOD') && selectedRows.includes(item.id) ? (
+                          <input
+                            type="text"
+                            placeholder="HOD Remarks"
+                            value={remarksInputs[item.id]?.hod || ''}
+                            onChange={(e) => handleRemarkChange(item.id, 'hod', e.target.value)}
+                            className="w-full min-w-[200px] px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent shadow-sm transition-all"
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        ) : (
+                          item.hod_remarks || '-'
+                        )}
+                      </td>
+                    )}
+                    {showHrColumn && (
+                      <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-500">
+                        {isHr && item.status === 'Pending HR' && selectedRows.includes(item.id) ? (
+                          <input
+                            type="text"
+                            placeholder="HR Remarks"
+                            value={remarksInputs[item.id]?.hr || ''}
+                            onChange={(e) => handleRemarkChange(item.id, 'hr', e.target.value)}
+                            className="w-full min-w-[200px] px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent shadow-sm transition-all"
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        ) : (
+                          item.hr_remarks || '-'
+                        )}
+                      </td>
+                    )}
+                    <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
+                      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${item.status === 'Approved' ? 'bg-green-100 text-green-800' :
+                        item.status?.includes('Rejected') ? 'bg-red-100 text-red-800' :
+                          'bg-yellow-100 text-yellow-800'
+                        }`}>
+                        {(item.status === 'Pending' || item.status === 'Pending HOD') ? 'Pending HOD' : (item.status?.includes('Rejected') ? 'Rejected' : item.status)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-500">
+                      {item.image_gate_pass ? (
+                        <a href={item.image_gate_pass} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:text-indigo-800"><ImageIcon size={18} /></a>
+                      ) : '-'}
+                    </td>
+                    {activeTab === 'pending' && (
+                      <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm font-medium">
+                        {/* Only show actions if not final status AND user has authority for current status */}
+                        {item.status !== 'Approved' && !item.status?.includes('Rejected') && (
+                          // Authorization Logic for Button Visibility
+                          (
+                            // If Pending: Visible for Assigned HOD OR HR/Admin
+                            ((item.status === 'Pending' || item.status === 'Pending HOD') && (
+                              (user?.is_hod && (item.hod_name === user?.full_name || item.hod_name === user?.Name)) ||
+                              (user?.role === 'hr' || user?.role === 'HR' || user?.role === 'admin' || user?.role === 'Admin')
+                            )) ||
+                            // If Pending HR: Visible ONLY for HR/Admin
+                            (item.status === 'Pending HR' && (
+                              user?.role === 'hr' || user?.role === 'HR' || user?.role === 'admin' || user?.role === 'Admin'
+                            ))
+                          ) && (
+                            <div className="flex space-x-2">
+                              <button
+                                onClick={() => handleAction('approve', item)}
+                                disabled={actionInProgress === item.id || !selectedRows.includes(item.id)}
+                                className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                Accept
+                              </button>
+                              <button
+                                onClick={() => handleAction('reject', item)}
+                                disabled={actionInProgress === item.id || !selectedRows.includes(item.id)}
+                                className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                Reject
+                              </button>
+                            </div>
+                          )
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={activeTab === 'pending' ? "11" : "10"} className="px-6 py-12 text-center text-slate-500">No requests found</td>
+                </tr>
               )}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 bg-white">
-            {data.length > 0 ? (
-              data.map((item) => (
-                <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
-                    {((user?.is_hod && (item.status === 'Pending' || item.status === 'Pending HOD') && (item.hod_name === user?.full_name || item.hod_name === user?.Name)) ||
-                      ((user?.role === 'hr' || user?.role === 'HR' || user?.role === 'admin' || user?.role === 'Admin' || user?.Admin === 'Yes') && item.status === 'Pending HR')) && (
+            </tbody>
+          </table>
+        </div>
+
+        {/* Mobile Cards View */}
+        <div className="block md:hidden flex-1 overflow-y-auto space-y-3 p-3 custom-scrollbar">
+          {activeTab === 'pending' && applicableItems.length > 0 && (
+            <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+              <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={selectedRows.length === applicableItems.length && applicableItems.length > 0}
+                  onChange={() => handleSelectAll(applicableItems)}
+                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-slate-300 rounded"
+                />
+                <span>Select All ({applicableItems.length})</span>
+              </label>
+              {selectedRows.length > 0 && (
+                <span className="text-[11px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
+                  {selectedRows.length} Selected
+                </span>
+              )}
+            </div>
+          )}
+          {data.length > 0 ? (
+            data.map((item) => {
+              const isAuthorized =
+                ((item.status === 'Pending' || item.status === 'Pending HOD') && (
+                  (user?.is_hod && (item.hod_name === user?.full_name || item.hod_name === user?.Name)) ||
+                  (user?.role === 'hr' || user?.role === 'HR' || user?.role === 'admin' || user?.role === 'Admin' || user?.Admin === 'Yes')
+                )) ||
+                (item.status === 'Pending HR' && (
+                  user?.role === 'hr' || user?.role === 'HR' || user?.role === 'admin' || user?.role === 'Admin' || user?.Admin === 'Yes'
+                ));
+
+              const isSelected = selectedRows.includes(item.id);
+              const statusColor = item.status === 'Approved' ? 'border-l-green-500' : item.status?.includes('Rejected') ? 'border-l-red-500' : 'border-l-yellow-500';
+              const badgeColor = item.status === 'Approved' ? 'bg-green-100 text-green-800' : item.status?.includes('Rejected') ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800';
+
+              return (
+                <div
+                  key={item.id}
+                  className={`bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-3 border-l-4 ${statusColor} hover:shadow-md transition-all`}
+                >
+                  {/* Header */}
+                  <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                    <div className="flex items-center gap-2">
+                      {activeTab === 'pending' && isAuthorized && (
                         <input
                           type="checkbox"
-                          checked={selectedRows.includes(item.id)}
+                          checked={isSelected}
                           onChange={() => handleCheckboxChange(item.id)}
                           className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-slate-300 rounded"
                         />
                       )}
-                  </td>
-                  <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
-                    <div className="flex flex-col">
-                      <span className="font-semibold text-slate-900 text-sm">{item.employee_name}</span>
-                      <span className="text-xs text-slate-500">{item.emp_id}</span>
+                      <span className="text-xs font-semibold text-slate-500">ID: {item.emp_id}</span>
                     </div>
-                  </td>
-                  <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
-                    <div className="flex flex-col text-sm text-slate-600">
-                      <span>Out: {formatDate(item.departure_from_plant)}</span>
-                      {item.arrival_at_plant && <span>In: {formatDate(item.arrival_at_plant)}</span>}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 sm:px-6 sm:py-4">
-                    <p className="text-sm text-slate-500 max-w-xs truncate" title={item.place_reason_to_visit}>{item.place_reason_to_visit}</p>
-                    <a href={`tel:${item.employee_whatsapp_number}`} className="text-xs text-indigo-500 hover:underline">{item.employee_whatsapp_number}</a>
-                  </td>
-                  <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-500">{item.hod_name}</td>
-                  {showHodColumn && (
-                    <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-500">
-                      {user?.is_hod && (item.status === 'Pending' || item.status === 'Pending HOD') && selectedRows.includes(item.id) ? (
-                        <input
-                          type="text"
-                          placeholder="HOD Remarks"
-                          value={remarksInputs[item.id]?.hod || ''}
-                          onChange={(e) => handleRemarkChange(item.id, 'hod', e.target.value)}
-                          className="w-full min-w-[200px] px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent shadow-sm transition-all"
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                      ) : (
-                        item.hod_remarks || '-'
-                      )}
-                    </td>
-                  )}
-                  {showHrColumn && (
-                    <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-500">
-                      {isHr && item.status === 'Pending HR' && selectedRows.includes(item.id) ? (
-                        <input
-                          type="text"
-                          placeholder="HR Remarks"
-                          value={remarksInputs[item.id]?.hr || ''}
-                          onChange={(e) => handleRemarkChange(item.id, 'hr', e.target.value)}
-                          className="w-full min-w-[200px] px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent shadow-sm transition-all"
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                      ) : (
-                        item.hr_remarks || '-'
-                      )}
-                    </td>
-                  )}
-                  <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
-                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${item.status === 'Approved' ? 'bg-green-100 text-green-800' :
-                      item.status?.includes('Rejected') ? 'bg-red-100 text-red-800' :
-                        'bg-yellow-100 text-yellow-800'
-                      }`}>
+                    <span className={`px-2.5 py-0.5 text-xs font-semibold rounded-full ${badgeColor}`}>
                       {(item.status === 'Pending' || item.status === 'Pending HOD') ? 'Pending HOD' : (item.status?.includes('Rejected') ? 'Rejected' : item.status)}
                     </span>
-                  </td>
-                  <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm text-slate-500">
-                    {item.image_gate_pass ? (
-                      <a href={item.image_gate_pass} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:text-indigo-800"><ImageIcon size={18} /></a>
-                    ) : '-'}
-                  </td>
-                  {activeTab === 'pending' && (
-                    <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap text-sm font-medium">
-                      {/* Only show actions if not final status AND user has authority for current status */}
-                      {item.status !== 'Approved' && !item.status?.includes('Rejected') && (
-                        // Authorization Logic for Button Visibility
-                        (
-                          // If Pending: Visible for Assigned HOD OR HR/Admin
-                          ((item.status === 'Pending' || item.status === 'Pending HOD') && (
-                            (user?.is_hod && (item.hod_name === user?.full_name || item.hod_name === user?.Name)) ||
-                            (user?.role === 'hr' || user?.role === 'HR' || user?.role === 'admin' || user?.role === 'Admin')
-                          )) ||
-                          // If Pending HR: Visible ONLY for HR/Admin
-                          (item.status === 'Pending HR' && (
-                            user?.role === 'hr' || user?.role === 'HR' || user?.role === 'admin' || user?.role === 'Admin'
-                          ))
-                        ) && (
-                          <div className="flex space-x-2">
-                            <button
-                              onClick={() => handleAction('approve', item)}
-                              disabled={actionInProgress === item.id || !selectedRows.includes(item.id)}
-                              className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              Accept
-                            </button>
-                            <button
-                              onClick={() => handleAction('reject', item)}
-                              disabled={actionInProgress === item.id || !selectedRows.includes(item.id)}
-                              className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              Reject
-                            </button>
+                  </div>
+
+                  {/* Name */}
+                  <div>
+                    <h4 className="text-base font-bold text-slate-900">{item.employee_name}</h4>
+                    <span className="text-xs text-slate-500">HOD: {item.hod_name || '-'}</span>
+                  </div>
+
+                  {/* Departure & Arrival Time */}
+                  <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase text-slate-400 block">Departure</span>
+                      <span className="font-semibold text-slate-700">{formatDate(item.departure_from_plant)}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold uppercase text-slate-400 block">Arrival</span>
+                      <span className="font-semibold text-slate-700">{item.arrival_at_plant ? formatDate(item.arrival_at_plant) : 'Not In'}</span>
+                    </div>
+                  </div>
+
+                  {/* Reason & Phone */}
+                  <div className="space-y-1 text-xs text-slate-600">
+                    <div>
+                      <span className="font-medium text-slate-500 block">Visit Purpose:</span>
+                      <p className="text-slate-800 italic mt-0.5 bg-slate-50 p-2 rounded border border-slate-100">{item.place_reason_to_visit || '-'}</p>
+                    </div>
+                    {item.employee_whatsapp_number && (
+                      <div className="flex justify-between items-center pt-1">
+                        <span className="font-medium text-slate-500">Mobile:</span>
+                        <a href={`tel:${item.employee_whatsapp_number}`} className="text-xs text-indigo-600 font-semibold hover:underline flex items-center gap-1">
+                          <Phone size={12} /> {item.employee_whatsapp_number}
+                        </a>
+                      </div>
+                    )}
+                    {item.image_gate_pass && (
+                      <div className="flex justify-between items-center pt-1">
+                        <span className="font-medium text-slate-500">Attachment:</span>
+                        <a href={item.image_gate_pass} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-indigo-600 font-semibold hover:underline">
+                          <ImageIcon size={14} /> View Pass Image
+                        </a>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Remarks Section */}
+                  {(showHodColumn && item.hod_remarks) || (showHrColumn && item.hr_remarks) || (isSelected && activeTab === 'pending') ? (
+                    <div className="space-y-2 pt-2 border-t border-slate-200">
+                      {showHodColumn && user?.is_hod && (item.status === 'Pending' || item.status === 'Pending HOD') && isSelected ? (
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">HOD Remarks:</label>
+                          <input
+                            type="text"
+                            placeholder="HOD Remarks"
+                            value={remarksInputs[item.id]?.hod || ''}
+                            onChange={(e) => handleRemarkChange(item.id, 'hod', e.target.value)}
+                            className="w-full p-2 text-xs border rounded-lg border-slate-300 focus:ring-1 focus:ring-indigo-500"
+                          />
+                        </div>
+                      ) : (
+                        showHodColumn && item.hod_remarks && (
+                          <div className="text-xs">
+                            <span className="font-medium text-slate-500">HOD Remarks:</span> <span className="text-slate-700">{item.hod_remarks}</span>
                           </div>
                         )
                       )}
-                      {/* Visual feedback removed as HOD is bypassed */}
-                    </td>
+
+                      {showHrColumn && isHr && item.status === 'Pending HR' && isSelected ? (
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">HR Remarks:</label>
+                          <input
+                            type="text"
+                            placeholder="HR Remarks"
+                            value={remarksInputs[item.id]?.hr || ''}
+                            onChange={(e) => handleRemarkChange(item.id, 'hr', e.target.value)}
+                            className="w-full p-2 text-xs border rounded-lg border-slate-300 focus:ring-1 focus:ring-indigo-500"
+                          />
+                        </div>
+                      ) : (
+                        showHrColumn && item.hr_remarks && (
+                          <div className="text-xs">
+                            <span className="font-medium text-slate-500">HR Remarks:</span> <span className="text-slate-700">{item.hr_remarks}</span>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  ) : null}
+
+                  {/* Actions */}
+                  {activeTab === 'pending' && item.status !== 'Approved' && !item.status?.includes('Rejected') && isAuthorized && (
+                    <div className="flex gap-2 pt-2 border-t border-slate-100">
+                      <button
+                        onClick={() => handleAction('approve', item)}
+                        disabled={actionInProgress === item.id || !isSelected}
+                        className="flex-1 py-2 text-xs font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-sm text-center disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Accept
+                      </button>
+                      <button
+                        onClick={() => handleAction('reject', item)}
+                        disabled={actionInProgress === item.id || !isSelected}
+                        className="flex-1 py-2 text-xs font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors shadow-sm text-center disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Reject
+                      </button>
+                    </div>
                   )}
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={activeTab === 'pending' ? "11" : "10"} className="px-6 py-12 text-center text-slate-500">No requests found</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="p-8 text-center text-slate-500 bg-white rounded-xl border border-slate-200">
+              No requests found
+            </div>
+          )}
+        </div>
+      </>
     );
   };
 
   return (
     <div className="h-full flex flex-col gap-4 sm:gap-6 overflow-hidden">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-extrabold text-[#800000] tracking-tight">Gate Pass Management</h1>
-          <p className="text-slate-500 mt-1 text-sm">Manage employee gate pass requests</p>
-        </div>
-        <div className="grid grid-cols-2 gap-2 w-full md:flex md:w-auto md:items-center md:justify-end">
-          {activeTab === "approved" && isHr && (
-            <div className="flex items-center gap-1 p-1 border rounded-lg bg-emerald-50 border-emerald-200 shadow-sm overflow-hidden h-[42px]">
-              <div className="flex items-center gap-0.5 px-1 border-r border-emerald-200 shrink-0">
-                <select
-                  value={exportMonth}
-                  onChange={(e) => setExportMonth(parseInt(e.target.value))}
-                  className="bg-transparent border-none focus:ring-0 text-[10px] sm:text-xs font-bold text-emerald-800 cursor-pointer p-0 w-10 sm:w-12"
-                >
-                  {Array.from({ length: 12 }, (_, i) => (
-                    <option key={i} value={i} className="text-slate-900">
-                      {dayjs().month(i).format("MMM")}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={exportYear}
-                  onChange={(e) => setExportYear(parseInt(e.target.value))}
-                  className="bg-transparent border-none focus:ring-0 text-[10px] sm:text-xs font-bold text-emerald-800 cursor-pointer p-0 w-12 sm:w-14"
-                >
-                  {Array.from({ length: 5 }, (_, i) => dayjs().year() - 2 + i).map((year) => (
-                    <option key={year} value={year} className="text-slate-900">
-                      {year}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <button
-                onClick={handleExportToExcel}
-                disabled={exportLoading}
-                className="inline-flex items-center justify-center px-2 py-1 text-[10px] sm:text-xs font-bold text-emerald-700 hover:text-emerald-900 transition-all disabled:opacity-50 group whitespace-nowrap"
-                title="Export approved gate passes for selected month"
-              >
-                {exportLoading ? (
-                  <Clock size={12} className="mr-1 animate-spin text-emerald-600" />
-                ) : (
-                  <FileSpreadsheet
-                    size={12}
-                    className="mr-1 text-emerald-600 group-hover:scale-110 transition-transform"
-                  />
-                )}
-                {exportLoading ? "..." : "Export"}
-              </button>
-            </div>
-          )}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 shrink-0">
+        <div className="flex items-center justify-between w-full md:w-auto gap-3">
+          <div>
+            <h1 className="text-xl sm:text-2xl font-extrabold text-[#800000] tracking-tight">Gate Pass Management</h1>
+            <p className="text-slate-500 mt-0.5 text-xs sm:text-sm">Manage employee gate pass requests</p>
+          </div>
+          {/* New Gate Pass Button beside header on mobile */}
           <button
             onClick={() => setShowModal(true)}
-            className="inline-flex items-center justify-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 w-full md:w-auto h-[42px] whitespace-nowrap"
+            className="inline-flex items-center justify-center px-3 sm:px-4 py-2 border border-transparent rounded-lg shadow-sm text-xs sm:text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 h-[38px] sm:h-[42px] whitespace-nowrap shrink-0 md:hidden"
           >
-            <Plus size={18} className="mr-2" />
+            <Plus size={16} className="mr-1" />
+            New Gate Pass
+          </button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto justify-start md:justify-end">
+          {/* Desktop New Gate Pass button */}
+          <button
+            onClick={() => setShowModal(true)}
+            className="hidden md:inline-flex items-center justify-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-xs sm:text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 h-[42px] whitespace-nowrap"
+          >
+            <Plus size={18} className="mr-1.5" />
             New Gate Pass
           </button>
         </div>

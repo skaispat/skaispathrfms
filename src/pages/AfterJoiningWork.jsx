@@ -3,7 +3,14 @@ import { createPortal } from 'react-dom';
 import { Filter, Search, Clock, CheckCircle, X, Upload } from 'lucide-react';
 import useDataStore from '../store/dataStore';
 import toast from 'react-hot-toast';
-import { supabase } from '../supabaseClient';
+import {
+  getAfterJoiningWorkData,
+  getAssetsDataByEmployeeId,
+  checkEmployeeIdExists,
+  saveAssetsRecord,
+  ensureUserExistsForAssets,
+  saveAfterJoiningChecklist
+} from '../api/afterJoiningWorkApi';
 
 const AfterJoiningWork = () => {
   const [activeTab, setActiveTab] = useState("pending");
@@ -49,19 +56,8 @@ const AfterJoiningWork = () => {
     setError(null);
 
     try {
-      // 1. Fetch Candidate Data from joining_form
-      const { data: joiningData, error: joiningError } = await supabase
-        .from('joining_form')
-        .select('*');
-
-      if (joiningError) throw new Error(`Supabase joining_form error: ${joiningError.message}`);
-
-      // 2. Fetch Checklist Data from after_joining
-      const { data: checklistData, error: checklistError } = await supabase
-        .from('after_joining')
-        .select('*');
-
-      if (checklistError) throw new Error(`Supabase after_joining error: ${checklistError.message}`);
+      // 1. Fetch Candidate Data and Checklist Data
+      const { joiningData, checklistData } = await getAfterJoiningWorkData();
 
       // Process and Merge Data
       const processedData = joiningData.map(joinItem => {
@@ -122,16 +118,7 @@ const AfterJoiningWork = () => {
   // Fetch previous assets data from Assets table in Supabase
   const fetchAssetsData = async (employeeId) => {
     try {
-      // Fetch data from Supabase 'assets' table
-      const { data, error } = await supabase
-        .from('assets')
-        .select('*')
-        .eq('employee_id', employeeId)
-        .limit(1);
-
-      if (error) {
-        throw new Error(`Supabase error: ${error.message}`);
-      }
+      const data = await getAssetsDataByEmployeeId(employeeId);
 
       if (data && data.length > 0) {
         const asset = data[0];
@@ -235,16 +222,7 @@ const AfterJoiningWork = () => {
       return;
     }
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('emp_id')
-        .eq('emp_id', id)
-        .maybeSingle();
-
-      if (error && error.code !== 'PGRST116') {
-        console.error("Error checking emp_id:", error);
-        return;
-      }
+      const data = await checkEmployeeIdExists(id);
 
       if (data) {
         setValidationError("emp id is already taken provide different emp id");
@@ -283,60 +261,7 @@ const AfterJoiningWork = () => {
 
   // Save assets data to Assets table in Supabase
   const saveAssetsData = async (employeeId, employeeName, assetsData) => {
-    try {
-      const now = new Date();
-      const timestamp = `${now.getDate().toString().padStart(2, '0')}/${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
-
-      // Check if record exists
-      const { data: existingData, error: fetchError } = await supabase
-        .from('assets')
-        .select('id')
-        .eq('employee_id', employeeId)
-        .limit(1);
-
-      if (fetchError) {
-        throw new Error(`Supabase fetch error: ${fetchError.message}`);
-      }
-
-      const assetRecord = {
-        timestamp: timestamp,
-        employee_id: employeeId,
-        employee_name: employeeName,
-        email_id: assetsData.emailId || "",
-        email_password: assetsData.emailPassword || "",
-        laptop: assetsData.laptop || "",
-        mobile: assetsData.mobile || "",
-        vehicle: assetsData.vehicle || "",
-        sim: assetsData.other || "", // Using other as sim
-        manual: assetsData.manualImageUrl || "",
-        punch_code: assetsData.punchCode || ""
-      };
-
-      if (existingData && existingData.length > 0) {
-        // Update existing record
-        const { data, error } = await supabase
-          .from('assets')
-          .update(assetRecord)
-          .eq('employee_id', employeeId);
-
-        if (error) {
-          throw new Error(`Supabase update error: ${error.message}`);
-        }
-        return data;
-      } else {
-        // Insert new record
-        const { data, error } = await supabase
-          .from('assets')
-          .insert([assetRecord]);
-
-        if (error) {
-          throw new Error(`Supabase insert error: ${error.message}`);
-        }
-        return data;
-      }
-    } catch (error) {
-      throw new Error(`Failed to save assets data: ${error.message}`);
-    }
+    return await saveAssetsRecord(employeeId, employeeName, assetsData);
   };
 
 
@@ -367,44 +292,27 @@ const AfterJoiningWork = () => {
       // Use formData.employeeId instead of selectedItem.joiningNo if we are assigning a new ID
       const targetEmployeeId = formData.employeeId || selectedItem.empId || selectedItem.joiningNo;
 
-      // Ensure user exists in 'users' table before assigning assets
-      // This is required to satisfy the foreign key constraint on the assets table
-      const { data: userCheck } = await supabase
-        .from('users')
-        .select('emp_id')
-        .eq('emp_id', targetEmployeeId)
-        .maybeSingle();
-
-      if (!userCheck) {
-        // Create new user record
-        const { error: createUserError } = await supabase
-          .from('users')
-          .insert([{
-            emp_id: targetEmployeeId,
-            username: selectedItem.candidateName.toLowerCase().replace(/\s+/g, ''),
-            password: 'user123',
-            full_name: selectedItem.candidateName,
-            email: formData.emailId || null,
-            phone_number: formData.mobile || null,
-            role: 'employee',
-            department: selectedItem.department,
-            designation: selectedItem.designation,
-            joining_date: selectedItem.dateOfJoining || null,
-            is_active: true,
-            page_access: [
-              "my-profile",
-              "my-attendance",
-              "leave-request",
-              "gate-pass-request",
-              "my-salary",
-              "company-calendar"
-            ]
-          }]);
-
-        if (createUserError) {
-          throw new Error(`Failed to create user record: ${createUserError.message}`);
-        }
-      }
+      const userPayload = {
+        emp_id: targetEmployeeId,
+        username: selectedItem.candidateName.toLowerCase().replace(/\s+/g, ''),
+        password: 'user123',
+        full_name: selectedItem.candidateName,
+        email: formData.emailId || null,
+        phone_number: formData.mobile || null,
+        role: 'employee',
+        department: selectedItem.department,
+        designation: selectedItem.designation,
+        joining_date: selectedItem.dateOfJoining || null,
+        is_active: true,
+        page_access: [
+          "my-profile",
+          "my-attendance",
+          "leave-request",
+          "gate-pass-request",
+          "my-salary"
+        ]
+      };
+      await ensureUserExistsForAssets(targetEmployeeId, userPayload);
 
       await saveAssetsData(targetEmployeeId, selectedItem.candidateName, {
         emailId: formData.emailId,
@@ -458,29 +366,7 @@ const AfterJoiningWork = () => {
       // Ideally we should have UNIQUE(joining_id). 
       // For now, let's check existence first.
 
-      const { data: existing, error: existError } = await supabase
-        .from('after_joining')
-        .select('id')
-        .eq('joining_id', selectedItem.joiningNo)
-        .limit(1);
-
-      if (existError) throw existError;
-
-      let result;
-      if (existing && existing.length > 0) {
-        result = await supabase
-          .from('after_joining')
-          .update(upsertData)
-          .eq('id', existing[0].id);
-      } else {
-        result = await supabase
-          .from('after_joining')
-          .insert([upsertData]);
-      }
-
-      if (result.error) {
-        throw new Error(`Supabase error: ${result.error.message}`);
-      }
+      await saveAfterJoiningChecklist(selectedItem.joiningNo, upsertData);
 
       if (allFieldsYes) {
         toast.success("All conditions met! Status completed.");

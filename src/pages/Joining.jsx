@@ -5,7 +5,12 @@ import {
   Upload, CreditCard, CheckCircle, ChevronDown, Copy
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { supabase } from '../supabaseClient';
+import {
+  getLastJoiningFormId,
+  uploadJoiningImage,
+  upsertJoiningForm,
+  getAllJoiningForms
+} from '../api/joiningApi';
 
 // --- Shared Components for Form ---
 const SectionCard = ({ title, icon: Icon, children }) => (
@@ -177,16 +182,7 @@ const JoiningForm = ({ existingData, onCancel, onSuccess }) => {
     if (!formData.joiningId) {
       const fetchLastId = async () => {
         try {
-          const { data, error } = await supabase
-            .from('joining_form')
-            .select('joining_id')
-            .order('created_at', { ascending: false })
-            .limit(1);
-
-          if (error) {
-            console.error('Error fetching last ID:', error);
-            return;
-          }
+          const data = await getLastJoiningFormId();
 
           let nextId = 'JOB001';
           if (data && data.length > 0 && data[0].joining_id) {
@@ -230,17 +226,7 @@ const JoiningForm = ({ existingData, onCancel, onSuccess }) => {
   };
 
   const uploadFile = async (file, path) => {
-    if (!file) return null;
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
-    const filePath = `${path}/${fileName}`;
-    const { error: uploadError } = await supabase.storage.from('images').upload(filePath, file);
-    if (uploadError) {
-      console.error(`Error uploading ${path}:`, uploadError);
-      throw uploadError;
-    }
-    const { data } = supabase.storage.from('images').getPublicUrl(filePath);
-    return data.publicUrl;
+    return await uploadJoiningImage(file, path);
   };
 
   const handleSubmit = async (e) => {
@@ -288,21 +274,7 @@ const JoiningForm = ({ existingData, onCancel, onSuccess }) => {
       if (bankPassbookUrl) payload.bank_passbook_url = bankPassbookUrl;
 
       // Upsert logic (checking existingData)
-      let result;
-      if (existingData && existingData.joining_id) {
-        // Update existing
-        const { error: updateError } = await supabase
-          .from('joining_form')
-          .update(payload)
-          .eq('joining_id', existingData.joining_id);
-        if (updateError) throw updateError;
-        result = existingData.joining_id;
-      } else {
-        // Insert new
-        const { error: insertError } = await supabase.from('joining_form').insert([payload]);
-        if (insertError) throw insertError;
-        result = formData.joiningId;
-      }
+      const result = await upsertJoiningForm(existingData, payload, formData.joiningId);
 
       toast.success('Joining form submitted successfully!', { id: toastId });
       setSubmittedId(result);
@@ -560,12 +532,7 @@ const Joining = () => {
     setLoading(true);
     setError(null);
     try {
-      const { data, error } = await supabase
-        .from('joining_form')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
+      const data = await getAllJoiningForms();
       setJoiningData(data || []);
     } catch (error) {
       console.error("Error fetching data:", error);

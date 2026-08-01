@@ -3,7 +3,12 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, Clock, CheckCircle, X, Upload } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { supabase } from '../supabaseClient';
+import {
+  getCallTrackerEnquiries,
+  updateCallTrackerEnquiry,
+  getLatestJoiningFormId,
+  insertJoiningFormRecord
+} from '../api/callTrackerApi';
 
 const CallTracker = () => {
   const [activeTab, setActiveTab] = useState('pending');
@@ -28,15 +33,8 @@ const CallTracker = () => {
     setError(null);
 
     try {
-      // Fetch data from Supabase
-      const { data: enquiryData, error: enquiryError } = await supabase
-        .from('employee_enquiry')
-        .select('*')
-        .order('id', { ascending: false });
-
-      if (enquiryError) {
-        throw new Error(`Supabase error: ${enquiryError.message}`);
-      }
+      // Fetch data from API
+      const enquiryData = await getCallTrackerEnquiries();
 
       // Process enquiry data
       const processedEnquiryData = enquiryData.map(item => ({
@@ -192,24 +190,13 @@ const CallTracker = () => {
         actual: formattedTimestamp
       };
 
-      const { data, error } = await supabase
-        .from('employee_enquiry')
-        .update(updateData)
-        .eq('id', selectedItem.id);
-
-      if (error) {
-        throw new Error(`Supabase error: ${error.message}`);
-      }
+      await updateCallTrackerEnquiry(selectedItem.id, updateData);
 
       // If status is 'Joining', insert into joining_form
       if (formData.status === 'Joining') {
         try {
           // fetch last joining ID to generate new one
-          const { data: lastData, error: lastError } = await supabase
-            .from('joining_form')
-            .select('joining_id')
-            .order('created_at', { ascending: false })
-            .limit(1);
+          const { data: lastData, error: lastError } = await getLatestJoiningFormId();
 
           let nextId = 'JOB001';
           if (!lastError && lastData && lastData.length > 0 && lastData[0].joining_id) {
@@ -243,9 +230,7 @@ const CallTracker = () => {
             branch_name: null,
           };
 
-          const { error: insertError } = await supabase
-            .from('joining_form')
-            .insert([joiningPayload]);
+          const { error: insertError } = await insertJoiningFormRecord(joiningPayload);
 
           if (insertError) {
             console.error('Error inserting into joining_form:', insertError);

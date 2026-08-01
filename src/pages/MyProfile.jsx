@@ -22,7 +22,12 @@ import {
   ChevronDown
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { supabase } from '../supabaseClient';
+import {
+  getMyProfileData,
+  getMyActivityHistory,
+  uploadMyProfilePicture,
+  updateMyProfileData
+} from '../api/myProfileApi';
 
 const MyProfile = () => {
   const [isEditing, setIsEditing] = useState(false);
@@ -50,16 +55,7 @@ const MyProfile = () => {
 
       if (!identifier) throw new Error("User identifier missing.");
 
-      let query = supabase.from('users').select('*');
-      if (sessionUser.emp_id) {
-        query = query.eq('emp_id', sessionUser.emp_id);
-      } else {
-        query = query.eq('username', sessionUser.username);
-      }
-
-      const { data, error } = await query.single();
-      if (error) throw error;
-      if (!data) throw new Error("User profile not found.");
+      const data = await getMyProfileData(sessionUser);
 
       setProfileData(data);
       setFormData({ ...data, password: '' });
@@ -80,14 +76,7 @@ const MyProfile = () => {
     if (!profileData?.emp_id) return;
 
     try {
-      // Fetch Leave Data
-      const { data: leaves, error: leaveError } = await supabase
-        .from('leave_management')
-        .select('*')
-        .eq('emp_id', profileData.emp_id)
-        .order('timestamp', { ascending: false });
-
-      if (leaveError) throw leaveError;
+      const { leaves, passes } = await getMyActivityHistory(profileData.emp_id);
 
       if (leaves) {
         const sensitiveLeaves = leaves.map(leave => ({
@@ -99,14 +88,15 @@ const MyProfile = () => {
         setLeaveData(sensitiveLeaves);
       }
 
-      // Fetch Gate Pass Data
-      const { data: passes, error: passError } = await supabase
-        .from('gate_pass')
-        .select('*')
-        .eq('emp_id', profileData.emp_id)
-        .order('timestamp', { ascending: false });
-
-      if (passError) throw passError;
+      if (passes) {
+        const sensitivePasses = passes.map(pass => ({
+          type: pass.pass_type || 'Gate Pass',
+          outTime: pass.out_time || '-',
+          inTime: pass.in_time || '-',
+          status: pass.status || 'Pending'
+        }));
+        setGatePassData(sensitivePasses);
+      }
 
       if (passes) {
         const sensitivePasses = passes.map(pass => ({
@@ -145,26 +135,10 @@ const MyProfile = () => {
       const file = e.target.files[0];
       if (!file) return;
 
-      const fileExt = file.name.split('.').pop();
-      const fileName = `profile-pictures/${Math.random()}.${fileExt}`;
-      const filePath = `${fileName}`;
-
-      let { error: uploadError } = await supabase.storage
-        .from('images')
-        .upload(filePath, file);
-
-      if (uploadError) throw uploadError;
-
-      const { data } = supabase.storage
-        .from('images')
-        .getPublicUrl(filePath);
-
-      setFormData(prev => ({ ...prev, profile_picture: data.publicUrl }));
-
-      // Auto save image immediately if not in edit mode
+      const publicUrl = await uploadMyProfilePicture(file, profileData.emp_id, !isEditing);
+      setFormData(prev => ({ ...prev, profile_picture: publicUrl }));
       if (!isEditing) {
-        await supabase.from('users').update({ profile_picture: data.publicUrl }).eq('emp_id', profileData.emp_id);
-        setProfileData(prev => ({ ...prev, profile_picture: data.publicUrl }));
+        setProfileData(prev => ({ ...prev, profile_picture: publicUrl }));
         toast.success('Profile picture updated');
       }
 
@@ -187,12 +161,7 @@ const MyProfile = () => {
         updates.password = password;
       }
 
-      const { error } = await supabase
-        .from('users')
-        .update(updates)
-        .eq('emp_id', profileData.emp_id);
-
-      if (error) throw error;
+      await updateMyProfileData(profileData.emp_id, updates);
 
       setProfileData({ ...formData, password: '' });
       setFormData(prev => ({ ...prev, password: '' })); // Clear password after save

@@ -9,7 +9,13 @@ import {
 import toast from "react-hot-toast";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { supabase } from "../supabaseClient";
+import {
+  getUsersForDailyAttendance,
+  getAttendanceDailyRecords,
+  upsertAttendanceDailyBatch,
+  uploadDailyAttendanceReportPdf,
+  triggerSaveDailyReportFunction
+} from "../api/attendanceDailyApi";
 
 const Attendancedaily = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -38,15 +44,7 @@ const Attendancedaily = () => {
 
     try {
       // Fetch users for name mapping
-      const { data: users, error: userError } = await supabase
-        .from("users")
-        .select("emp_id, full_name, designation ,users(full_name)");
-
-      ////////console.log(users,"userdata")
-
-      // console.log(users);
-
-      if (userError) throw userError;
+      const users = await getUsersForDailyAttendance();
 
       setAllUsers(users);
 
@@ -147,13 +145,7 @@ const Attendancedaily = () => {
       processedData.sort((a, b) => new Date(b.date) - new Date(a.date));
 
       // --- NEW: Fetch and Merge Database Data ---
-      const { data: dbData, error: dbError } = await supabase
-        .from("attendance_daily")
-        .select("*");
-
-      if (dbError) {
-        console.error("Error fetching DB data:", dbError);
-      }
+      const { data: dbData, error: dbError } = await getAttendanceDailyRecords();
 
       const mappedDbData = (dbData || []).map((record) => ({
         year: record.year,
@@ -258,12 +250,7 @@ const Attendancedaily = () => {
       const batchSize = 50;
       for (let i = 0; i < recordsToUpsert.length; i += batchSize) {
         const batch = recordsToUpsert.slice(i, i + batchSize);
-        // Using upsert with conflict on emp_id and date
-        const { error } = await supabase
-          .from("attendance_daily")
-          .upsert(batch, { onConflict: "emp_id, date" });
-
-        if (error) throw error;
+        await upsertAttendanceDailyBatch(batch);
       }
 
       ////////console.log("Auto-sync daily logs completed successfully");
@@ -308,31 +295,8 @@ const Attendancedaily = () => {
       // Filename: AttendanceData_DD-MM-YYYY_Time_HH-MM-SS_AM/PM.pdf
       const fileName = `AttendanceData_${dateForFilename}_Time_${hours}-${minutes}-${seconds}_${ampm}.pdf`;
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from("attendance_docs")
-        .upload(fileName, pdfBlob, {
-          contentType: "application/pdf",
-          upsert: false,
-        });
-
-      if (uploadError) throw uploadError;
-
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from("attendance_docs").getPublicUrl(fileName);
-
-      const { error: funcError } = await supabase.functions.invoke(
-        "save-daily-report",
-        {
-          body: {
-            date: todayStr,
-            pdf_link: publicUrl,
-            time: timeStr,
-          },
-        },
-      );
-
-      if (funcError) throw funcError;
+      const publicUrl = await uploadDailyAttendanceReportPdf(fileName, pdfBlob);
+      await triggerSaveDailyReportFunction(todayStr, publicUrl, timeStr);
 
       toast.success("Daily attendance report auto-saved!");
     } catch (error) {

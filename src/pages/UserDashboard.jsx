@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useAuthStore from '../store/authStore';
-import { supabase } from '../supabaseClient';
+import { getUserDashboardInitialData, updateBirthdayWishFromUserDashboard } from '../api/userDashboardApi';
 import {
   Users,
   UserCheck,
@@ -78,14 +78,16 @@ const UserDashboard = () => {
         const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString();
         const sixMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 5, 1).toISOString();
 
-        // 1. Fetch Users Data for events
-        const { data: usersData, error: usersError } = await supabase
-          .from('users')
-          .select('emp_id, is_active, department, designation, joining_date, full_name, profile_picture');
+        const {
+          usersData: fetchedUsers,
+          balanceData,
+          quotaData,
+          leavesData,
+          gatepassData,
+          birthdaysData
+        } = await getUserDashboardInitialData(user, getFiscalYear(), firstDayOfMonth);
 
-        if (usersError) throw usersError;
-
-        setUsersData(usersData || []);
+        setUsersData(fetchedUsers);
 
         // Fetch Biometric API for this month
         const y = today.getFullYear();
@@ -132,76 +134,29 @@ const UserDashboard = () => {
         myLateDetails.sort((a, b) => new Date(b.date) - new Date(a.date));
         setMyLates({ count: myLateCount, details: myLateDetails });
 
+        const carriedForwardEL = quotaData?.carried_forward_el || 0;
 
-        // 2. Fetch Leave Balances
-        if (user) {
-          const { data: balanceData } = await supabase
-            .from('employee_leave_balances')
-            .select('*')
-            .eq('emp_id', user.emp_id)
-            .maybeSingle();
-
-          const { data: quotaData } = await supabase
-            .from('yearly_quota')
-            .select('carried_forward_el')
-            .eq('emp_id', user.emp_id)
-            .eq('year', getFiscalYear())
-            .maybeSingle();
-
-          const carriedForwardEL = quotaData?.carried_forward_el || 0;
-
-          if (balanceData) {
-            setLeaveBalances({
-              casual: {
-                total: 12,
-                used: 12 - (balanceData.casual_leave_remaining ?? 12),
-                remaining: balanceData.casual_leave_remaining ?? 12
-              },
-              earned: {
-                total: 24,
-                used: 24 - (balanceData.earned_leave_remaining ?? 24),
-                remaining: (balanceData.earned_leave_remaining ?? 24) + carriedForwardEL,
-                actualRemaining: balanceData.earned_leave_remaining ?? 24,
-                carriedForward: carriedForwardEL
-              },
-              unpaid: { used: balanceData.unpaid_leave_total_taken ?? 0 }
-            });
-          }
+        if (balanceData) {
+          setLeaveBalances({
+            casual: {
+              total: 12,
+              used: 12 - (balanceData.casual_leave_remaining ?? 12),
+              remaining: balanceData.casual_leave_remaining ?? 12
+            },
+            earned: {
+              total: 24,
+              used: 24 - (balanceData.earned_leave_remaining ?? 24),
+              remaining: (balanceData.earned_leave_remaining ?? 24) + carriedForwardEL,
+              actualRemaining: balanceData.earned_leave_remaining ?? 24,
+              carriedForward: carriedForwardEL
+            },
+            unpaid: { used: balanceData.unpaid_leave_total_taken ?? 0 }
+          });
         }
 
-        // 3. Fetch Recent Operational Data (Current Month Only)
-        let leavesQuery = supabase.from('leave_management')
-          .select('id, employee_name, leave_type, status, leave_date_start, created_at')
-          .order('created_at', { ascending: false });
-        if (user) {
-          leavesQuery = leavesQuery.eq('employee_name', user.full_name)
-            .gte('leave_date_start', firstDayOfMonth);
-        }
-
-        let gatepassQuery = supabase.from('gate_pass')
-          .select('id, emp_name, place_reason_to_visit, status, timestamp')
-          .order('timestamp', { ascending: false });
-        if (user) {
-          gatepassQuery = gatepassQuery.eq('emp_name', user.full_name)
-            .gte('timestamp', firstDayOfMonth);
-        }
-
-        const [leavesRes, gatepassRes, birthdaysRes] = await Promise.all([
-          leavesQuery.limit(5),
-          gatepassQuery.limit(5),
-          supabase.from('birthday')
-            .select('*')
-            .order('created_at', { ascending: false })
-        ]);
-
-        if (leavesRes.error) console.error(leavesRes.error);
-        else setRecentLeaves(leavesRes.data || []);
-
-        if (gatepassRes.error) console.error(gatepassRes.error);
-        else setRecentGatepasses(gatepassRes.data || []);
-
-        if (birthdaysRes.error) console.error(birthdaysRes.error);
-        else setBirthdayRecords(birthdaysRes.data || []);
+        setRecentLeaves(leavesData);
+        setRecentGatepasses(gatepassData);
+        setBirthdayRecords(birthdaysData);
 
       } catch (error) {
         // console.error("Error fetching dashboard data:", error);
@@ -305,12 +260,7 @@ const UserDashboard = () => {
         ? `${sentByArray.join(', ')}, ${user.full_name.trim()}`
         : user.full_name.trim();
 
-      const { error } = await supabase
-        .from('birthday')
-        .update({ [column]: newSentBy })
-        .eq('id', record.id);
-
-      if (error) throw error;
+      await updateBirthdayWishFromUserDashboard(record.id, column, newSentBy);
 
 
 

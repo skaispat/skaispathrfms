@@ -7,18 +7,18 @@ const useDataStore = create(
       // Indent Data
       indentData: [],
       addIndent: (data) => set((state) => ({
-        indentData: [...state.indentData, { 
-          ...data, 
-          id: Date.now(), 
+        indentData: [...state.indentData, {
+          ...data,
+          id: Date.now(),
           indentNo: `IND-${String(state.indentData.length + 1).padStart(3, '0')}`,
-          createdAt: new Date().toISOString() 
+          createdAt: new Date().toISOString()
         }]
       })),
 
       // Social Site Data
       socialSiteData: [],
       moveSocialSiteToHistory: (id) => set((state) => ({
-        socialSiteData: state.socialSiteData.map(item => 
+        socialSiteData: state.socialSiteData.map(item =>
           item.id === id ? { ...item, status: 'completed' } : item
         )
       })),
@@ -26,18 +26,18 @@ const useDataStore = create(
       // Find Enquiry Data
       findEnquiryData: [],
       addEnquiry: (data) => set((state) => ({
-        findEnquiryData: [...state.findEnquiryData, { 
-          ...data, 
+        findEnquiryData: [...state.findEnquiryData, {
+          ...data,
           id: Date.now(),
           candidateEnquiryNo: `EN-${String(state.findEnquiryData.length + 1).padStart(3, '0')}`,
-          createdAt: new Date().toISOString() 
+          createdAt: new Date().toISOString()
         }]
       })),
 
       // Call Tracker Data
       callTrackerData: [],
       updateCallTracker: (id, data) => set((state) => ({
-        callTrackerData: state.callTrackerData.map(item => 
+        callTrackerData: state.callTrackerData.map(item =>
           item.id === id ? { ...item, ...data, lastUpdated: new Date().toISOString() } : item
         )
       })),
@@ -45,19 +45,19 @@ const useDataStore = create(
       // Employee Data
       employeeData: [],
       addEmployee: (data) => set((state) => ({
-        employeeData: [...state.employeeData, { 
-          ...data, 
+        employeeData: [...state.employeeData, {
+          ...data,
           id: Date.now(),
           employeeId: `EMP-${String(state.employeeData.length + 1).padStart(4, '0')}`,
           status: 'active',
-          createdAt: new Date().toISOString() 
+          createdAt: new Date().toISOString()
         }]
       })),
 
       // After Joining Work Data
       afterJoiningData: [],
       updateAfterJoining: (id, data) => set((state) => ({
-        afterJoiningData: state.afterJoiningData.map(item => 
+        afterJoiningData: state.afterJoiningData.map(item =>
           item.id === id ? { ...item, ...data, completed: true } : item
         )
       })),
@@ -65,18 +65,18 @@ const useDataStore = create(
       // Leaving Data
       leavingData: [],
       addLeaving: (data) => set((state) => ({
-        leavingData: [...state.leavingData, { 
-          ...data, 
+        leavingData: [...state.leavingData, {
+          ...data,
           id: Date.now(),
           status: 'pending',
-          createdAt: new Date().toISOString() 
+          createdAt: new Date().toISOString()
         }]
       })),
 
       // After Leaving Work Data
       afterLeavingData: [],
       updateAfterLeaving: (id, data) => set((state) => ({
-        afterLeavingData: state.afterLeavingData.map(item => 
+        afterLeavingData: state.afterLeavingData.map(item =>
           item.id === id ? { ...item, ...data, completed: true } : item
         )
       })),
@@ -115,10 +115,10 @@ const useDataStore = create(
         }
       ],
       addAttendance: (data) => set((state) => ({
-        attendanceData: [...state.attendanceData, { 
-          ...data, 
+        attendanceData: [...state.attendanceData, {
+          ...data,
           id: Date.now(),
-          createdAt: new Date().toISOString() 
+          createdAt: new Date().toISOString()
         }]
       })),
 
@@ -150,8 +150,8 @@ const useDataStore = create(
         }
       ],
       addLeaveRequest: (data) => set((state) => ({
-        leaveRequestsData: [...state.leaveRequestsData, { 
-          ...data, 
+        leaveRequestsData: [...state.leaveRequestsData, {
+          ...data,
           id: Date.now(),
           appliedDate: new Date().toISOString().split('T')[0],
           status: 'Pending'

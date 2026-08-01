@@ -24,7 +24,21 @@ import {
     AlertCircle,
     ArrowRightLeft
 } from 'lucide-react';
-import { supabase } from '../supabaseClient';
+import {
+  getSettingsInitialData,
+  getLeaveQuotaForEmpId,
+  uploadSettingsProfilePicture,
+  checkEmpAndUsernameExists,
+  updateUserRecordInSettings,
+  createUserRecordInSettings,
+  updateTeamMembersForHod,
+  shiftEmployeesToHod,
+  assignEmployeesToHod,
+  removeEmployeeFromHod,
+  insertLeaveFromSettings,
+  toggleUserLeaveAccess,
+  getNewJoiningFormsForSettings
+} from '../api/settingsApi';
 import toast from 'react-hot-toast';
 import useAuthStore from '../store/authStore';
 
@@ -164,18 +178,11 @@ const Settings = () => {
     const fetchUsers = async () => {
         setLoading(true);
         try {
-            const [usersResponse, teamResponse, joiniResponse] = await Promise.all([
-                supabase
-                    .from('users')
-                    .select('*')
-                    .order('created_at', { ascending: false }),
-                supabase
-                    .from('team_members')
-                    .select('*'),
-                supabase
-                    .from('joining_form')
-                    .select('*')
-            ]);
+            const { users: fetchedUsers, teamMembers: fetchedTeamMembers, joiningForms: fetchedJoiningForms } = await getSettingsInitialData();
+            
+            const usersResponse = { data: fetchedUsers };
+            const teamResponse = { data: fetchedTeamMembers };
+            const joiniResponse = { data: fetchedJoiningForms };
 
             if (usersResponse.error) throw usersResponse.error;
             // distinct error handling for team members in case table doesn't exist yet
@@ -297,13 +304,7 @@ const Settings = () => {
         setLoadingQuota(true);
         try {
             // Use the employee_leave_balances view which computes remaining balances
-            const { data, error } = await supabase
-                .from('employee_leave_balances')
-                .select('*')
-                .eq('emp_id', empId)
-                .maybeSingle();
-
-            if (error) throw error;
+            const data = await getLeaveQuotaForEmpId(empId);
 
             if (data) {
                 setLeaveQuota({
@@ -449,23 +450,8 @@ const Settings = () => {
             const file = e.target.files[0];
             if (!file) return;
 
-            const fileExt = file.name.split('.').pop();
-            const fileName = `profile-pictures/${Math.random()}.${fileExt}`;
-            const filePath = `${fileName}`;
-
-            let { error: uploadError } = await supabase.storage
-                .from('images')
-                .upload(filePath, file);
-
-            if (uploadError) {
-                throw uploadError;
-            }
-
-            const { data } = supabase.storage
-                .from('images')
-                .getPublicUrl(filePath);
-
-            setFormData(prev => ({ ...prev, profile_picture: data.publicUrl }));
+            const publicUrl = await uploadSettingsProfilePicture(file);
+            setFormData(prev => ({ ...prev, profile_picture: publicUrl }));
             toast.success('Image uploaded successfully');
 
         } catch (error) {
@@ -534,17 +520,9 @@ const Settings = () => {
             }
         }
         try {
-            // Run checks in parallel for better performance and safety avoiding complex OR strings
-            const [empCheck, usernameCheck] = await Promise.all([
-                supabase
-                    .from('users')
-                    .select('emp_id')
-                    .ilike('emp_id', cleanedData.emp_id), // Case-insensitive check
-                supabase
-                    .from('users')
-                    .select('emp_id, username') // Select emp_id to verify if it's the same user
-                    .eq('username', cleanedData.username)
-            ]);
+            const { empCheck: empCheckData, usernameCheck: usernameCheckData } = await checkEmpAndUsernameExists(cleanedData.emp_id, cleanedData.username);
+            const empCheck = { data: empCheckData };
+            const usernameCheck = { data: usernameCheckData };
 
             if (empCheck.error) throw empCheck.error;
             if (usernameCheck.error) throw usernameCheck.error;
@@ -594,12 +572,7 @@ const Settings = () => {
             let result;
             if (editingUser) {
                 // Update
-                const { error } = await supabase
-                    .from('users')
-                    .update(userData)
-                    .eq('emp_id', editingUser.emp_id);
-
-                if (error) throw error;
+                await updateUserRecordInSettings(editingUser.emp_id, userData);
                 toast.success('User updated successfully');
             } else {
                 // Create
@@ -607,11 +580,7 @@ const Settings = () => {
                     toast.error('Password is required for new users');
                     return;
                 }
-                const { error } = await supabase
-                    .from('users')
-                    .insert([userData]);
-
-                if (error) throw error;
+                await createUserRecordInSettings(userData);
 
                 // For new users, we need to handle team assignment after we confirm specific ID usage.
                 // Since we manually input emp_id, we can use it immediately.
@@ -651,30 +620,9 @@ const Settings = () => {
 
         try {
             // 1. Clear old team members not in new selection
-            if (editingUser) {
-                const currentMembers = users.filter(u => u.hod_id === hodId).map(u => u.emp_id);
-                const toRemove = currentMembers.filter(id => !selectedTeam.includes(id));
-
-                if (toRemove.length > 0) {
-                    await supabase
-                        .from('team_members')
-                        .delete()
-                        .in('emp_id', toRemove);
-                }
-            }
-
-            // 2. Add new team members
-            if (selectedTeam.length > 0) {
-                const updates = selectedTeam.map(empId => ({
-                    hod_id: hodId,
-                    emp_id: empId
-                }));
-
-                // Upsert to handle re-assignments
-                await supabase
-                    .from('team_members')
-                    .upsert(updates);
-            }
+            const currentMembers = editingUser ? users.filter(u => u.hod_id === hodId).map(u => u.emp_id) : [];
+            const toRemove = currentMembers.filter(id => !selectedTeam.includes(id));
+            await updateTeamMembersForHod(hodId, toRemove, selectedTeam);
 
         } catch (error) {
             console.error("Error updating team members:", error);
@@ -732,24 +680,7 @@ const Settings = () => {
             setLoading(true);
 
             // 1. Delete old assignments for these employees
-            const { error: deleteError } = await supabase
-                .from('team_members')
-                .delete()
-                .in('emp_id', employeesToShift);
-
-            if (deleteError) throw deleteError;
-
-            // 2. Add new assignments
-            const updates = employeesToShift.map(empId => ({
-                hod_id: shiftTargetHod,
-                emp_id: empId
-            }));
-
-            const { error: upsertError } = await supabase
-                .from('team_members')
-                .upsert(updates);
-
-            if (upsertError) throw upsertError;
+            await shiftEmployeesToHod(employeesToShift, shiftTargetHod);
 
             toast.success(`Successfully shifted ${employeesToShift.length} employees`);
             setIsShiftModalOpen(false);
@@ -777,16 +708,7 @@ const Settings = () => {
         try {
             setLoading(true);
 
-            const updates = selectedEmployees.map(empId => ({
-                hod_id: selectedHod.emp_id,
-                emp_id: empId
-            }));
-
-            const { error } = await supabase
-                .from('team_members')
-                .upsert(updates);
-
-            if (error) throw error;
+            await assignEmployeesToHod(selectedEmployees, selectedHod.emp_id);
 
             toast.success(`Successfully assigned ${selectedEmployees.length} employees to ${selectedHod.full_name}`);
             setIsAssignModalOpen(false);
@@ -803,10 +725,7 @@ const Settings = () => {
     const handleRemoveEmployeeFromHod = async (empId) => {
         try {
             setLoading(true);
-            const { error } = await supabase
-                .from('team_members')
-                .delete()
-                .eq('emp_id', empId);
+            await removeEmployeeFromHod(empId);
 
             if (error) throw error;
             toast.success('Employee removed from team');
@@ -874,11 +793,7 @@ const Settings = () => {
                 designation: leaveFormData.designation
             };
 
-            const { error } = await supabase
-                .from('leave_management')
-                .insert([insertData]);
-
-            if (error) throw error;
+            await insertLeaveFromSettings(insertData);
 
             toast.success('Leave added successfully');
             setIsLeaveModalOpen(false);
@@ -896,12 +811,7 @@ const Settings = () => {
         setUsers(users.map(u => u.emp_id === user.emp_id ? { ...u, is_leave_allowed: newStatus } : u));
 
         try {
-            const { error } = await supabase
-                .from('users')
-                .update({ is_leave_allowed: newStatus })
-                .eq('emp_id', user.emp_id);
-
-            if (error) throw error;
+            await toggleUserLeaveAccess(user.emp_id, newStatus);
             toast.success(`Leave access ${newStatus ? 'enabled' : 'disabled'} for ${user.full_name}`);
         } catch (error) {
             console.error('Error toggling leave access:', error);
@@ -914,12 +824,7 @@ const Settings = () => {
     const handleFetchNewJoini = async () => {
         setLoading(true);
         try {
-            const { data, error } = await supabase
-                .from('joining_form')
-                .select('*')
-                .order('created_at', { ascending: false });
-
-            if (error) throw error;
+            const data = await getNewJoiningFormsForSettings();
 
             // Only show joinis whose emp_id is not already in the users table
             const existingEmpIds = new Set(users.filter(u => u.emp_id).map(u => String(u.emp_id).trim().toLowerCase()));

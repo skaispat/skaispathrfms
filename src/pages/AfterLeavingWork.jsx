@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, X } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { supabase } from '../supabaseClient';
+import { getAfterLeavingWorkData, updateAfterLeavingWorkRecord } from '../api/afterLeavingWorkApi';
 
 const AfterLeavingWork = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -30,21 +30,7 @@ const AfterLeavingWork = () => {
 
     try {
       // Fetch from employee_leaving joined with users to get name, designation, etc.
-      const { data, error } = await supabase
-        .from('employee_leaving')
-        .select(`
-          *,
-          users (
-            full_name,
-            joining_date,
-            designation,
-            department
-          )
-        `);
-
-      if (error) {
-        throw new Error(error.message);
-      }
+      const data = await getAfterLeavingWorkData();
 
       if (!data) {
         setPendingData([]);
@@ -170,12 +156,7 @@ const AfterLeavingWork = () => {
         updates.actual_date = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
       }
 
-      const { error } = await supabase
-        .from('employee_leaving')
-        .update(updates)
-        .eq('id', selectedItem.id);
-
-      if (error) throw new Error(error.message);
+      await updateAfterLeavingWorkRecord(selectedItem.id, updates);
 
       if (allConditionsMet) {
         toast.success("All conditions met! Actual date updated successfully.");
