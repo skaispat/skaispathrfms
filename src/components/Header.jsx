@@ -4,6 +4,7 @@ import useAuthStore from '../store/authStore';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { supabase } from '../supabaseClient';
+import Event from './Event';
 
 const Header = ({ children }) => {
   const { user, logout } = useAuthStore();
@@ -25,7 +26,11 @@ const Header = ({ children }) => {
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
   }, []);
 
   // Fetch Notifications
@@ -238,52 +243,55 @@ const Header = ({ children }) => {
   };
 
   return (
-    <header className="bg-white border-b border-slate-100 sticky top-0 z-20 px-4 sm:px-6 py-3">
-      <div className="flex justify-between items-center max-w-7xl mx-auto w-full">
-        <div className="flex items-center gap-4 flex-1">
-          <div className="flex items-center gap-2 ml-12 lg:ml-0 relative group">
-            {/* <img
-              src="/mother4.png"
-              alt="Logo"
-              className="h-12 w-auto object-contain"
-            /> */}
+    <header className="relative w-full sticky top-0 z-20 shadow-md bg-gradient-to-r from-[#F59E0B] via-[#FBBF24] to-[#F59E0B] border-b border-amber-500/40 py-2.5 sm:py-3 px-3 sm:px-6">
+      {/* Background Banner Image Layer on Right */}
+      <div className="absolute inset-0 z-0 flex justify-end overflow-hidden pointer-events-none">
+        <div
+          className="w-full sm:w-2/3 md:w-1/2 lg:w-5/12 h-full bg-cover bg-[position:center_42%] translate-y-0.5 sm:translate-y-1 opacity-90 scale-105"
+          style={{
+            backgroundImage: `url('/friendship_day_banner.png')`,
+            maskImage: 'linear-gradient(to right, transparent 0%, black 25%)',
+            WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 25%)'
+          }}
+        />
+      </div>
 
-            {/* Flowing Hearts Animation */}
-            {/* <div className="absolute inset-0 pointer-events-none overflow-visible">
-              <Heart className="absolute bottom-0 left-6 text-red-500 animate-heart-left opacity-0" size={10} fill="currentColor" />
-              <Heart className="absolute bottom-2 left-10 text-red-400 animate-heart-right opacity-0 [animation-delay:0.4s]" size={9} fill="currentColor" />
-              <Heart className="absolute bottom-1 left-14 text-pink-500 animate-heart-left opacity-0 [animation-delay:0.8s]" size={14} fill="currentColor" />
-              <Heart className="absolute bottom-0 left-24 text-pink-300 animate-heart-right opacity-0 [animation-delay:1.2s]" size={11} fill="currentColor" />
-              <Heart className="absolute bottom-2 left-20 text-rose-400 animate-heart-left opacity-0 [animation-delay:1.6s]" size={8} fill="currentColor" />
-              <Heart className="absolute bottom-1 left-32 text-rose-500 animate-heart-right opacity-0 [animation-delay:2s]" size={13} fill="currentColor" />
-              <Heart className="absolute bottom-0 left-28 text-pink-400 animate-heart-left opacity-0 [animation-delay:2.4s]" size={12} fill="currentColor" />
-              <Heart className="absolute bottom-3 left-18 text-red-600 animate-heart-right opacity-0 [animation-delay:2.8s]" size={10} fill="currentColor" />
-            </div> */}
+      {/* Floating Animated White Hearts Layer */}
+      <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden opacity-60">
+        <span className="absolute text-xs animate-bounce left-16 top-1 text-white">🤍</span>
+        <span className="absolute text-sm animate-pulse left-1/3 bottom-1 text-white">🤍</span>
+        <span className="absolute text-xs animate-ping left-1/2 top-2 text-white">🤍</span>
+        <span className="absolute text-xs animate-bounce right-1/3 top-1 text-white">🤍</span>
+      </div>
 
-            {/* <div className="flex flex-col leading-tight font-extrabold bg-gradient-to-r from-red-600 via-pink-500 to-red-600 bg-clip-text text-transparent animate-shimmer drop-shadow-sm">
-              <span className="animate-typing text-xs sm:text-sm">Happy</span>
-              <span className="animate-typing [animation-delay:0.2s] text-sm sm:text-base">Mother's Day</span>
-            </div> */}
+      <div className="relative z-10 flex justify-between items-center max-w-7xl mx-auto w-full gap-2">
+        <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
+          <div className="flex items-center gap-2 ml-[54px] sm:ml-14 lg:ml-0 relative group shrink-0">
+            <Event />
           </div>
           {children}
         </div>
 
-        <div className="flex items-center space-x-4 sm:space-x-6">
+        <div className="flex items-center space-x-3 sm:space-x-5">
 
           {/* Notification Bell */}
-          <div className="relative" ref={notificationRef}>
+          <div className="relative z-30" ref={notificationRef}>
             <button
-              onClick={() => setIsNotificationOpen(!isNotificationOpen)}
-              className="relative p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-full transition-all focus:outline-none"
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsNotificationOpen(!isNotificationOpen);
+              }}
+              className="relative p-2 text-slate-950 bg-white/40 hover:bg-white/60 backdrop-blur-md rounded-full transition-all focus:outline-none border border-white/50 shadow-sm cursor-pointer"
             >
-              <Bell size={20} />
+              <Bell size={20} className="text-slate-950" />
               {notifications.length > 0 && (
-                <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-red-500 ring-2 ring-white animate-pulse"></span>
+                <span className="absolute top-1 right-1 h-2.5 w-2.5 rounded-full bg-red-600 ring-2 ring-white animate-pulse"></span>
               )}
             </button>
 
             {isNotificationOpen && (
-              <div className="fixed inset-x-4 top-[72px] sm:absolute sm:inset-auto sm:right-0 sm:mt-3 w-auto sm:w-[28rem] bg-white rounded-2xl shadow-2xl border border-slate-100 py-2 z-50 transform origin-top-right transition-all overflow-hidden ring-1 ring-slate-900/5 flex flex-col">
+              <div className="fixed inset-x-4 top-[64px] sm:absolute sm:inset-auto sm:right-0 sm:top-full sm:mt-3 w-auto sm:w-[28rem] bg-white rounded-2xl shadow-2xl border border-slate-100 py-2 z-50 transform origin-top-right transition-all overflow-hidden ring-1 ring-slate-900/5 flex flex-col">
                 <div className="px-4 py-3 sm:px-5 sm:py-4 border-b border-slate-50 flex justify-between items-center bg-white flex-shrink-0">
                   <h3 className="text-base font-bold text-slate-800 tracking-tight">Notifications</h3>
                   {notifications.length > 0 && (
@@ -417,23 +425,27 @@ const Header = ({ children }) => {
             )}
           </div>
 
-          <div className="h-6 w-px bg-slate-200 hidden sm:block"></div>
+          <div className="h-6 w-px bg-amber-400/80 hidden sm:block"></div>
 
-          <div className="relative" ref={dropdownRef}>
+          <div className="relative z-30" ref={dropdownRef}>
             <button
-              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-              className="flex items-center gap-3 pl-6 focus:outline-none group"
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsDropdownOpen(!isDropdownOpen);
+              }}
+              className="flex items-center gap-3 pl-2 sm:pl-4 focus:outline-none group cursor-pointer"
             >
               <div className="flex flex-col items-end hidden md:block text-right">
-                <p className="text-sm font-semibold text-slate-700 leading-tight group-hover:text-[#991B1B] transition-colors">
+                <p className="text-sm font-black text-slate-950 leading-tight group-hover:text-slate-800 transition-colors drop-shadow-sm">
                   {user?.full_name || user?.Name || 'Guest User'}
                 </p>
-                <p className="text-xs text-slate-500 font-medium capitalize">
+                <p className="text-xs text-slate-800 font-bold capitalize">
                   {user?.role || user?.designation || 'User'}
                 </p>
               </div>
 
-              <div className="h-10 w-10 rounded-full bg-red-50 flex items-center justify-center border border-red-100 text-[#991B1B] overflow-hidden group-hover:ring-2 group-hover:ring-[#991B1B]/20 transition-all">
+              <div className="h-10 w-10 rounded-full bg-white/50 flex items-center justify-center border-2 border-white text-slate-900 overflow-hidden shadow-md group-hover:scale-105 transition-all">
                 {user?.profile_picture ? (
                   <img
                     src={user.profile_picture}
@@ -447,8 +459,8 @@ const Header = ({ children }) => {
             </button>
 
             {isDropdownOpen && (
-              <div className="absolute right-0 mt-3 w-56 bg-white rounded-xl shadow-xl border border-slate-100 py-2 z-50 transform origin-top-right transition-all">
-                <div className="px-4 py-3 border-b border-slate-50">
+              <div className="fixed inset-x-4 top-[64px] sm:absolute sm:inset-auto sm:right-0 sm:top-full sm:mt-3 w-auto sm:w-56 bg-white rounded-2xl shadow-2xl border border-slate-100 py-2 z-50 transform origin-top-right transition-all">
+                <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50">
                   <p className="text-sm font-bold text-slate-800 truncate">{user?.full_name || user?.Name || 'Guest User'}</p>
                   <p className="text-xs text-slate-500 truncate">{user?.email || 'No email'}</p>
                 </div>
@@ -456,7 +468,7 @@ const Header = ({ children }) => {
                 <div className="py-1">
                   <Link
                     to="/my-profile"
-                    className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-[#991B1B] transition-colors"
+                    className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 hover:text-[#991B1B] transition-colors"
                     onClick={() => setIsDropdownOpen(false)}
                   >
                     <User size={18} />
@@ -464,8 +476,9 @@ const Header = ({ children }) => {
                   </Link>
                 </div>
 
-                <div className="py-1 border-t border-slate-50">
+                <div className="py-1 border-t border-slate-100">
                   <button
+                    type="button"
                     onClick={handleLogout}
                     className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
                   >
