@@ -9,26 +9,27 @@ export const getUsersForLeaveManagement = async () => {
 };
 
 export const getLeaveBalancesForUser = async (userFullName, userEmpId, currentYear) => {
+  const empId = userEmpId || userFullName;
   const { data: balanceData, error: balanceError } = await supabase
-    .from('leave_management')
-    .select('leave_type, duration_days, status, start_half_day, end_half_day, leave_date_start, cf_el_used')
-    .eq('employee_name', userFullName)
-    .in('status', ['Approved', 'Pending', 'Pending HR', 'Pending HOD']);
+    .from('employee_leave_balances')
+    .select('*')
+    .eq('emp_id', empId)
+    .maybeSingle();
 
   if (balanceError) console.error("Error fetching balance:", balanceError);
 
   let quotaData = null;
-  if (userEmpId) {
+  if (empId) {
     const { data } = await supabase
       .from('yearly_quota')
       .select('*')
-      .eq('emp_id', userEmpId)
+      .eq('emp_id', empId)
       .eq('year', currentYear)
       .maybeSingle();
     quotaData = data;
   }
 
-  return { balanceData: balanceData || [], quotaData };
+  return { balanceData, quotaData };
 };
 
 export const getHodAndHrDetailsForEmp = async (empId) => {
@@ -133,7 +134,7 @@ export const checkExistingLeaveConflict = async (empId, empName, startDate, endD
   const { data, error } = await supabase
     .from('leave_management')
     .select('id, leave_date_start, leave_date_end, status')
-    .or(`employee_id.eq.${empId},employee_name.eq.${empName}`)
+    .or(`emp_id.eq.${empId},employee_name.eq.${empName}`)
     .in('status', ['Pending', 'Pending HOD', 'Pending HR', 'Approved'])
     .lte('leave_date_start', endDate)
     .gte('leave_date_end', startDate);

@@ -713,14 +713,6 @@ const LeaveManagement = () => {
 
       const existingLeave = await checkExistingLeaveConflict(formData.employeeId, formData.employeeName, formData.fromDate, formData.toDate);
 
-
-
-      if (checkError) {
-        console.error(checkError);
-        toast.error("Unable to verify previous leave requests");
-        return;
-      }
-
       if (existingLeave.length > 0) {
         toast.error("Only 1 leave request allowed per day");
         return;

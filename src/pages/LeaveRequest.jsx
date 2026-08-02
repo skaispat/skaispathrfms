@@ -249,25 +249,25 @@ const LeaveRequest = () => {
 
       const data = await createLeaveRequestWithLog(insertData, logData);
 
-        if (data && data[0]) {
-          if (hodDetails.id && hodDetails.phone_number) {
-            const totalDays = calculateDays(formData.fromDate, formData.toDate);
-            await sendWhatsappMessageToHod({
-              employeId: hodDetails.id,
-              tableid: data[0].id,
-              hodPhoneNumber: hodDetails.phone_number,
-              employeeName: user.full_name || user.Name,
-              empId: user.emp_id,
-              department: user.department || user.designation || user.role,
-              leaveType: formData.leaveType,
-              fromDate: formData.fromDate,
-              toDate: formData.toDate,
-              totalDays: totalDays,
-              reason: formData.reason,
-              who: "hod",
-            });
-          }
+      if (data && data[0]) {
+        if (hodDetails.id && hodDetails.phone_number) {
+          const totalDays = calculateDays(formData.fromDate, formData.toDate);
+          await sendWhatsappMessageToHod({
+            employeId: hodDetails.id,
+            tableid: data[0].id,
+            hodPhoneNumber: hodDetails.phone_number,
+            employeeName: user.full_name || user.Name,
+            empId: user.emp_id,
+            department: user.department || user.designation || user.role,
+            leaveType: formData.leaveType,
+            fromDate: formData.fromDate,
+            toDate: formData.toDate,
+            totalDays: totalDays,
+            reason: formData.reason,
+            who: "hod",
+          });
         }
+      }
 
       toast.success('Leave Request Submitted Successfully');
       setShowModal(false);
