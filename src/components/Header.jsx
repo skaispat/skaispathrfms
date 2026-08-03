@@ -1,10 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { User, LogOut, Bell, CheckCircle, Clock, Heart } from 'lucide-react';
+import { User, LogOut, Bell, CheckCircle, Clock } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { supabase } from '../supabaseClient';
-import Event from './Event';
 
 const Header = ({ children }) => {
   const { user, logout } = useAuthStore();
@@ -243,32 +242,9 @@ const Header = ({ children }) => {
   };
 
   return (
-    <header className="relative w-full sticky top-0 z-20 shadow-md bg-gradient-to-r from-[#F59E0B] via-[#FBBF24] to-[#F59E0B] border-b border-amber-500/40 py-2.5 sm:py-3 px-3 sm:px-6">
-      {/* Background Banner Image Layer on Right */}
-      <div className="absolute inset-0 z-0 flex justify-end overflow-hidden pointer-events-none">
-        <div
-          className="w-full sm:w-2/3 md:w-1/2 lg:w-5/12 h-full bg-cover bg-[position:center_42%] translate-y-0.5 sm:translate-y-1 opacity-90 scale-105"
-          style={{
-            backgroundImage: `url('/friendship_day_banner.png')`,
-            maskImage: 'linear-gradient(to right, transparent 0%, black 25%)',
-            WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 25%)'
-          }}
-        />
-      </div>
-
-      {/* Floating Animated White Hearts Layer */}
-      <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden opacity-60">
-        <span className="absolute text-xs animate-bounce left-16 top-1 text-white">🤍</span>
-        <span className="absolute text-sm animate-pulse left-1/3 bottom-1 text-white">🤍</span>
-        <span className="absolute text-xs animate-ping left-1/2 top-2 text-white">🤍</span>
-        <span className="absolute text-xs animate-bounce right-1/3 top-1 text-white">🤍</span>
-      </div>
-
-      <div className="relative z-10 flex justify-between items-center max-w-7xl mx-auto w-full gap-2">
-        <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
-          <div className="flex items-center gap-2 ml-[54px] sm:ml-14 lg:ml-0 relative group shrink-0">
-            <Event />
-          </div>
+    <header className="bg-white border-b border-slate-100 sticky top-0 z-20 px-4 sm:px-6 py-3">
+      <div className="flex justify-between items-center max-w-7xl mx-auto w-full">
+        <div className="flex items-center gap-4 flex-1">
           {children}
         </div>
 
@@ -425,7 +401,7 @@ const Header = ({ children }) => {
             )}
           </div>
 
-          <div className="h-6 w-px bg-amber-400/80 hidden sm:block"></div>
+          <div className="h-6 w-px bg-slate-200 hidden sm:block"></div>
 
           <div className="relative z-30" ref={dropdownRef}>
             <button

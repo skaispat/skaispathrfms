@@ -69,8 +69,8 @@ const LeaveManagement = () => {
     user?.role === "Admin" ||
     user?.Admin === "Yes";
 
-  const showHrColumn = isHr || (!isHod && !isHr);
-  const showHodColumn = (isHod && !isHr) || (!isHod && !isHr);
+  const showHrColumn = true;
+  const showHodColumn = true;
 
   const [searchTerm, setSearchTerm] = useState("");
   // State removed (replaced by React Query)
@@ -171,11 +171,14 @@ const LeaveManagement = () => {
   };
 
   const handleCheckboxChange = (leaveId, rowData) => {
-    // Single selection for editing (keep existing behavior)
-    if (selectedRow?.id === leaveId) {
-      setSelectedRow(null);
+    const isCurrentlySelected = selectedIds.includes(leaveId) || selectedRow?.id === leaveId;
+
+    if (isCurrentlySelected) {
+      if (selectedRow?.id === leaveId) {
+        setSelectedRow(null);
+      }
+      setSelectedIds(prev => prev.filter(id => id !== leaveId));
     } else {
-      // Convert DD/MM/YYYY to YYYY-MM-DD for date input
       const formatForInput = (dateStr) => {
         if (!dateStr) return "";
         if (dateStr.includes("-")) return dateStr;
@@ -184,8 +187,8 @@ const LeaveManagement = () => {
       };
 
       setSelectedRow(rowData);
+      setSelectedIds(prev => (prev.includes(leaveId) ? prev : [...prev, leaveId]));
 
-      // Initialize row state if not already present
       if (!editableDates[leaveId]) {
         const from = formatForInput(rowData.startDate);
         const to = formatForInput(rowData.endDate);
@@ -195,31 +198,6 @@ const LeaveManagement = () => {
         setLeaveCounts(prev => ({ ...prev, [leaveId]: initialCounts }));
       }
     }
-
-    // Multiple selection for bulk actions
-    setSelectedIds(prev => {
-      const isSelecting = !prev.includes(leaveId);
-      if (isSelecting) {
-        // Initialize state for the row being selected if not already there
-        if (!editableDates[leaveId]) {
-          const formatForInput = (dateStr) => {
-            if (!dateStr) return "";
-            if (dateStr.includes("-")) return dateStr;
-            const [day, month, year] = dateStr.split("/");
-            return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
-          };
-          const from = formatForInput(rowData.startDate);
-          const to = formatForInput(rowData.endDate);
-          const initialCounts = getAutoLeaveSplits(rowData.leaveType, from, to, rowData.employeeId);
-
-          setEditableDates(prevDates => ({ ...prevDates, [leaveId]: { from, to } }));
-          setLeaveCounts(prevCounts => ({ ...prevCounts, [leaveId]: initialCounts }));
-        }
-        return [...prev, leaveId];
-      } else {
-        return prev.filter(id => id !== leaveId);
-      }
-    });
   };
 
   const handleSelectAll = (isSelectingAll) => {
@@ -252,6 +230,7 @@ const LeaveManagement = () => {
       setLeaveCounts(newCounts);
     } else {
       setSelectedIds([]);
+      setSelectedRow(null);
     }
   };
 
@@ -1920,6 +1899,79 @@ const LeaveManagement = () => {
                       </div>
                     )}
                   </td>
+                  <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
+                    {item.hodName || "-"}
+                  </td>
+                  <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
+                    {item.hodRemarks || "-"}
+                  </td>
+                  <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
+                    {item.hrRemarks || "-"}
+                  </td>
+                  <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
+                    {(() => {
+                      const isAuthorized =
+                        ((user?.is_hod &&
+                          (item.status === "Pending" || item.status === "Pending HOD") &&
+                          (item.hodName === user?.full_name || item.hodName === user?.Name)) ||
+                          ((user?.role === "hr" ||
+                            user?.role === "HR" ||
+                            user?.role === "admin" ||
+                            user?.role === "Admin" ||
+                            user?.Admin === "Yes") &&
+                            (item.status === "Pending HR" ||
+                              item.status === "Pending" ||
+                              item.status === "Pending HOD")));
+                      const isSelected = selectedRow?.id === item.id || selectedIds.includes(item.id);
+                      const rowDates = editableDates[item.id] || {};
+                      const rowCounts = leaveCounts[item.id] || { casual: item.casual, earned: item.earned, unpaid: item.unpaid };
+                      const startDate = rowDates.from || item.startDate;
+                      const endDate = rowDates.to || item.endDate;
+                      const daysCount = calculateDays(startDate, endDate);
+                      const totalCounts = (rowCounts.casual || 0) + (rowCounts.earned || 0) + (rowCounts.unpaid || 0);
+                      const originalDays = item.days || calculateDays(item.startDate, item.endDate);
+                      const isInvalid = daysCount > originalDays || totalCounts > originalDays;
+
+                      if (!isAuthorized) {
+                        return (
+                          <span className="text-xs italic text-slate-400">
+                            {item.status === "Pending" || item.status === "Pending HOD"
+                              ? "Waiting for HOD"
+                              : item.status === "Pending HR"
+                                ? "Waiting for HR"
+                                : "-"}
+                          </span>
+                        );
+                      }
+
+                      if (!isSelected) {
+                        return (
+                          <span className="text-xs text-slate-400 italic">
+                            Select row to action
+                          </span>
+                        );
+                      }
+
+                      return (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleLeaveAction("accept", item)}
+                            disabled={loading || isInvalid}
+                            className={`px-3 py-1.5 text-xs font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-sm ${loading || isInvalid ? "opacity-60 cursor-not-allowed" : ""}`}
+                          >
+                            {loading && actionInProgress === "accept" ? "Accepting..." : "Accept"}
+                          </button>
+                          <button
+                            onClick={() => handleLeaveAction("rejected", item)}
+                            disabled={loading}
+                            className={`px-3 py-1.5 text-xs font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors shadow-sm ${loading ? "opacity-60 cursor-not-allowed" : ""}`}
+                          >
+                            {loading && actionInProgress === "rejected" ? "Rejecting..." : "Reject"}
+                          </button>
+                        </div>
+                      );
+                    })()}
+                  </td>
                 </tr>
               ))
             ) : (
@@ -2158,24 +2210,28 @@ const LeaveManagement = () => {
                 {/* Actions */}
                 <div className="flex gap-2 pt-2 border-t border-slate-100">
                   {isAuthorized ? (
-                    <>
-                      <button
-                        onClick={() => handleLeaveAction("accept", item)}
-                        disabled={!isSelected || loading || isInvalid}
-                        className={`flex-1 py-2 text-xs font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-sm text-center ${!isSelected || loading || isInvalid ? "opacity-60 cursor-not-allowed" : ""
-                          }`}
-                      >
-                        {loading && actionInProgress === "accept" ? "Accepting..." : "Accept"}
-                      </button>
-                      <button
-                        onClick={() => handleLeaveAction("rejected", item)}
-                        disabled={!isSelected || loading}
-                        className={`flex-1 py-2 text-xs font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors shadow-sm text-center ${!isSelected || loading ? "opacity-60 cursor-not-allowed" : ""
-                          }`}
-                      >
-                        {loading && actionInProgress === "rejected" ? "Rejecting..." : "Reject"}
-                      </button>
-                    </>
+                    isSelected ? (
+                      <>
+                        <button
+                          onClick={() => handleLeaveAction("accept", item)}
+                          disabled={loading || isInvalid}
+                          className={`flex-1 py-2 text-xs font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-sm text-center ${loading || isInvalid ? "opacity-60 cursor-not-allowed" : ""}`}
+                        >
+                          {loading && actionInProgress === "accept" ? "Accepting..." : "Accept"}
+                        </button>
+                        <button
+                          onClick={() => handleLeaveAction("rejected", item)}
+                          disabled={loading}
+                          className={`flex-1 py-2 text-xs font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors shadow-sm text-center ${loading ? "opacity-60 cursor-not-allowed" : ""}`}
+                        >
+                          {loading && actionInProgress === "rejected" ? "Rejecting..." : "Reject"}
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-xs italic text-slate-400 w-full text-center py-1">
+                        Select checkbox to action
+                      </span>
+                    )
                   ) : (
                     <span className="text-xs italic text-slate-400 w-full text-center py-1">
                       {item.status === "Pending" || item.status === "Pending HOD"
@@ -2205,7 +2261,7 @@ const LeaveManagement = () => {
           <thead className="sticky top-0 z-10 border-b bg-slate-50 border-slate-200">
             <tr>
               <th className="w-4 px-4 py-3 sm:px-6 sm:py-4"></th>
-              {isAdmin && (
+              {(isHr || isAdmin) && (
                 <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left uppercase sm:px-6 sm:py-4 text-slate-500">
                   Actions
                 </th>
@@ -2256,7 +2312,7 @@ const LeaveManagement = () => {
                   <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
                     <div className={`h-2.5 w-2.5 rounded-full ${item.isActive ? 'bg-green-500' : 'bg-slate-400'}`}></div>
                   </td>
-                  {isAdmin && (
+                  {(isHr || isAdmin) && (
                     <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
                       <div className="flex space-x-2">
                         {editingApprovedId === item.id ? (
@@ -2434,7 +2490,7 @@ const LeaveManagement = () => {
               ))
             ) : (
               <tr>
-                <td colSpan={isAdmin ? 14 : 13} className="px-6 py-12 text-center text-slate-500">
+                <td colSpan={(isHr || isAdmin) ? 14 : 13} className="px-6 py-12 text-center text-slate-500">
                   No approved leave requests found.
                 </td>
               </tr>
@@ -2716,7 +2772,7 @@ const LeaveManagement = () => {
               ))
             ) : (
               <tr>
-                <td colSpan={10} className="px-6 py-12 text-center text-slate-500">
+                <td colSpan={12} className="px-6 py-12 text-center text-slate-500">
                   No rejected leave requests found.
                 </td>
               </tr>
