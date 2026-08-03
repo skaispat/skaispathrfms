@@ -888,12 +888,12 @@ const LeaveManagement = () => {
         earned: newStatus === "Rejected" ? 0 : rowCounts.earned,
         unpaid: newStatus === "Rejected" ? 0 : rowCounts.unpaid,
         ...(newStatus === "Rejected" && { rejected_by: String(user.emp_id) }),
-        ...(isHod && {
+        ...((currentStatus === "Pending" || currentStatus === "Pending HOD") && {
           hod_remarks: rowRemarks.hod || "",
           hod_id: user.emp_id,
           hod_name: user.full_name || user.Name,
         }),
-        ...(isHr && {
+        ...(currentStatus === "Pending HR" && {
           hr_remarks: rowRemarks.hr || "",
           hr_id: user.emp_id,
           hr_name: user.full_name || user.Name,
@@ -902,14 +902,14 @@ const LeaveManagement = () => {
 
       const logUpdate = {
         status: newStatus,
-        ...(isHod && {
+        ...((currentStatus === "Pending" || currentStatus === "Pending HOD") && {
           hod_name: user.full_name || user.Name,
           hod_id: user.emp_id,
           hod_action: action === "accept" ? "Approved" : "Rejected",
           hod_approval_time: new Date().toISOString(),
           hod_remarks: rowRemarks.hod || "",
         }),
-        ...(isHr && {
+        ...(currentStatus === "Pending HR" && {
           hr_name: user.full_name || user.Name,
           hr_id: user.emp_id,
           hr_action: action === "accept" ? "Approved" : "Rejected",
@@ -1017,8 +1017,27 @@ const LeaveManagement = () => {
       })();
 
       fetchLeaveData();
-      if (!item) setSelectedRow(null); // only clear selectedRow if we were using it
-      setEditableDates({ from: "", to: "" });
+
+      // Production-safe state cleanup for the processed leave request
+      setSelectedIds((prev) => prev.filter((id) => id !== targetRow.id));
+      if (selectedRow?.id === targetRow.id) {
+        setSelectedRow(null);
+      }
+      setEditableDates((prev) => {
+        const copy = { ...prev };
+        delete copy[targetRow.id];
+        return copy;
+      });
+      setLeaveCounts((prev) => {
+        const copy = { ...prev };
+        delete copy[targetRow.id];
+        return copy;
+      });
+      setRemarksInputs((prev) => {
+        const copy = { ...prev };
+        delete copy[targetRow.id];
+        return copy;
+      });
     } catch (error) {
       console.error("Update error:", error);
       toast.error(`Failed to update leave: ${error.message}`);
@@ -1204,6 +1223,10 @@ const LeaveManagement = () => {
 
     setBulkLoading(false);
     setSelectedIds([]);
+    setSelectedRow(null);
+    setEditableDates({});
+    setLeaveCounts({});
+    setRemarksInputs({});
     fetchLeaveData();
 
     if (failCount === 0) {
@@ -1323,6 +1346,10 @@ const LeaveManagement = () => {
 
     setBulkLoading(false);
     setSelectedIds([]);
+    setSelectedRow(null);
+    setEditableDates({});
+    setLeaveCounts({});
+    setRemarksInputs({});
     fetchLeaveData();
 
     if (failCount === 0) {
@@ -1903,10 +1930,30 @@ const LeaveManagement = () => {
                     {item.hodName || "-"}
                   </td>
                   <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                    {item.hodRemarks || "-"}
+                    {(item.status === "Pending" || item.status === "Pending HOD") && (selectedRow?.id === item.id || selectedIds.includes(item.id)) ? (
+                      <input
+                        type="text"
+                        placeholder="Add HOD remarks..."
+                        value={remarksInputs[item.id]?.hod || ""}
+                        onChange={(e) => handleRemarkChange(item.id, "hod", e.target.value)}
+                        className="w-full min-w-[130px] p-1.5 text-xs border rounded-lg border-slate-300 focus:ring-1 focus:ring-indigo-500 bg-white"
+                      />
+                    ) : (
+                      item.hodRemarks || "-"
+                    )}
                   </td>
                   <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
-                    {item.hrRemarks || "-"}
+                    {item.status === "Pending HR" && (selectedRow?.id === item.id || selectedIds.includes(item.id)) ? (
+                      <input
+                        type="text"
+                        placeholder="Add HR remarks..."
+                        value={remarksInputs[item.id]?.hr || ""}
+                        onChange={(e) => handleRemarkChange(item.id, "hr", e.target.value)}
+                        className="w-full min-w-[130px] p-1.5 text-xs border rounded-lg border-slate-300 focus:ring-1 focus:ring-indigo-500 bg-white"
+                      />
+                    ) : (
+                      item.hrRemarks || "-"
+                    )}
                   </td>
                   <td className="px-4 py-3 text-sm sm:px-6 sm:py-4 whitespace-nowrap text-slate-500">
                     {(() => {
@@ -2139,7 +2186,7 @@ const LeaveManagement = () => {
                 {/* Remarks & Allocation if Selected */}
                 {isSelected && (
                   <div className="space-y-2 pt-2 border-t border-slate-200">
-                    {isHod && (
+                    {(item.status === "Pending" || item.status === "Pending HOD") && (
                       <div>
                         <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">HOD Remarks:</label>
                         <input
@@ -2147,21 +2194,28 @@ const LeaveManagement = () => {
                           placeholder="Add HOD Remarks..."
                           value={remarksInputs[item.id]?.hod || ""}
                           onChange={(e) => handleRemarkChange(item.id, "hod", e.target.value)}
-                          className="w-full p-2 text-xs border rounded-lg border-slate-300 focus:ring-1 focus:ring-indigo-500"
+                          className="w-full p-2 text-xs border rounded-lg border-slate-300 focus:ring-1 focus:ring-indigo-500 bg-white"
                         />
                       </div>
                     )}
-                    {isHr && (
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">HR Remarks:</label>
-                        <input
-                          type="text"
-                          placeholder="Add HR Remarks..."
-                          value={remarksInputs[item.id]?.hr || ""}
-                          onChange={(e) => handleRemarkChange(item.id, "hr", e.target.value)}
-                          className="w-full p-2 text-xs border rounded-lg border-slate-300 focus:ring-1 focus:ring-indigo-500"
-                        />
-                      </div>
+                    {item.status === "Pending HR" && (
+                      <>
+                        {item.hodRemarks && (
+                          <div className="text-xs text-slate-600 bg-slate-50 p-2 rounded border border-slate-200">
+                            <span className="font-semibold text-slate-700">HOD Remarks:</span> {item.hodRemarks}
+                          </div>
+                        )}
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">HR Remarks:</label>
+                          <input
+                            type="text"
+                            placeholder="Add HR Remarks..."
+                            value={remarksInputs[item.id]?.hr || ""}
+                            onChange={(e) => handleRemarkChange(item.id, "hr", e.target.value)}
+                            className="w-full p-2 text-xs border rounded-lg border-slate-300 focus:ring-1 focus:ring-indigo-500 bg-white"
+                          />
+                        </div>
+                      </>
                     )}
 
                     {isHr && (item.status === "Pending HR" || item.status === "Pending" || item.status === "Pending HOD") && (
@@ -3028,7 +3082,11 @@ const LeaveManagement = () => {
               return (
                 <button
                   key={tab}
-                  onClick={() => setActiveTab(tab)}
+                  onClick={() => {
+                    setActiveTab(tab);
+                    setSelectedIds([]);
+                    setSelectedRow(null);
+                  }}
                   className={`px-3 sm:px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 whitespace-nowrap ${isActive
                     ? "bg-white text-indigo-600 shadow-sm border border-slate-100"
                     : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
