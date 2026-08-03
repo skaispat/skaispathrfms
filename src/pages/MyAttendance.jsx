@@ -148,14 +148,37 @@ const MyAttendance = () => {
       if (weekOff) {
         setWeekOff(weekOff);
       }
-      setUserLeaves(userLeaves);
+      // 1. Fetch Biometric API logs
+      let groupedData = {};
+      const biometricApiUrl = import.meta.env.VITE_BIOMETRIC_API_URL;
+      if (biometricApiUrl) {
+        try {
+          const response = await fetch(`${biometricApiUrl}&FromDate=${currentYear}-01-01&ToDate=${currentYear}-12-31`);
+          if (response.ok) {
+            const bioData = await response.json();
+            if (Array.isArray(bioData)) {
+              const userLogs = bioData.filter(log => String(log.UserId) === String(user.emp_id));
+              userLogs.forEach(log => {
+                const dateStr = log.LogDate ? log.LogDate.split('T')[0] : null;
+                if (dateStr) {
+                  if (!groupedData[dateStr]) {
+                    groupedData[dateStr] = { logs: [] };
+                  }
+                  groupedData[dateStr].logs.push(log.LogDate);
+                }
+              });
+            }
+          }
+        } catch (bioErr) {
+          console.warn('Biometric API fetch error:', bioErr);
+        }
+      }
 
+      // 2. Process Manual / Daily Records from database
       const manualDataMap = {};
       if (dailyRecords) {
         dailyRecords.forEach(record => {
-          if (record.remarks && record.remarks.includes('Mobile')) {
-            manualDataMap[record.date] = record;
-          }
+          manualDataMap[record.date] = record;
         });
       }
 
