@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 
 const TARGET_LAT = 21.237836;
 const TARGET_LNG = 81.714938;
-const RADIUS_METERS = 15;
+const RADIUS_METERS = 50;
 
 const calculateDistance = (lat1, lon1, lat2, lon2) => {
   const R = 6371e3; // metres
@@ -31,6 +31,7 @@ const getISTDateDetails = () => {
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
+    second: '2-digit',
     hour12: false
   });
   const parts = formatter.formatToParts(date);
@@ -39,7 +40,7 @@ const getISTDateDetails = () => {
   const dateStr = `${getPart('year')}-${getPart('month')}-${getPart('day')}`;
   let hour = getPart('hour');
   if (hour === '24') hour = '00';
-  const timeStr = `${hour}:${getPart('minute')}`;
+  const timeStr = `${hour}:${getPart('minute')}:${getPart('second')}`;
 
   const monthNameFormatter = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', month: 'long' });
   const dayNameFormatter = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', weekday: 'long' });
@@ -192,20 +193,35 @@ const MyAttendance = () => {
         let inTime = null;
         let outTime = null;
 
+        const formatWithSeconds = (t) => {
+          if (!t || t === '-') return null;
+          const clean = t.includes('T') ? t.split('T')[1] : t;
+          const parts = clean.split(':');
+          if (parts.length >= 3) {
+            return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}:${parts[2].substring(0, 2).padStart(2, '0')}`;
+          } else if (parts.length === 2) {
+            return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}:00`;
+          }
+          return t;
+        };
+
         if (apiItem) {
           apiItem.logs.sort();
-          inTime = apiItem.logs[0].split('T')[1].substring(0, 5);
+          inTime = formatWithSeconds(apiItem.logs[0]);
           if (apiItem.logs.length > 1) {
-            outTime = apiItem.logs[apiItem.logs.length - 1].split('T')[1].substring(0, 5);
+            outTime = formatWithSeconds(apiItem.logs[apiItem.logs.length - 1]);
           }
         }
 
         if (manualItem) {
-          if (manualItem.in_time && (!inTime || manualItem.in_time < inTime)) {
-            inTime = manualItem.in_time;
+          const manualIn = formatWithSeconds(manualItem.in_time);
+          const manualOut = formatWithSeconds(manualItem.out_time);
+
+          if (manualIn && (!inTime || manualIn < inTime)) {
+            inTime = manualIn;
           }
-          if (manualItem.out_time && (!outTime || manualItem.out_time > outTime)) {
-            outTime = manualItem.out_time;
+          if (manualOut && (!outTime || manualOut > outTime)) {
+            outTime = manualOut;
           }
         }
 
@@ -246,7 +262,7 @@ const MyAttendance = () => {
           overtimeDisplay: overtimeDisplay,
           overtimeVal: overtimeVal,
           status: 'Present',
-          isMobile: !!manualItem,
+          isMobile: !apiItem && !!manualItem,
         };
       });
 
