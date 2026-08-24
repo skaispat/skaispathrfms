@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createPortal } from 'react-dom';
 import { Clock, Calendar, Plus, User, FileText, CheckCircle, AlertCircle, X, History, Briefcase, Users, Search, ChevronDown, Shield, Send, CloudFog } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -14,25 +15,15 @@ const getFiscalYear = (date = new Date()) => {
 
 const LeaveRequest = () => {
   const { user } = useAuthStore();
-
-  // State
-  const [loading, setLoading] = useState(true);
-  const [leaveHistory, setLeaveHistory] = useState([]);
-  const [currentMonthlyCount, setCurrentMonthlyCount] = useState(0);
-  const [leaveBalances, setLeaveBalances] = useState({
-    casual: { total: 12, used: 0, remaining: 12 },
-    earned: { total: 24, used: 0, remaining: 24 },
-    unpaid: { used: 0 }
-  });
-  const [isLeaveAllowedByAdmin, setIsLeaveAllowedByAdmin] = useState(true);
-  const [hodDetails, setHodDetails] = useState({ name: 'Not Assigned', id: null });
-  const [hrDetails, setHrDetails] = useState({ name: 'HR Department', id: null });
-  const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState('all');
+  const queryClient = useQueryClient();
+  const fiscalYear = useMemo(() => getFiscalYear(), []);
 
   // Modal State
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [activeTab, setActiveTab] = useState('all');
+
   const [formData, setFormData] = useState({
     leaveType: '',
     fromDate: '',
@@ -41,117 +32,87 @@ const LeaveRequest = () => {
   });
   const [dateError, setDateError] = useState(null);
 
-  // Fetch Data on component mount
-  useEffect(() => {
-    if (user) {
-      fetchUserDataAndHistory();
+  const { data: pageData, isLoading: loading } = useQuery({
+    queryKey: ['leaveRequest', user?.emp_id, fiscalYear],
+    queryFn: () => getLeaveRequestInitialData(user?.emp_id, fiscalYear),
+    enabled: !!user?.emp_id,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const teamData = pageData?.teamData;
+  const hodUser = pageData?.hodUser;
+  const hrData = pageData?.hrData;
+  const userData = pageData?.userData;
+  const historyData = pageData?.historyData || [];
+  const balanceData = pageData?.balanceData;
+  const quotaData = pageData?.quotaData;
+
+  const hodDetails = useMemo(() => {
+    if (teamData?.hod_id && hodUser) {
+      return { name: hodUser.full_name, id: teamData.hod_id, department: hodUser.department, phone_number: hodUser.phone_number };
     }
-  }, [user]);
+    return { name: 'Not Assigned', id: null };
+  }, [teamData, hodUser]);
 
-  const fetchUserDataAndHistory = async () => {
-    setLoading(true);
-    try {
-      const {
-        teamData,
-        hodUser,
-        hrData,
-        userData,
-        historyData,
-        balanceData,
-        quotaData
-      } = await getLeaveRequestInitialData(user.emp_id, getFiscalYear());
-
-      if (teamData?.hod_id && hodUser) {
-        setHodDetails({ name: hodUser.full_name, id: teamData.hod_id, department: hodUser.department, phone_number: hodUser.phone_number });
-      } else {
-        setHodDetails({ name: 'Not Assigned', id: null });
-      }
-
-      if (hrData) {
-        setHrDetails({ name: hrData.full_name, id: hrData.emp_id });
-      } else {
-        setHrDetails({ name: 'Pawan Tiwari', id: 1 });
-      }
-
-      if (userData) {
-        setIsLeaveAllowedByAdmin(userData.is_leave_allowed !== false);
-      }
-
-      setLeaveHistory(historyData);
-
-      const carriedForwardEL = quotaData?.carried_forward_el || 0;
-
-      if (balanceData) {
-        setLeaveBalances({
-          casual: {
-            total: 12,
-            used: 12 - (balanceData.casual_leave_remaining ?? 12),
-            remaining: balanceData.casual_leave_remaining ?? 12
-          },
-          earned: {
-            total: 24,
-            used: 24 - (balanceData.earned_leave_remaining ?? 24),
-            remaining: (balanceData.earned_leave_remaining ?? 24) + carriedForwardEL,
-            actualRemaining: balanceData.earned_leave_remaining ?? 24,
-            carriedForward: carriedForwardEL
-          },
-          unpaid: { used: balanceData.unpaid_leave_total_taken ?? 0 }
-        });
-      }
-
-      // 6. Calculate monthly count and daily status
-      calculateBalancesAndStatus(historyData, !!balanceData, carriedForwardEL);
-
-    } catch (error) {
-      console.error('Error fetching data:', error);
-      toast.error('Failed to load your leave data.');
-    } finally {
-      setLoading(false);
+  const hrDetails = useMemo(() => {
+    if (hrData) {
+      return { name: hrData.full_name, id: hrData.emp_id };
     }
-  };
+    return { name: 'Pawan Tiwari', id: 1 };
+  }, [hrData]);
 
-  const calculateBalancesAndStatus = (history, hasViewData = false, carriedForwardEL = 0) => {
-    const currentYear = getFiscalYear();
-    const currentMonth = new Date().getMonth();
-    const currentDate = new Date().getDate();
+  const isLeaveAllowedByAdmin = userData ? userData.is_leave_allowed !== false : true;
+  const leaveHistory = historyData;
+
+  const carriedForwardEL = quotaData?.carried_forward_el || 0;
+
+  const leaveBalances = useMemo(() => {
+    if (balanceData) {
+      return {
+        casual: {
+          total: 12,
+          used: 12 - (balanceData.casual_leave_remaining ?? 12),
+          remaining: balanceData.casual_leave_remaining ?? 12
+        },
+        earned: {
+          total: 24,
+          used: 24 - (balanceData.earned_leave_remaining ?? 24),
+          remaining: (balanceData.earned_leave_remaining ?? 24) + carriedForwardEL,
+          actualRemaining: balanceData.earned_leave_remaining ?? 24,
+          carriedForward: carriedForwardEL
+        },
+        unpaid: { used: balanceData.unpaid_leave_total_taken ?? 0 }
+      };
+    }
 
     let casualUsed = 0;
     let earnedUsed = 0;
     let unpaidUsed = 0;
-    let monthlyCount = 0;
 
-    history.forEach(leave => {
-      const leaveDate = new Date(leave.timestamp);
+    historyData.forEach(leave => {
       const leaveYear = getFiscalYear(new Date(leave.leave_date_start));
-
-      if (leaveDate.getMonth() === currentMonth && leaveDate.getFullYear() === currentYear) {
-        monthlyCount++;
-      }
-
-      if (!hasViewData && leave.status?.toLowerCase().includes('approved') && leaveYear === currentYear) {
-        const days = calculateDays(leave.leave_date_start, leave.leave_date_end);
+      if (leave.status?.toLowerCase().includes('approved') && leaveYear === fiscalYear) {
+        const start = new Date(leave.leave_date_start);
+        const end = new Date(leave.leave_date_end);
+        const days = Math.ceil(Math.abs(end - start) / (1000 * 60 * 60 * 24)) + 1;
         if (leave.leave_type === 'Casual Leave') casualUsed += days;
         else if (leave.leave_type === 'Earned Leave') earnedUsed += days;
         else if (leave.leave_type === 'UnPaid Leave') unpaidUsed += days;
       }
     });
 
-    if (!hasViewData) {
-      setLeaveBalances({
-        casual: { total: 12, used: casualUsed, remaining: 12 - casualUsed },
-        earned: {
-          total: 24,
-          used: earnedUsed,
-          remaining: 24 + carriedForwardEL - earnedUsed,
-          actualRemaining: 24 - earnedUsed,
-          carriedForward: carriedForwardEL
-        },
-        unpaid: { used: unpaidUsed }
-      });
-    }
-
-    setCurrentMonthlyCount(monthlyCount);
-  };
+    return {
+      casual: { total: 12, used: casualUsed, remaining: 12 - casualUsed },
+      earned: {
+        total: 24,
+        used: earnedUsed,
+        remaining: 24 + carriedForwardEL - earnedUsed,
+        actualRemaining: 24 - earnedUsed,
+        carriedForward: carriedForwardEL
+      },
+      unpaid: { used: unpaidUsed }
+    };
+  }, [balanceData, historyData, carriedForwardEL, fiscalYear]);
 
   const calculateDays = (startDateStr, endDateStr) => {
     if (!startDateStr || !endDateStr) return 0;
@@ -215,7 +176,7 @@ const LeaveRequest = () => {
     setSubmitting(true);
     try {
       const now = new Date();
-      const istOffsetMs = 330 * 60000; // IST offset in milliseconds
+      const istOffsetMs = 330 * 60000;
       const istDate = new Date(now.getTime() + istOffsetMs);
       const istTimestamp = istDate.toISOString().slice(0, 19).replace('T', ' ');
 
@@ -273,7 +234,7 @@ const LeaveRequest = () => {
       setShowModal(false);
       setFormData({ leaveType: '', fromDate: '', toDate: '', reason: '' });
       setDateError(null);
-      fetchUserDataAndHistory();
+      queryClient.invalidateQueries({ queryKey: ['leaveRequest', user?.emp_id] });
 
     } catch (error) {
       console.error('Submission Error:', error);
@@ -290,10 +251,21 @@ const LeaveRequest = () => {
     });
   };
 
+  const filteredHistory = useMemo(() => {
+    return leaveHistory.filter(item => {
+      const matchesSearch = item.leave_type?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.remarks?.toLowerCase().includes(searchTerm.toLowerCase());
+      if (activeTab === 'all') return matchesSearch;
+      if (activeTab === 'pending') return matchesSearch && (item.status === 'Pending' || item.status === 'Pending HOD' || item.status === 'Pending HR');
+      if (activeTab === 'approved') return matchesSearch && item.status?.toLowerCase().includes('approved');
+      if (activeTab === 'rejected') return matchesSearch && item.status?.toLowerCase().includes('rejected');
+      return matchesSearch;
+    });
+  }, [leaveHistory, searchTerm, activeTab]);
+
   if (loading) {
     return (
       <div className="h-full flex flex-col gap-6 overflow-hidden bg-slate-50/30 px-4 sm:px-0">
-
         {/* Header Skeleton */}
         <div className="flex flex-row items-center justify-between gap-3 shrink-0 pt-1 lg:pt-0 animate-pulse">
           <div className="space-y-1">
@@ -328,20 +300,9 @@ const LeaveRequest = () => {
             ))}
           </div>
         </div>
-
       </div>
     );
   }
-
-  const filteredHistory = leaveHistory.filter(item => {
-    const matchesSearch = item.leave_type?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.remarks?.toLowerCase().includes(searchTerm.toLowerCase());
-    if (activeTab === 'all') return matchesSearch;
-    if (activeTab === 'pending') return matchesSearch && (item.status === 'Pending' || item.status === 'Pending HOD' || item.status === 'Pending HR');
-    if (activeTab === 'approved') return matchesSearch && item.status?.toLowerCase().includes('approved');
-    if (activeTab === 'rejected') return matchesSearch && item.status?.toLowerCase().includes('rejected');
-    return matchesSearch;
-  });
 
   return (
     <div className="h-full flex flex-col gap-6 overflow-hidden bg-slate-50/30 px-4 sm:px-0">
@@ -380,7 +341,7 @@ const LeaveRequest = () => {
         </div>
       )}
 
-      {/* Stats Grid - 3 Columns on Mobile! */}
+      {/* Stats Grid */}
       <div className="grid grid-cols-3 md:grid-cols-3 gap-3 sm:gap-6 shrink-0">
         {['Casual Leave', 'Earned Leave', 'Unpaid Leave'].map((label, idx) => {
           const type = label.toLowerCase().split(' ')[0];
@@ -616,7 +577,6 @@ const LeaveRequest = () => {
 
             <div className="overflow-y-auto p-6 scrollbar-hide">
               <form onSubmit={handleSubmit} className="space-y-8">
-                {/* Approvers Feedback Card */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="flex items-center gap-4 p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100/50">
                     <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-indigo-600 shadow-sm border border-indigo-50">
@@ -752,7 +712,6 @@ const LeaveRequest = () => {
   );
 };
 
-// Helper for status styling
 const getStatusConfig = (s) => {
   if (s.includes('approved')) return { label: 'Approved', colorClass: 'bg-emerald-50 text-emerald-700 border-emerald-100 shadow-sm shadow-emerald-50' };
   if (s.includes('rejected')) return { label: 'Rejected', colorClass: 'bg-rose-50 text-rose-700 border-rose-100 shadow-sm shadow-rose-50' };

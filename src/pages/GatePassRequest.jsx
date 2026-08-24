@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createPortal } from 'react-dom';
 import { Clock, Calendar, Plus, User, FileText, CheckCircle, AlertCircle, X, MapPin, Briefcase, Users, Shield, Search, ChevronDown, Phone, Image as ImageIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -12,125 +13,117 @@ import { sendGatePassMessageToHr } from '../whatsappMessageSender/sendGatePassWh
 
 const GatePassRequest = () => {
   const { user } = useAuthStore();
-
-  // State
-  const [loading, setLoading] = useState(true);
-  const [passHistory, setPassHistory] = useState([]);
-  const [stats, setStats] = useState({
-    total: 0,
-    pending: 0,
-    approved: 0,
-    rejected: 0
-  });
-  const [monthlyRequestCount, setMonthlyRequestCount] = useState(0);
-  const [hasSubmittedToday, setHasSubmittedToday] = useState(false);
-  const [hodDetails, setHodDetails] = useState({ name: 'Not Assigned', id: null });
-  const [hrDetails, setHrDetails] = useState({ name: 'HR Department', id: null });
-  const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState('all');
-  const [isUserHod, setIsUserHod] = useState(false);
+  const queryClient = useQueryClient();
 
   // Modal State
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [activeTab, setActiveTab] = useState('all');
+
   const [formData, setFormData] = useState({
     visitPlace: '',
     visitReason: '',
     departureTime: '',
     arrivalTime: '',
-    whatsappNumber: '',
+    whatsappNumber: user?.phone_number || '',
     gatePassImage: null
   });
 
-  // Fetch Data on component mount
+  const { data: pageData, isLoading: loading } = useQuery({
+    queryKey: ['gatePassRequest', user?.emp_id],
+    queryFn: () => getGatePassRequestUserData(user?.emp_id),
+    enabled: !!user?.emp_id,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const currentUserData = pageData?.currentUserData;
+  const teamData = pageData?.teamData;
+  const hodUser = pageData?.hodUser;
+  const hrData = pageData?.hrData;
+  const rawHistoryData = pageData?.historyData;
+
+  const isUserHod = currentUserData?.is_hod || false;
+
   useEffect(() => {
-    if (user) {
-      fetchUserDataAndHistory();
+    if (currentUserData?.phone_number) {
+      setFormData(prev => ({ ...prev, whatsappNumber: currentUserData.phone_number }));
+    } else if (user?.phone_number) {
+      setFormData(prev => ({ ...prev, whatsappNumber: user.phone_number }));
     }
-  }, [user]);
+  }, [currentUserData, user]);
 
-  const fetchUserDataAndHistory = async () => {
-    setLoading(true);
-    try {
-      const { currentUserData, teamData, hodUser, hrData, historyData } = await getGatePassRequestUserData(user.emp_id);
-
-      if (currentUserData) {
-        setIsUserHod(currentUserData.is_hod);
-        if (currentUserData.phone_number) {
-          setFormData(prev => ({ ...prev, whatsappNumber: currentUserData.phone_number }));
-        } else if (user.phone_number) {
-          setFormData(prev => ({ ...prev, whatsappNumber: user.phone_number }));
-        }
-      }
-
-      if (teamData?.hod_id) {
-        if (hodUser) {
-          setHodDetails({ name: hodUser.full_name, id: teamData.hod_id, department: hodUser.department, phone: hodUser.phone_number });
-        } else {
-          setHodDetails({ name: 'Not Assigned', id: null });
-        }
-      } else {
-        setHodDetails({ name: 'Not Assigned', id: null });
-      }
-
-      if (hrData) {
-        setHrDetails({ name: hrData.full_name, id: hrData.emp_id });
-      } else {
-        setHrDetails({ name: 'Pawan Tiwari', id: 1 });
-      }
-
-      const flattenedHistory = (historyData || []).map(item => ({
-        ...item,
-        employee_name: item.users?.full_name || 'Unknown'
-      }));
-
-      setPassHistory(flattenedHistory);
-      calculateStats(flattenedHistory);
-
-    } catch (error) {
-      console.error('Error fetching data:', error);
-      toast.error('Failed to load your gate pass data.');
-    } finally {
-      setLoading(false);
+  const hodDetails = useMemo(() => {
+    if (teamData?.hod_id && hodUser) {
+      return { name: hodUser.full_name, id: teamData.hod_id, department: hodUser.department, phone: hodUser.phone_number };
     }
-  };
+    return { name: 'Not Assigned', id: null };
+  }, [teamData, hodUser]);
 
-  const calculateStats = (history) => {
+  const hrDetails = useMemo(() => {
+    if (hrData) {
+      return { name: hrData.full_name, id: hrData.emp_id };
+    }
+    return { name: 'Pawan Tiwari', id: 1 };
+  }, [hrData]);
+
+  const passHistory = useMemo(() => {
+    return (rawHistoryData || []).map(item => ({
+      ...item,
+      employee_name: item.users?.full_name || 'Unknown'
+    }));
+  }, [rawHistoryData]);
+
+  const { stats, monthlyRequestCount, hasSubmittedToday } = useMemo(() => {
     const currentYear = new Date().getFullYear();
     const currentMonth = new Date().getMonth();
     const todayStr = new Date().toDateString();
 
-    let total = history.length;
+    let total = passHistory.length;
     let pending = 0;
     let approved = 0;
     let rejected = 0;
     let monthlyCount = 0;
     let submittedToday = false;
 
-    history.forEach(pass => {
+    passHistory.forEach(pass => {
       const passDate = new Date(pass.departure_from_plant || pass.timestamp);
 
-      // Status counts
       const status = pass.status?.toLowerCase() || '';
       if (status.includes('pending')) pending++;
       else if (status.includes('approved')) approved++;
       else if (status.includes('rejected')) rejected++;
 
-      // Monthly Limit Check
       if (passDate.getMonth() === currentMonth && passDate.getFullYear() === currentYear) {
         monthlyCount++;
       }
 
-      // Daily Check
       if (passDate.toDateString() === todayStr) {
         submittedToday = true;
       }
     });
 
-    setStats({ total, pending, approved, rejected });
-    setMonthlyRequestCount(monthlyCount);
-    setHasSubmittedToday(submittedToday);
-  };
+    return {
+      stats: { total, pending, approved, rejected },
+      monthlyRequestCount: monthlyCount,
+      hasSubmittedToday: submittedToday
+    };
+  }, [passHistory]);
+
+  const filteredHistory = useMemo(() => {
+    return passHistory.filter(item => {
+      const searchString = searchTerm.toLowerCase();
+      const matchesSearch =
+        item.place_reason_to_visit?.toLowerCase().includes(searchString) ||
+        item.employee_name?.toLowerCase().includes(searchString);
+
+      if (activeTab === 'all') return matchesSearch;
+      if (activeTab === 'pending') return matchesSearch && (item.status === 'Pending' || item.status === 'Pending HOD' || item.status === 'Pending HR');
+      if (activeTab === 'approved') return matchesSearch && item.status?.toLowerCase() === 'approved';
+      if (activeTab === 'rejected') return matchesSearch && item.status?.toLowerCase().includes('rejected');
+      return matchesSearch;
+    });
+  }, [passHistory, searchTerm, activeTab]);
 
   const uploadImageToDrive = async (file) => {
     try {
@@ -172,7 +165,6 @@ const GatePassRequest = () => {
       return;
     }
 
-    // Validate Arrival Time
     if (formData.arrivalTime) {
       const departure = new Date(formData.departureTime);
       const arrival = new Date(formData.arrivalTime);
@@ -218,7 +210,6 @@ const GatePassRequest = () => {
 
       const data = await submitGatePassRequest(insertData, logData);
 
-      // Send WhatsApp notification
       if (data && data[0]) {
         const formatDateTime = (dateString) => {
           if (!dateString) return 'N/A';
@@ -266,7 +257,7 @@ const GatePassRequest = () => {
         whatsappNumber: user.phone_number || '',
         gatePassImage: null
       });
-      fetchUserDataAndHistory();
+      queryClient.invalidateQueries({ queryKey: ['gatePassRequest', user?.emp_id] });
 
     } catch (error) {
       console.error('Submission Error:', error);
@@ -292,19 +283,6 @@ const GatePassRequest = () => {
     return date.toLocaleString('en-GB', options);
   };
 
-  const filteredHistory = passHistory.filter(item => {
-    const searchString = searchTerm.toLowerCase();
-    const matchesSearch =
-      item.place_reason_to_visit?.toLowerCase().includes(searchString) ||
-      item.employee_name?.toLowerCase().includes(searchString);
-
-    if (activeTab === 'all') return matchesSearch;
-    if (activeTab === 'pending') return matchesSearch && (item.status === 'Pending' || item.status === 'Pending HOD' || item.status === 'Pending HR');
-    if (activeTab === 'approved') return matchesSearch && item.status?.toLowerCase() === 'approved';
-    if (activeTab === 'rejected') return matchesSearch && item.status?.toLowerCase().includes('rejected');
-    return matchesSearch;
-  });
-
   const isLimitReached = monthlyRequestCount >= 3 || hasSubmittedToday;
   const limitMessage = monthlyRequestCount >= 3
     ? `You have used ${monthlyRequestCount}/3 gate passes for this month.`
@@ -313,7 +291,6 @@ const GatePassRequest = () => {
   if (loading) {
     return (
       <div className="h-full flex flex-col gap-6 overflow-hidden bg-slate-50/30 px-4 sm:px-0">
-
         {/* Header Skeleton */}
         <div className="flex flex-row items-center justify-between gap-3 shrink-0 pt-1 lg:pt-0 animate-pulse">
           <div className="space-y-1">
@@ -348,7 +325,6 @@ const GatePassRequest = () => {
             ))}
           </div>
         </div>
-
       </div>
     );
   }
@@ -502,14 +478,12 @@ const GatePassRequest = () => {
                 const statusLabel = (item.status === 'Pending' || item.status === 'Pending HOD') ? 'Pending HOD' : (item.status?.includes('Rejected') ? 'Rejected' : (item.status || 'Pending'));
                 return (
                   <div key={item.id} className="group/card bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4 hover:border-indigo-200 transition-all animate-in slide-in-from-right-4 duration-300 relative overflow-hidden" style={{ animationDelay: `${idx * 50}ms` }}>
-                    {/* Top Bar with ID, Aligned Status, and Image Attachment */}
                     <div className="flex justify-between items-center bg-slate-50 -m-5 mb-0 px-5 py-4 border-b border-slate-100 rounded-t-2xl relative">
                       <div className="flex flex-col">
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">GP-{item.id.toString().slice(-4)}</span>
                         <span className="text-[9px] font-bold text-slate-500 mt-1">{formatDate(item.timestamp)}</span>
                       </div>
 
-                      {/* Centered Status Badge - Aligned with icons */}
                       <div className="absolute left-1/2 -translate-x-1/2 flex items-center">
                         <span className={`inline-flex items-center px-3 py-1 rounded-xl text-[9px] font-black uppercase tracking-widest border shadow-sm whitespace-nowrap ${s === 'approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : s.includes('rejected') ? 'bg-rose-50 text-rose-700 border-rose-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
                           {statusLabel}
@@ -521,10 +495,9 @@ const GatePassRequest = () => {
                           <ImageIcon size={16} />
                         </a>
                       )}
-                      {!item.image_gate_pass && <div className="w-8 h-8" />} {/* Placeholder to maintain centering */}
+                      {!item.image_gate_pass && <div className="w-8 h-8" />}
                     </div>
 
-                    {/* Visit Details */}
                     <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-50/50">
                       <div className="space-y-1">
                         <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Departure</p>
@@ -536,13 +509,11 @@ const GatePassRequest = () => {
                       </div>
                     </div>
 
-                    {/* Purpose Card */}
                     <div className="bg-slate-50/50 p-3.5 rounded-2xl border border-dashed border-slate-200">
                       <p className="text-[9px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1.5"><MapPin size={12} className="text-rose-400" /> Destination & Purpose</p>
                       <p className="text-[11px] text-slate-600 font-medium leading-relaxed italic line-clamp-3">{item.place_reason_to_visit}</p>
                     </div>
 
-                    {/* Centered Approver Footer */}
                     <div className="flex items-center justify-center pt-3 border-t border-slate-100/80">
                       <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-100">
                         <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Reviewed By:</span>
@@ -581,7 +552,6 @@ const GatePassRequest = () => {
 
             <div className="overflow-y-auto p-6 scrollbar-hide">
               <form onSubmit={handleSubmit} className="space-y-6">
-                {/* Info Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-100 shadow-sm">
                     <div className="p-2.5 bg-white rounded-xl text-slate-500 shadow-sm ring-1 ring-slate-100 shrink-0">
@@ -604,7 +574,6 @@ const GatePassRequest = () => {
                   </div>
                 </div>
 
-                {/* Form Fields */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <label className="text-xs font-black text-slate-500 uppercase tracking-widest pl-1 flex items-center gap-2">
@@ -696,7 +665,6 @@ const GatePassRequest = () => {
                   </label>
                 </div>
 
-                {/* Footer */}
                 <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-6 border-t border-slate-100">
                   <button
                     type="button"

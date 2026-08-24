@@ -1,29 +1,31 @@
 import { supabase } from '../supabaseClient';
 
 export const getMyAttendanceInitialData = async (empId, currentYear) => {
-  const { data: userData } = await supabase
-    .from('users')
-    .select('week_off')
-    .eq('emp_id', empId)
-    .single();
+  const targetYear = currentYear || new Date().getFullYear();
 
-  const { data: leavesData } = await supabase
-    .from('leave_management')
-    .select('leave_date_start, leave_date_end, status')
-    .eq('emp_id', empId)
-    .eq('status', 'Approved');
-
-  const { data: dailyRecords } = await supabase
-    .from('attendance_daily')
-    .select('*')
-    .eq('emp_id', empId)
-    .gte('date', `${currentYear}-01-01`)
-    .lte('date', `${currentYear}-12-31`);
+  const [userRes, leavesRes, dailyRes] = await Promise.all([
+    supabase
+      .from('users')
+      .select('week_off')
+      .eq('emp_id', empId)
+      .maybeSingle(),
+    supabase
+      .from('leave_management')
+      .select('leave_date_start, leave_date_end, status')
+      .eq('emp_id', empId)
+      .eq('status', 'Approved'),
+    supabase
+      .from('attendance_daily')
+      .select('*')
+      .eq('emp_id', empId)
+      .gte('date', `${targetYear}-01-01`)
+      .lte('date', `${targetYear}-12-31`)
+  ]);
 
   return {
-    weekOff: userData?.week_off || null,
-    userLeaves: leavesData || [],
-    dailyRecords: dailyRecords || []
+    weekOff: userRes.data?.week_off || null,
+    userLeaves: leavesRes.data || [],
+    dailyRecords: dailyRes.data || []
   };
 };
 

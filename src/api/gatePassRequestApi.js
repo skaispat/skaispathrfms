@@ -1,18 +1,34 @@
 import { supabase } from '../supabaseClient';
 
 export const getGatePassRequestUserData = async (empId) => {
-  const { data: currentUserData } = await supabase
-    .from('users')
-    .select('is_hod, phone_number')
-    .eq('emp_id', empId)
-    .single();
+  const [userRes, teamRes, hrRes, historyRes] = await Promise.all([
+    supabase
+      .from('users')
+      .select('is_hod, phone_number')
+      .eq('emp_id', empId)
+      .maybeSingle(),
+    supabase
+      .from('team_members')
+      .select('hod_id')
+      .eq('emp_id', empId)
+      .maybeSingle(),
+    supabase
+      .from('users')
+      .select('full_name, emp_id')
+      .eq('department', 'HR')
+      .order('is_hod', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from('gate_pass')
+      .select('*, users(full_name)')
+      .eq('emp_id', empId)
+      .order('timestamp', { ascending: false })
+  ]);
 
-  const { data: teamData } = await supabase
-    .from('team_members')
-    .select('hod_id')
-    .eq('emp_id', empId)
-    .maybeSingle();
+  if (historyRes.error) throw historyRes.error;
 
+  const teamData = teamRes.data;
   let hodUser = null;
   if (teamData?.hod_id) {
     const { data } = await supabase
@@ -23,23 +39,13 @@ export const getGatePassRequestUserData = async (empId) => {
     hodUser = data;
   }
 
-  const { data: hrData } = await supabase
-    .from('users')
-    .select('full_name, emp_id')
-    .eq('department', 'HR')
-    .order('is_hod', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const { data: historyData, error: historyError } = await supabase
-    .from('gate_pass')
-    .select('*, users(full_name)')
-    .eq('emp_id', empId)
-    .order('timestamp', { ascending: false });
-
-  if (historyError) throw historyError;
-
-  return { currentUserData, teamData, hodUser, hrData, historyData };
+  return {
+    currentUserData: userRes.data,
+    teamData: teamData,
+    hodUser,
+    hrData: hrRes.data,
+    historyData: historyRes.data
+  };
 };
 
 export const uploadGatePassRequestAttachment = async (file) => {

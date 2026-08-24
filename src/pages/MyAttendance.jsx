@@ -1,26 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getMyAttendanceInitialData, markMyAttendancePunch } from '../api/myAttendanceApi';
-import { Calendar, Clock, CheckCircle, XCircle, ChevronDown, Activity, AlertCircle, FileText, MapPin, Loader2 } from 'lucide-react';
+import { Calendar, Clock, CheckCircle, XCircle, ChevronDown, Activity, AlertCircle, FileText, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-const TARGET_LAT = 21.237836;
-const TARGET_LNG = 81.714938;
-const RADIUS_METERS = 50;
-
-const calculateDistance = (lat1, lon1, lat2, lon2) => {
-  const R = 6371e3; // metres
-  const φ1 = lat1 * Math.PI / 180;
-  const φ2 = lat2 * Math.PI / 180;
-  const Δφ = (lat2 - lat1) * Math.PI / 180;
-  const Δλ = (lon2 - lon1) * Math.PI / 180;
-
-  const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-    Math.cos(φ1) * Math.cos(φ2) *
-    Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-  return R * c;
-};
+const EMPTY_ARRAY = [];
 
 const getISTDateDetails = () => {
   const date = new Date();
@@ -54,64 +38,142 @@ const getISTDateDetails = () => {
   };
 };
 
-const MyAttendance = () => {
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [attendanceData, setAttendanceData] = useState([]);
-  const [stats, setStats] = useState({
-    totalDays: 0,
-    presentDays: 0,
-    absentDays: 0,
-    workingHours: 0,
-    overtimeHours: 0
-  });
-  const [weekOff, setWeekOff] = useState('');
-  const [userLeaves, setUserLeaves] = useState([]);
-  const [activeFilter, setActiveFilter] = useState('All');
+const fetchAttendanceDataHelper = async (empId, targetYear) => {
+  if (!empId) return { weekOff: '', userLeaves: EMPTY_ARRAY, attendanceData: EMPTY_ARRAY };
 
-  // Geolocation State
-  const [isWithinRange, setIsWithinRange] = useState(false);
-  const [locationStatus, setLocationStatus] = useState('Checking location...');
-  const [isPunching, setIsPunching] = useState(false);
+  const { weekOff, userLeaves, dailyRecords } = await getMyAttendanceInitialData(empId, targetYear);
 
-  useEffect(() => {
-    if (!navigator.geolocation) {
-      setLocationStatus('Geolocation is not supported');
-      return;
+  let groupedData = {};
+  const biometricApiUrl = import.meta.env.VITE_BIOMETRIC_API_URL;
+  if (biometricApiUrl) {
+    try {
+      const response = await fetch(`${biometricApiUrl}&FromDate=${targetYear}-01-01&ToDate=${targetYear}-12-31`);
+      if (response.ok) {
+        const bioData = await response.json();
+        if (Array.isArray(bioData)) {
+          const userLogs = bioData.filter(log => String(log.UserId) === String(empId));
+          userLogs.forEach(log => {
+            const dateStr = log.LogDate ? log.LogDate.split('T')[0] : null;
+            if (dateStr) {
+              if (!groupedData[dateStr]) {
+                groupedData[dateStr] = { logs: [] };
+              }
+              groupedData[dateStr].logs.push(log.LogDate);
+            }
+          });
+        }
+      }
+    } catch (bioErr) {
+      console.warn('Biometric API fetch error:', bioErr);
+    }
+  }
+
+  const manualDataMap = {};
+  if (dailyRecords) {
+    dailyRecords.forEach(record => {
+      manualDataMap[record.date] = record;
+    });
+  }
+
+  const allDates = new Set([...Object.keys(groupedData), ...Object.keys(manualDataMap)]);
+
+  const processedData = Array.from(allDates).map(dateStr => {
+    const apiItem = groupedData[dateStr];
+    const manualItem = manualDataMap[dateStr];
+
+    let inTime = null;
+    let outTime = null;
+
+    const formatWithSeconds = (t) => {
+      if (!t || t === '-') return null;
+      const clean = t.includes('T') ? t.split('T')[1] : t;
+      const parts = clean.split(':');
+      if (parts.length >= 3) {
+        return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}:${parts[2].substring(0, 2).padStart(2, '0')}`;
+      } else if (parts.length === 2) {
+        return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}:00`;
+      }
+      return t;
+    };
+
+    if (apiItem) {
+      apiItem.logs.sort();
+      inTime = formatWithSeconds(apiItem.logs[0]);
+      if (apiItem.logs.length > 1) {
+        outTime = formatWithSeconds(apiItem.logs[apiItem.logs.length - 1]);
+      }
     }
 
-    const watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        const dist = calculateDistance(latitude, longitude, TARGET_LAT, TARGET_LNG);
+    if (manualItem) {
+      const manualIn = formatWithSeconds(manualItem.in_time);
+      const manualOut = formatWithSeconds(manualItem.out_time);
 
-        if (dist <= RADIUS_METERS) {
-          setIsWithinRange(true);
-          setLocationStatus('In range (ready)');
-        } else {
-          setIsWithinRange(false);
-          setLocationStatus(`Out of range (${Math.round(dist)}m away)`);
-        }
-      },
-      (error) => {
-        setIsWithinRange(false);
-        setLocationStatus('Location access denied');
-        console.error('Geolocation error:', error);
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0
+      if (manualIn && (!inTime || manualIn < inTime)) {
+        inTime = manualIn;
       }
-    );
+      if (manualOut && (!outTime || manualOut > outTime)) {
+        outTime = manualOut;
+      }
+    }
 
-    return () => navigator.geolocation.clearWatch(watchId);
-  }, []);
+    let workingHoursDisplay = '0h 0m';
+    let workingHoursVal = 0;
+    let overtimeVal = 0;
+    let overtimeDisplay = '0h 0m';
 
+    if (inTime && outTime && outTime !== '-') {
+      const start = new Date(`${dateStr}T${inTime}`);
+      const end = new Date(`${dateStr}T${outTime}`);
+      const diffMs = end - start;
 
-  const weekDayMap = {
+      if (diffMs > 0) {
+        workingHoursVal = diffMs / 3600000;
+        const hours = Math.floor(diffMs / 3600000);
+        const minutes = Math.floor((diffMs % 3600000) / 60000);
+        workingHoursDisplay = `${hours}h ${minutes}m`;
+
+        const nineHoursMs = 9 * 60 * 60 * 1000;
+        if (diffMs > nineHoursMs) {
+          const extraMs = diffMs - nineHoursMs;
+          overtimeVal = extraMs / 3600000;
+          const otHours = Math.floor(extraMs / 3600000);
+          const otMinutes = Math.floor((extraMs % 3600000) / 60000);
+          overtimeDisplay = `${otHours}h ${otMinutes}m`;
+        }
+      }
+    }
+
+    return {
+      date: dateStr,
+      day: new Date(dateStr).toLocaleDateString('en-US', { weekday: 'long' }),
+      inTime: inTime || '-',
+      outTime: outTime || '-',
+      workingHoursDisplay,
+      workingHoursVal,
+      overtimeDisplay,
+      overtimeVal,
+      status: 'Present',
+      isMobile: !apiItem && !!manualItem,
+    };
+  });
+
+  processedData.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  return {
+    weekOff: weekOff || '',
+    userLeaves: userLeaves || EMPTY_ARRAY,
+    attendanceData: processedData
+  };
+};
+
+const MyAttendance = () => {
+  const queryClient = useQueryClient();
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [activeFilter, setActiveFilter] = useState('All');
+  const [isPunching, setIsPunching] = useState(false);
+
+  const weekDayMap = useMemo(() => ({
     'SUNDAY': 0,
     'MONDAY': 1,
     'TUESDAY': 2,
@@ -119,7 +181,7 @@ const MyAttendance = () => {
     'THURSDAY': 4,
     'FRIDAY': 5,
     'SATURDAY': 6
-  };
+  }), []);
 
   // Get user from localStorage
   const getUser = () => {
@@ -132,157 +194,22 @@ const MyAttendance = () => {
     }
   };
 
-  const fetchAttendanceData = async () => {
-    const user = getUser();
-    if (!user || !user.emp_id) {
-      setError("User information not found. Please log in.");
-      return;
-    }
+  const user = getUser();
 
-    setLoading(true);
-    setError(null);
+  const { data: attendancePayload, isLoading: loading, error: queryError } = useQuery({
+    queryKey: ['myAttendance', user?.emp_id, selectedYear],
+    queryFn: () => fetchAttendanceDataHelper(user?.emp_id, selectedYear),
+    enabled: !!user?.emp_id,
+    staleTime: 10 * 60 * 1000,
+  });
 
-    try {
-      const currentYear = new Date().getFullYear();
-      const { weekOff, userLeaves, dailyRecords } = await getMyAttendanceInitialData(user.emp_id, currentYear);
-
-      if (weekOff) {
-        setWeekOff(weekOff);
-      }
-      // 1. Fetch Biometric API logs
-      let groupedData = {};
-      const biometricApiUrl = import.meta.env.VITE_BIOMETRIC_API_URL;
-      if (biometricApiUrl) {
-        try {
-          const response = await fetch(`${biometricApiUrl}&FromDate=${currentYear}-01-01&ToDate=${currentYear}-12-31`);
-          if (response.ok) {
-            const bioData = await response.json();
-            if (Array.isArray(bioData)) {
-              const userLogs = bioData.filter(log => String(log.UserId) === String(user.emp_id));
-              userLogs.forEach(log => {
-                const dateStr = log.LogDate ? log.LogDate.split('T')[0] : null;
-                if (dateStr) {
-                  if (!groupedData[dateStr]) {
-                    groupedData[dateStr] = { logs: [] };
-                  }
-                  groupedData[dateStr].logs.push(log.LogDate);
-                }
-              });
-            }
-          }
-        } catch (bioErr) {
-          console.warn('Biometric API fetch error:', bioErr);
-        }
-      }
-
-      // 2. Process Manual / Daily Records from database
-      const manualDataMap = {};
-      if (dailyRecords) {
-        dailyRecords.forEach(record => {
-          manualDataMap[record.date] = record;
-        });
-      }
-
-      // 3. Process and Merge
-      const allDates = new Set([...Object.keys(groupedData), ...Object.keys(manualDataMap)]);
-
-      const processedData = Array.from(allDates).map(dateStr => {
-        const apiItem = groupedData[dateStr];
-        const manualItem = manualDataMap[dateStr];
-
-        let inTime = null;
-        let outTime = null;
-
-        const formatWithSeconds = (t) => {
-          if (!t || t === '-') return null;
-          const clean = t.includes('T') ? t.split('T')[1] : t;
-          const parts = clean.split(':');
-          if (parts.length >= 3) {
-            return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}:${parts[2].substring(0, 2).padStart(2, '0')}`;
-          } else if (parts.length === 2) {
-            return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}:00`;
-          }
-          return t;
-        };
-
-        if (apiItem) {
-          apiItem.logs.sort();
-          inTime = formatWithSeconds(apiItem.logs[0]);
-          if (apiItem.logs.length > 1) {
-            outTime = formatWithSeconds(apiItem.logs[apiItem.logs.length - 1]);
-          }
-        }
-
-        if (manualItem) {
-          const manualIn = formatWithSeconds(manualItem.in_time);
-          const manualOut = formatWithSeconds(manualItem.out_time);
-
-          if (manualIn && (!inTime || manualIn < inTime)) {
-            inTime = manualIn;
-          }
-          if (manualOut && (!outTime || manualOut > outTime)) {
-            outTime = manualOut;
-          }
-        }
-
-        let workingHoursDisplay = '0h 0m';
-        let workingHoursVal = 0;
-        let overtimeVal = 0;
-        let overtimeDisplay = '0h 0m';
-
-        if (inTime && outTime && outTime !== '-') {
-          const start = new Date(`${dateStr}T${inTime}`);
-          const end = new Date(`${dateStr}T${outTime}`);
-          const diffMs = end - start;
-
-          if (diffMs > 0) {
-            workingHoursVal = diffMs / 3600000;
-            const hours = Math.floor(diffMs / 3600000);
-            const minutes = Math.floor((diffMs % 3600000) / 60000);
-            workingHoursDisplay = `${hours}h ${minutes}m`;
-
-            const nineHoursMs = 9 * 60 * 60 * 1000;
-            if (diffMs > nineHoursMs) {
-              const extraMs = diffMs - nineHoursMs;
-              overtimeVal = extraMs / 3600000;
-              const otHours = Math.floor(extraMs / 3600000);
-              const otMinutes = Math.floor((extraMs % 3600000) / 60000);
-              overtimeDisplay = `${otHours}h ${otMinutes}m`;
-            }
-          }
-        }
-
-        return {
-          date: dateStr,
-          day: new Date(dateStr).toLocaleDateString('en-US', { weekday: 'long' }),
-          inTime: inTime || '-',
-          outTime: outTime || '-',
-          workingHoursDisplay: workingHoursDisplay,
-          workingHoursVal: workingHoursVal,
-          overtimeDisplay: overtimeDisplay,
-          overtimeVal: overtimeVal,
-          status: 'Present',
-          isMobile: !apiItem && !!manualItem,
-        };
-      });
-
-      processedData.sort((a, b) => new Date(b.date) - new Date(a.date));
-      setAttendanceData(processedData);
-
-    } catch (error) {
-      console.error('Error fetching attendance data:', error);
-      setError(error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchAttendanceData();
-  }, []);
+  const weekOff = attendancePayload?.weekOff || '';
+  const userLeaves = attendancePayload?.userLeaves || EMPTY_ARRAY;
+  const attendanceData = attendancePayload?.attendanceData || EMPTY_ARRAY;
+  const error = queryError?.message || null;
 
   const handleMarkAttendance = async () => {
-    if (!isWithinRange || isPunching) return;
+    if (isPunching) return;
 
     setIsPunching(true);
     const userObj = getUser();
@@ -298,7 +225,7 @@ const MyAttendance = () => {
       await markMyAttendancePunch(userObj.emp_id, dateStr, year, monthName, dayName, timeStr, userObj.Name);
 
       toast.success("Attendance Marked Successfully!");
-      fetchAttendanceData();
+      queryClient.invalidateQueries({ queryKey: ['myAttendance', userObj.emp_id] });
     } catch (error) {
       console.error("Error marking attendance:", error);
       toast.error("Failed to mark attendance.");
@@ -307,7 +234,7 @@ const MyAttendance = () => {
     }
   };
 
-  useEffect(() => {
+  const stats = useMemo(() => {
     let currentMonthData = [];
 
     if (attendanceData.length > 0) {
@@ -381,17 +308,17 @@ const MyAttendance = () => {
     const totalWorkHrs = currentMonthData.reduce((acc, curr) => acc + curr.workingHoursVal, 0);
     const totalOtHrs = currentMonthData.reduce((acc, curr) => acc + curr.overtimeVal, 0);
 
-    setStats({
+    return {
       totalDays: effectiveDays,
       presentDays: presentCount,
       absentDays: absentCount,
       workingHours: totalWorkHrs,
       overtimeHours: totalOtHrs
-    });
+    };
 
-  }, [attendanceData, selectedMonth, selectedYear, weekOff, userLeaves]);
+  }, [attendanceData, selectedMonth, selectedYear, weekOff, userLeaves, weekDayMap]);
 
-  const filteredRecords = (() => {
+  const filteredRecords = useMemo(() => {
     // 1. Get real swipe records for this month
     const swipes = attendanceData.filter(record => {
       const d = new Date(record.date);
@@ -471,12 +398,11 @@ const MyAttendance = () => {
       if (filter === 'work hours') return status === 'present';
       return true;
     });
-  })();
+  }, [attendanceData, selectedMonth, selectedYear, weekOff, userLeaves, activeFilter, weekDayMap]);
 
   if (loading) {
     return (
       <div className="h-full flex flex-col gap-6 overflow-hidden bg-slate-50/30 px-4 sm:px-0">
-
         {/* Header Skeleton */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 shrink-0 pt-2 lg:pt-0 animate-pulse">
           <div className="space-y-2">
@@ -510,7 +436,6 @@ const MyAttendance = () => {
             ))}
           </div>
         </div>
-
       </div>
     );
   }
@@ -532,6 +457,7 @@ const MyAttendance = () => {
             <p className="mt-1 text-xs sm:text-sm text-slate-500 truncate">Track your daily swipes</p>
           </div>
 
+          {/* Mark In / Mark Out button commented out
           <div className="flex flex-col items-end sm:items-start sm:border-l sm:pl-6 border-slate-200 shrink-0">
             {(() => {
               const { dateStr: localTodayStr } = getISTDateDetails();
@@ -539,30 +465,28 @@ const MyAttendance = () => {
               const hasPunchedInToday = todayRecord && todayRecord.inTime && todayRecord.inTime !== '-';
 
               return (
-                <>
-                  <button
-                    disabled={!isWithinRange || isPunching}
-                    onClick={handleMarkAttendance}
-                    className={`flex items-center justify-center gap-1.5 sm:gap-2 px-3 py-2 sm:px-5 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-all
-                        ${!isWithinRange || isPunching
-                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                        : hasPunchedInToday
-                          ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-amber-200 cursor-pointer transform active:scale-95'
-                          : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200 cursor-pointer transform active:scale-95'}`}
-                  >
-                    {isPunching ? (
-                      <Loader2 size={14} className="sm:w-4 sm:h-4 animate-spin" />
-                    ) : (
-                      <MapPin size={14} className={`sm:w-4 sm:h-4 ${isWithinRange ? 'animate-bounce' : ''}`} />
-                    )}
-                    <span className="hidden sm:inline">{isPunching ? 'Processing...' : (hasPunchedInToday ? 'Mark Out' : 'Mark In')}</span>
-                    <span className="sm:hidden">{isPunching ? '...' : (hasPunchedInToday ? 'Out' : 'In')}</span>
-                  </button>
-                  <span className="text-[8px] sm:text-[10px] font-bold text-slate-400 mt-1 sm:mt-1.5 uppercase tracking-wider text-right sm:text-left">{locationStatus}</span>
-                </>
+                <button
+                  disabled={isPunching}
+                  onClick={handleMarkAttendance}
+                  className={`flex items-center justify-center gap-1.5 sm:gap-2 px-3 py-2 sm:px-5 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-all
+                      ${isPunching
+                      ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                      : hasPunchedInToday
+                        ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-amber-200 cursor-pointer transform active:scale-95'
+                        : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200 cursor-pointer transform active:scale-95'}`}
+                >
+                  {isPunching ? (
+                    <Loader2 size={14} className="sm:w-4 sm:h-4 animate-spin" />
+                  ) : (
+                    <Clock size={14} className="sm:w-4 sm:h-4" />
+                  )}
+                  <span className="hidden sm:inline">{isPunching ? 'Processing...' : (hasPunchedInToday ? 'Mark Out' : 'Mark In')}</span>
+                  <span className="sm:hidden">{isPunching ? '...' : (hasPunchedInToday ? 'Out' : 'In')}</span>
+                </button>
               );
             })()}
           </div>
+          */}
         </div>
 
         <div className="flex items-center gap-3">
