@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header from './Header';
+import Event from './Event';
 
 const Layout = () => {
   return (
@@ -10,7 +11,9 @@ const Layout = () => {
 
       {/* Main content wrapper */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
-        <Header />
+        <Header>
+          <Event />
+        </Header>
 
         {/* Scrollable content area */}
         <main className="flex-1 overflow-y-auto flex flex-col px-5 py-5 sm:p-6 lg:p-8 custom-scrollbar">
