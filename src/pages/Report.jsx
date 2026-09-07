@@ -510,8 +510,8 @@ const Report = () => {
             <button
               onClick={() => setActiveReport('attendanceDayEnd')}
               className={`py-4 px-4 text-center font-medium text-sm ${activeReport === 'attendanceDayEnd'
-                  ? 'border-b-2 border-indigo-500 text-indigo-600'
-                  : 'text-gray-500 hover:text-gray-700'
+                ? 'border-b-2 border-indigo-500 text-indigo-600'
+                : 'text-gray-500 hover:text-gray-700'
                 }`}
             >
               Attendance Day End
@@ -519,8 +519,8 @@ const Report = () => {
             <button
               onClick={() => setActiveReport('attendanceAnalysis')}
               className={`py-4 px-4 text-center font-medium text-sm ${activeReport === 'attendanceAnalysis'
-                  ? 'border-b-2 border-indigo-500 text-indigo-600'
-                  : 'text-gray-500 hover:text-gray-700'
+                ? 'border-b-2 border-indigo-500 text-indigo-600'
+                : 'text-gray-500 hover:text-gray-700'
                 }`}
             >
               Attendance Analysis
@@ -528,8 +528,8 @@ const Report = () => {
             <button
               onClick={() => setActiveReport('monthlyAttendance')}
               className={`py-4 px-4 text-center font-medium text-sm ${activeReport === 'monthlyAttendance'
-                  ? 'border-b-2 border-indigo-500 text-indigo-600'
-                  : 'text-gray-500 hover:text-gray-700'
+                ? 'border-b-2 border-indigo-500 text-indigo-600'
+                : 'text-gray-500 hover:text-gray-700'
                 }`}
             >
               Monthly Attendance
@@ -537,8 +537,8 @@ const Report = () => {
             <button
               onClick={() => setActiveReport('whatsappDayEnd')}
               className={`py-4 px-4 text-center font-medium text-sm ${activeReport === 'whatsappDayEnd'
-                  ? 'border-b-2 border-indigo-500 text-indigo-600'
-                  : 'text-gray-500 hover:text-gray-700'
+                ? 'border-b-2 border-indigo-500 text-indigo-600'
+                : 'text-gray-500 hover:text-gray-700'
                 }`}
             >
               WhatsApp Day End
@@ -546,8 +546,8 @@ const Report = () => {
             <button
               onClick={() => setActiveReport('leaveReport')}
               className={`py-4 px-4 text-center font-medium text-sm ${activeReport === 'leaveReport'
-                  ? 'border-b-2 border-indigo-500 text-indigo-600'
-                  : 'text-gray-500 hover:text-gray-700'
+                ? 'border-b-2 border-indigo-500 text-indigo-600'
+                : 'text-gray-500 hover:text-gray-700'
                 }`}
             >
               Leave Report
@@ -555,8 +555,8 @@ const Report = () => {
             <button
               onClick={() => setActiveReport('lateCutoff')}
               className={`py-4 px-4 text-center font-medium text-sm ${activeReport === 'lateCutoff'
-                  ? 'border-b-2 border-indigo-500 text-indigo-600'
-                  : 'text-gray-500 hover:text-gray-700'
+                ? 'border-b-2 border-indigo-500 text-indigo-600'
+                : 'text-gray-500 hover:text-gray-700'
                 }`}
             >
               Late/Early Cutoff
@@ -564,8 +564,8 @@ const Report = () => {
             <button
               onClick={() => setActiveReport('overtimeReport')}
               className={`py-4 px-4 text-center font-medium text-sm ${activeReport === 'overtimeReport'
-                  ? 'border-b-2 border-indigo-500 text-indigo-600'
-                  : 'text-gray-500 hover:text-gray-700'
+                ? 'border-b-2 border-indigo-500 text-indigo-600'
+                : 'text-gray-500 hover:text-gray-700'
                 }`}
             >
               Overtime Report

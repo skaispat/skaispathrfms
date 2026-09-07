@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/api-biometric/:path*",
+      "destination": "https://sohcm.com/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
