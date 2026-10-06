@@ -9,8 +9,9 @@ export const getLeaveRequestInitialData = async (userEmpId, fiscalYear) => {
       .maybeSingle(),
     supabase
       .from('users')
-      .select('full_name, emp_id')
-      .eq('department', 'HR')
+      .select('full_name, emp_id, role, is_active')
+      .or('department.eq.HR,role.ilike.hr')
+      .eq('is_active', true)
       .order('is_hod', { ascending: false })
       .limit(1)
       .maybeSingle(),
@@ -44,16 +45,30 @@ export const getLeaveRequestInitialData = async (userEmpId, fiscalYear) => {
   if (teamData?.hod_id) {
     const { data } = await supabase
       .from('users')
-      .select('full_name, department, phone_number')
+      .select('full_name, department, phone_number, is_active')
       .eq('emp_id', teamData.hod_id)
-      .single();
+      .eq('is_active', true)
+      .maybeSingle();
     hodUser = data;
   }
+
+  const rawHr = hrRes.data;
+  const hrData = rawHr ? {
+    ...rawHr,
+    name: rawHr.full_name || 'HR',
+    full_name: rawHr.full_name || 'HR',
+    role: rawHr.role ? rawHr.role.toUpperCase() : 'HR'
+  } : {
+    name: 'HR',
+    full_name: 'HR',
+    role: 'HR',
+    emp_id: 'HR'
+  };
 
   return {
     teamData,
     hodUser,
-    hrData: hrRes.data,
+    hrData,
     userData: userRes.data,
     historyData: historyRes.data || [],
     balanceData: balanceRes.data,

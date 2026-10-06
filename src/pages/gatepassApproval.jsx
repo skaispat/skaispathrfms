@@ -32,7 +32,7 @@ const GatePassApproval = () => {
                 employee_name: data.users?.full_name || data.emp_name || 'Employee',
                 departureTime: formatDate(data.departure_from_plant),
                 arrivalTime: data.arrival_at_plant ? formatDate(data.arrival_at_plant) : 'Not specified',
-                hr_name: hrData?.full_name || 'HR Department',
+                hr_name: hrData?.full_name || 'HR',
                 hr_phone: hrData?.phone_number,
                 hr_id_val: hrData?.emp_id
             });
@@ -124,13 +124,13 @@ const GatePassApproval = () => {
                 ...(isHrAction && {
                     hr_remarks: currentRemarks,
                     hr_id: approver.emp_id,
-                    hr_name: approver.full_name
+                    hr_name: approver.role ? approver.role.toUpperCase() : 'HR'
                 }),
                 // If HOD is HR and skipping, ensure HR fields are also filled
                 ...((isHodAction && approver.department === 'HR' && action === 'approve') && {
                     hr_remarks: currentRemarks,
                     hr_id: approver.emp_id,
-                    hr_name: approver.full_name
+                    hr_name: approver.role ? approver.role.toUpperCase() : 'HR'
                 })
             };
 

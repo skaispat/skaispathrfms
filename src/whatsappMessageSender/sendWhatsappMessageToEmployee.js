@@ -1,4 +1,4 @@
-// Send WhatsApp message to employee when gate pass is approved
+// Send WhatsApp message to employee when leave is approved
 export const sendApprovedMessageToEmployee = async ({
     employeePhone,
     employeeName,
@@ -9,15 +9,11 @@ export const sendApprovedMessageToEmployee = async ({
     reason,
 }) => {
     console.log("sendApprovedMessageToEmployee called");
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
     const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
-    console.log("VITE_BACKEND_URL:", backendUrl);
     console.log("Employee Phone:", employeePhone);
-
-    if (!backendUrl) {
-        console.error("VITE_BACKEND_URL is not set in .env");
-        return { success: false, error: "Backend URL not configured" };
-    }
 
     if (!employeePhone) {
         console.error("Employee phone number is missing");
@@ -25,18 +21,30 @@ export const sendApprovedMessageToEmployee = async ({
     }
 
     try {
-        const baseUrl = backendUrl.endsWith("/")
-            ? backendUrl.slice(0, -1)
-            : backendUrl;
+        let url;
+        if (supabaseUrl) {
+            const base = supabaseUrl.endsWith("/") ? supabaseUrl.slice(0, -1) : supabaseUrl;
+            url = `${base}/functions/v1/send-whatsappMessage-employee-approved`;
+        } else if (backendUrl) {
+            const base = backendUrl.endsWith("/") ? backendUrl.slice(0, -1) : backendUrl;
+            url = `${base}/api/send-whatsappMessage-employee-approved`;
+        } else {
+            return { success: false, error: "Neither Supabase URL nor Backend URL is configured" };
+        }
 
-        const url = `${baseUrl}/api/send-whatsappMessage-employee-approved`;
         console.log("Sending approved message to:", url);
+
+        const headers = {
+            "Content-Type": "application/json",
+        };
+        if (anonKey) {
+            headers["apikey"] = anonKey;
+            headers["Authorization"] = `Bearer ${anonKey}`;
+        }
 
         const response = await fetch(url, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
+            headers,
             body: JSON.stringify({
                 employeePhone,
                 employeeName,
@@ -61,11 +69,11 @@ export const sendApprovedMessageToEmployee = async ({
 
         if (!response.ok) {
             throw new Error(
-                data.error?.message || "Failed to send approved message to employee"
+                data.error?.message || data.error || "Failed to send approved message to employee"
             );
         }
 
-        console.log("Gate pass approved message sent to employee:", data);
+        console.log("Leave approved message sent to employee:", data);
         return { success: true, data };
     } catch (error) {
         console.error("Error sending approved message to employee:", error);
@@ -73,7 +81,7 @@ export const sendApprovedMessageToEmployee = async ({
     }
 };
 
-// Send WhatsApp message to employee when gate pass is rejected
+// Send WhatsApp message to employee when leave is rejected
 export const sendRejectedMessageToEmployee = async ({
     employeePhone,
     employeeName,
@@ -84,15 +92,11 @@ export const sendRejectedMessageToEmployee = async ({
     hrRemarks,
 }) => {
     console.log("sendRejectedMessageToEmployee called");
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
     const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
-    console.log("VITE_BACKEND_URL:", backendUrl);
     console.log("Employee Phone:", employeePhone);
-
-    if (!backendUrl) {
-        console.error("VITE_BACKEND_URL is not set in .env");
-        return { success: false, error: "Backend URL not configured" };
-    }
 
     if (!employeePhone) {
         console.error("Employee phone number is missing");
@@ -100,18 +104,30 @@ export const sendRejectedMessageToEmployee = async ({
     }
 
     try {
-        const baseUrl = backendUrl.endsWith("/")
-            ? backendUrl.slice(0, -1)
-            : backendUrl;
+        let url;
+        if (supabaseUrl) {
+            const base = supabaseUrl.endsWith("/") ? supabaseUrl.slice(0, -1) : supabaseUrl;
+            url = `${base}/functions/v1/send-whatsappMessage-employee-rejected`;
+        } else if (backendUrl) {
+            const base = backendUrl.endsWith("/") ? backendUrl.slice(0, -1) : backendUrl;
+            url = `${base}/api/send-whatsappMessage-employee-rejected`;
+        } else {
+            return { success: false, error: "Neither Supabase URL nor Backend URL is configured" };
+        }
 
-        const url = `${baseUrl}/api/send-whatsappMessage-employee-rejected`;
         console.log("Sending rejected message to:", url);
+
+        const headers = {
+            "Content-Type": "application/json",
+        };
+        if (anonKey) {
+            headers["apikey"] = anonKey;
+            headers["Authorization"] = `Bearer ${anonKey}`;
+        }
 
         const response = await fetch(url, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
+            headers,
             body: JSON.stringify({
                 employeePhone,
                 employeeName,
@@ -136,11 +152,11 @@ export const sendRejectedMessageToEmployee = async ({
 
         if (!response.ok) {
             throw new Error(
-                data.error?.message || "Failed to send rejected message to employee"
+                data.error?.message || data.error || "Failed to send rejected message to employee"
             );
         }
 
-        console.log("Gate pass rejected message sent to employee:", data);
+        console.log("Leave rejected message sent to employee:", data);
         return { success: true, data };
     } catch (error) {
         console.error("Error sending rejected message to employee:", error);

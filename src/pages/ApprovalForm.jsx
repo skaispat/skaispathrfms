@@ -29,7 +29,7 @@ const ApprovalForm = () => {
                 ...data,
                 startDate: formatDate(data.leave_date_start),
                 endDate: formatDate(data.leave_date_end),
-                hr_name: hrData?.full_name || 'HR Department',
+                hr_name: hrData?.full_name || 'HR',
                 hr_phone: hrData?.phone_number,
                 hr_id_val: hrData?.emp_id
             });
@@ -134,13 +134,13 @@ const ApprovalForm = () => {
                 ...(isHrAction && {
                     hr_remarks: currentRemarks,
                     hr_id: approver.emp_id,
-                    hr_name: approver.full_name
+                    hr_name: approver.role ? approver.role.toUpperCase() : 'HR'
                 }),
                 // If HOD is HR and skipping, ensure HR fields are also filled
                 ...((isHodAction && approver.department === 'HR' && action === 'approve') && {
                     hr_remarks: currentRemarks,
                     hr_id: approver.emp_id,
-                    hr_name: approver.full_name
+                    hr_name: approver.role ? approver.role.toUpperCase() : 'HR'
                 })
             };
 

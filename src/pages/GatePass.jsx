@@ -103,7 +103,8 @@ const GatePass = () => {
         setEmployees(data.map(e => ({
           id: e.emp_id,
           name: e.full_name,
-          phone: e.phone_number
+          phone: e.phone_number,
+          is_active: e.is_active !== false
         })).filter(e => e.id && e.name));
       }
     } catch (error) {
@@ -113,6 +114,10 @@ const GatePass = () => {
 
   const handleEmployeeChange = async (selectedName) => {
     const selectedEmployee = employees.find(emp => emp.name === selectedName);
+
+    if (selectedEmployee && selectedEmployee.is_active === false) {
+      toast.error(`This account (${selectedEmployee.name}) is deactivated.`);
+    }
 
     setFormData(prev => ({
       ...prev,
@@ -137,10 +142,10 @@ const GatePass = () => {
           setFormData(prev => ({ ...prev, hodName: '', hodId: null }));
         }
 
-        if (hrData) {
-          setFormData(prev => ({ ...prev, hrName: hrData.full_name, hrId: hrData.emp_id }));
+        if (hrData && hrData.is_active !== false && hrData.full_name) {
+          setFormData(prev => ({ ...prev, hrName: hrData.full_name, hrId: hrData.emp_id || 'HR' }));
         } else {
-          setFormData(prev => ({ ...prev, hrName: 'Pawan Tiwari', hrId: 1 }));
+          setFormData(prev => ({ ...prev, hrName: 'HR', hrId: 'HR' }));
         }
       } catch (err) {
         console.error('Error fetching HOD/HR details:', err);
@@ -543,11 +548,18 @@ const GatePass = () => {
         0, 23, 59, 59
       ).toISOString();
 
+      const selectedEmp = employees.find(e => e.id === formData.employeeId || e.name === formData.employeeName);
+      if (selectedEmp && selectedEmp.is_active === false) {
+        toast.error(`This account (${selectedEmp.name}) is deactivated.`);
+        setSubmitting(false);
+        return;
+      }
+
       const logPayload = {
         request_type: 'Gate Pass',
         emp_id: formData.employeeId,
         emp_name: formData.employeeName,
-        status: (formData.hodName === 'HR' || formData.hodId === 1 || formData.hodName === 'Pawan Tiwari') ? 'Pending HR' : 'Pending',
+        status: (formData.hodName === 'HR' || formData.hodId === 'HR' || formData.hodId === 1) ? 'Pending HR' : 'Pending',
         hod_id: formData.hodId,
         hod_name: formData.hodName,
         hr_id: formData.hrId,
@@ -1145,7 +1157,14 @@ const GatePass = () => {
                                   }}
                                 >
                                   <div className="flex flex-col">
-                                    <span className="font-medium text-slate-700 group-hover/item:text-indigo-700 transition-colors">{e.name}</span>
+                                    <span className="font-medium text-slate-700 group-hover/item:text-indigo-700 transition-colors flex items-center gap-2">
+                                      {e.name}
+                                      {e.is_active === false && (
+                                        <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold">
+                                          Deactivated
+                                        </span>
+                                      )}
+                                    </span>
                                     {e.phone && <span className="text-[10px] text-slate-400">{e.phone}</span>}
                                   </div>
                                   <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded-md group-hover/item:bg-white transition-colors">

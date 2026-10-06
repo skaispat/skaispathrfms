@@ -55,10 +55,14 @@ const LeaveRequest = () => {
   }, [teamData, hodUser]);
 
   const hrDetails = useMemo(() => {
-    if (hrData) {
-      return { name: hrData.full_name, id: hrData.emp_id };
+    if (hrData && hrData.is_active !== false && hrData.full_name) {
+      return {
+        name: hrData.full_name,
+        role: hrData.role ? hrData.role.toUpperCase() : 'HR',
+        id: hrData.emp_id || 'HR'
+      };
     }
-    return { name: 'Pawan Tiwari', id: 1 };
+    return { name: 'HR', role: 'HR', id: 'HR' };
   }, [hrData]);
 
   const isLeaveAllowedByAdmin = userData ? userData.is_leave_allowed !== false : true;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import dayjs from "dayjs";
 import { createPortal } from "react-dom";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -25,6 +25,7 @@ import * as XLSX from 'xlsx';
 import toast from "react-hot-toast";
 import {
   getUsersForLeaveManagement,
+  getUserLeaveAccess,
   getLeaveBalancesForUser,
   getHodAndHrDetailsForEmp,
   fetchPaginatedLeavesWithEmployee,
@@ -68,6 +69,17 @@ const LeaveManagement = () => {
     user?.role === "admin" ||
     user?.role === "Admin" ||
     user?.Admin === "Yes";
+
+  const { data: currentUserData } = useQuery({
+    queryKey: ["userLeaveAccess", user?.emp_id],
+    queryFn: () => getUserLeaveAccess(user?.emp_id),
+    enabled: !!user?.emp_id,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const isCurrentUserLeaveAllowed = currentUserData
+    ? currentUserData.is_leave_allowed !== false
+    : (user?.is_leave_allowed !== false);
 
   const showHrColumn = true;
   const showHodColumn = true;
@@ -282,6 +294,8 @@ const LeaveManagement = () => {
           name: row.full_name || "",
           designation: row.designation || "",
           department: row.department || "",
+          is_leave_allowed: row.is_leave_allowed !== false,
+          is_active: row.is_active !== false,
           rowIndex: index + 1,
         }))
         .filter((emp) => emp.name && emp.id);
@@ -341,6 +355,12 @@ const LeaveManagement = () => {
   const handleEmployeeChange = async (selectedName) => {
     const selectedEmployee = employees.find((emp) => emp.name === selectedName);
 
+    if (selectedEmployee && selectedEmployee.is_active === false) {
+      toast.error(`This account (${selectedEmployee.name}) is deactivated.`);
+    } else if (selectedEmployee && selectedEmployee.is_leave_allowed === false) {
+      toast.error(`Leave access has been disabled for ${selectedEmployee.name} by the admin.`);
+    }
+
     // Update basic info immediately
     setFormData((prev) => ({
       ...prev,
@@ -387,20 +407,34 @@ const LeaveManagement = () => {
 
         // console.log(hrData, "data is coming formt eh ");
         // console.log(formData, "formdata");
-        if (hrData) {
+        if (hrData && hrData.is_active !== false && hrData.full_name) {
           setFormData((prev) => ({
             ...prev,
             hrName: hrData.full_name,
-            hrId: hrData.emp_id,
+            hrId: hrData.emp_id || "HR",
           }));
         } else {
-          setFormData((prev) => ({ ...prev, hrName: "Pawan Tiwari", hrId: 1 }));
+          setFormData((prev) => ({ ...prev, hrName: "HR", hrId: "HR" }));
         }
       } catch (error) {
         console.error("Error fetching HOD/HR:", error);
       }
     }
   };
+
+  const selectedEmployeeObj = useMemo(() => {
+    return employees.find(
+      (emp) => emp.id === formData.employeeId || emp.name === formData.employeeName
+    );
+  }, [employees, formData.employeeId, formData.employeeName]);
+
+  const isSelectedEmployeeRestricted = selectedEmployeeObj
+    ? selectedEmployeeObj.is_leave_allowed === false
+    : false;
+
+  const isSelectedEmployeeDeactivated = selectedEmployeeObj
+    ? selectedEmployeeObj.is_active === false
+    : false;
 
   // Handle form input changes
   const handleInputChange = (e) => {
@@ -683,6 +717,21 @@ const LeaveManagement = () => {
       !formData.hodPhoneNumber
     ) {
       toast.error("Please fill all required fields");
+      return;
+    }
+
+    if (!isCurrentUserLeaveAllowed) {
+      toast.error("Your leave access has been disabled by the admin.");
+      return;
+    }
+
+    if (isSelectedEmployeeDeactivated) {
+      toast.error(`This account (${selectedEmployeeObj?.name || 'this employee'}) is deactivated.`);
+      return;
+    }
+
+    if (isSelectedEmployeeRestricted) {
+      toast.error(`Leave access has been disabled for ${selectedEmployeeObj?.name || 'this employee'} by the admin.`);
       return;
     }
 
@@ -2965,11 +3014,15 @@ const LeaveManagement = () => {
           </div>
           {/* New Request Button beside header on mobile */}
           <button
-            onClick={() => setShowModal(true)}
-            className="inline-flex items-center justify-center px-3 sm:px-4 py-2 border border-transparent rounded-lg shadow-sm text-xs sm:text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 h-[38px] sm:h-[42px] whitespace-nowrap shrink-0 md:hidden"
+            onClick={() => isCurrentUserLeaveAllowed && setShowModal(true)}
+            disabled={!isCurrentUserLeaveAllowed}
+            className={`inline-flex items-center justify-center px-3 sm:px-4 py-2 border border-transparent rounded-lg shadow-sm text-xs sm:text-sm font-medium text-white transition-all h-[38px] sm:h-[42px] whitespace-nowrap shrink-0 md:hidden ${!isCurrentUserLeaveAllowed
+              ? 'bg-slate-400 cursor-not-allowed shadow-none'
+              : 'bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500'
+              }`}
           >
             <Plus size={16} className="mr-1" />
-            New Request
+            {!isCurrentUserLeaveAllowed ? 'Access Disabled' : 'New Request'}
           </button>
         </div>
 
@@ -3062,14 +3115,34 @@ const LeaveManagement = () => {
 
           {/* Desktop New Request button */}
           <button
-            onClick={() => setShowModal(true)}
-            className="hidden md:inline-flex items-center justify-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-xs sm:text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 h-[42px] whitespace-nowrap"
+            onClick={() => isCurrentUserLeaveAllowed && setShowModal(true)}
+            disabled={!isCurrentUserLeaveAllowed}
+            className={`hidden md:inline-flex items-center justify-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-xs sm:text-sm font-medium text-white transition-all h-[42px] whitespace-nowrap ${!isCurrentUserLeaveAllowed
+              ? 'bg-slate-400 cursor-not-allowed shadow-none'
+              : 'bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500'
+              }`}
           >
             <Plus size={16} className="mr-1.5" />
-            New Request
+            {!isCurrentUserLeaveAllowed ? 'Access Disabled' : 'New Request'}
           </button>
         </div>
       </div>
+
+      {!isCurrentUserLeaveAllowed && (
+        <div className="bg-white border border-orange-100 rounded-2xl p-4 flex items-center gap-4 shrink-0 shadow-sm animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className="p-2.5 bg-orange-50 rounded-xl text-orange-600 border border-orange-100/50">
+            <AlertCircle size={22} />
+          </div>
+          <div>
+            <h4 className="text-sm font-black text-orange-900 uppercase tracking-wide">
+              Access Revoked
+            </h4>
+            <p className="text-xs text-orange-700/80 mt-1 font-medium leading-relaxed">
+              Your ability to apply for new leaves has been disabled by the administrator.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Content Area */}
       <div className="flex flex-col flex-1 overflow-hidden bg-white border shadow-sm rounded-xl border-slate-200">
@@ -3252,15 +3325,28 @@ const LeaveManagement = () => {
                                 .map((employee) => (
                                   <div
                                     key={employee.id}
-                                    className="flex items-center justify-between px-4 py-3 transition-colors border-b cursor-pointer hover:bg-indigo-50 border-slate-50 last:border-0 group/item"
+                                    className={`flex items-center justify-between px-4 py-3 transition-colors border-b cursor-pointer border-slate-50 last:border-0 group/item ${employee.is_leave_allowed === false
+                                      ? 'bg-orange-50/40 hover:bg-orange-50'
+                                      : 'hover:bg-indigo-50'
+                                      }`}
                                     onClick={() => {
                                       handleEmployeeChange(employee.name);
                                       setIsEmployeeDropdownOpen(false);
                                     }}
                                   >
                                     <div className="flex flex-col">
-                                      <span className="font-medium transition-colors text-slate-700 group-hover/item:text-indigo-700">
+                                      <span className="font-medium transition-colors text-slate-700 group-hover/item:text-indigo-700 flex items-center gap-2">
                                         {employee.name}
+                                        {employee.is_active === false && (
+                                          <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold">
+                                            Deactivated
+                                          </span>
+                                        )}
+                                        {employee.is_active !== false && employee.is_leave_allowed === false && (
+                                          <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded font-bold">
+                                            Access Disabled
+                                          </span>
+                                        )}
                                       </span>
                                       {employee.designation && (
                                         <span className="text-[10px] text-slate-400">
@@ -3350,6 +3436,34 @@ const LeaveManagement = () => {
                         <div className="p-2 text-center border rounded-xl border-purple-100 bg-purple-50 shadow-sm">
                           <p className="text-[9px] font-black text-purple-600 uppercase tracking-wider mb-0.5 leading-none">CF EL</p>
                           <p className="text-sm font-bold text-purple-700">{leaveBalances.carriedForward}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {isSelectedEmployeeDeactivated && (
+                      <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex gap-3 items-start animate-in fade-in mt-4">
+                        <AlertCircle className="text-red-600 shrink-0 mt-0.5" size={20} />
+                        <div>
+                          <p className="text-sm font-bold text-red-900 leading-snug">
+                            Account Deactivated (खाता निष्क्रिय है)
+                          </p>
+                          <p className="text-xs text-red-700 mt-1 font-medium leading-relaxed">
+                            This account ({selectedEmployeeObj?.name || 'this employee'}) is deactivated and cannot apply for leave.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {isSelectedEmployeeRestricted && !isSelectedEmployeeDeactivated && (
+                      <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 flex gap-3 items-start animate-in fade-in mt-4">
+                        <AlertCircle className="text-orange-600 shrink-0 mt-0.5" size={20} />
+                        <div>
+                          <p className="text-sm font-bold text-orange-900 leading-snug">
+                            Access Revoked (छुट्टी की अनुमति नहीं है)
+                          </p>
+                          <p className="text-xs text-orange-700 mt-1 font-medium leading-relaxed">
+                            Leave access for {selectedEmployeeObj?.name || 'this employee'} has been disabled by the administrator.
+                          </p>
                         </div>
                       </div>
                     )}
@@ -3566,10 +3680,22 @@ const LeaveManagement = () => {
                     </button>
                     <button
                       type="submit"
-                      disabled={submitting}
-                      className={`px-8 py-2.5 rounded-xl text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all transform hover:-translate-y-0.5 ${submitting ? "opacity-70 cursor-not-allowed transform-none" : ""}`}
+                      disabled={submitting || isSelectedEmployeeRestricted || isSelectedEmployeeDeactivated || !isCurrentUserLeaveAllowed}
+                      className={`px-8 py-2.5 rounded-xl text-sm font-medium text-white transition-all transform ${
+                        isSelectedEmployeeRestricted || isSelectedEmployeeDeactivated || !isCurrentUserLeaveAllowed
+                          ? "bg-slate-400 cursor-not-allowed shadow-none"
+                          : submitting
+                          ? "bg-indigo-600 opacity-70 cursor-not-allowed transform-none"
+                          : "bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200 hover:-translate-y-0.5"
+                      }`}
                     >
-                      {submitting ? "Submitting..." : "Submit Request"}
+                      {submitting
+                        ? "Submitting..."
+                        : isSelectedEmployeeDeactivated
+                        ? "Account Deactivated"
+                        : isSelectedEmployeeRestricted || !isCurrentUserLeaveAllowed
+                        ? "Access Disabled"
+                        : "Submit Request"}
                     </button>
                   </div>
                 </form>

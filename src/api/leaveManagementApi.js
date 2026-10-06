@@ -3,7 +3,18 @@ import { supabase } from '../supabaseClient';
 export const getUsersForLeaveManagement = async () => {
   const { data, error } = await supabase
     .from('users')
-    .select('emp_id, full_name, role, is_hod, department, is_active');
+    .select('emp_id, full_name, role, is_hod, department, is_active, is_leave_allowed');
+  if (error) throw error;
+  return data;
+};
+
+export const getUserLeaveAccess = async (empId) => {
+  if (!empId) return null;
+  const { data, error } = await supabase
+    .from('users')
+    .select('is_leave_allowed')
+    .eq('emp_id', empId)
+    .maybeSingle();
   if (error) throw error;
   return data;
 };
@@ -43,19 +54,33 @@ export const getHodAndHrDetailsForEmp = async (empId) => {
   if (teamMember?.hod_id) {
     const { data } = await supabase
       .from('users')
-      .select('full_name, emp_id, phone_number, department')
+      .select('full_name, emp_id, phone_number, department, is_active')
       .eq('emp_id', teamMember.hod_id)
-      .single();
+      .eq('is_active', true)
+      .maybeSingle();
     hodUser = data;
   }
 
-  const { data: hrData } = await supabase
+  const { data: rawHr } = await supabase
     .from('users')
-    .select('full_name, emp_id, phone_number')
-    .eq('department', 'HR')
+    .select('full_name, emp_id, phone_number, role, is_active')
+    .or('department.eq.HR,role.ilike.hr')
+    .eq('is_active', true)
     .order('is_hod', { ascending: false })
     .limit(1)
     .maybeSingle();
+
+  const hrData = rawHr ? {
+    ...rawHr,
+    name: rawHr.full_name || 'HR',
+    full_name: rawHr.full_name || 'HR',
+    role: rawHr.role ? rawHr.role.toUpperCase() : 'HR'
+  } : {
+    name: 'HR',
+    full_name: 'HR',
+    role: 'HR',
+    emp_id: 'HR'
+  };
 
   return { teamMember, hodUser, hrData };
 };

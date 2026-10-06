@@ -24,13 +24,26 @@ export const getApprovalFormDetails = async (id, approverId) => {
     approverData = approverUuidData;
   }
 
-  const { data: hrData } = await supabase
+  const { data: rawHr } = await supabase
     .from('users')
-    .select('full_name, phone_number, emp_id')
-    .eq('department', 'HR')
+    .select('full_name, phone_number, emp_id, role, is_active')
+    .or('department.eq.HR,role.ilike.hr')
+    .eq('is_active', true)
     .order('is_hod', { ascending: false })
     .limit(1)
     .maybeSingle();
+
+  const hrData = rawHr ? {
+    ...rawHr,
+    name: rawHr.full_name || 'HR',
+    full_name: rawHr.full_name || 'HR',
+    role: rawHr.role ? rawHr.role.toUpperCase() : 'HR'
+  } : {
+    name: 'HR',
+    full_name: 'HR',
+    role: 'HR',
+    emp_id: 'HR'
+  };
 
   return { data, approverData, hrData };
 };

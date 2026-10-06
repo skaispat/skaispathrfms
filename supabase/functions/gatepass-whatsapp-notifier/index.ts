@@ -53,7 +53,23 @@ serve(async (req) => {
 
     const employeeName = employeeData?.full_name || record.emp_name || "Employee";
     const employeePhone = record.employee_whatsapp_number || employeeData?.phone_number;
-    const hrName = record.hr_name || "Pawan Tiwari";
+
+    // Fetch active HR user dynamically by role
+    let hrName = record.hr_name;
+    const { data: hrData } = await supabaseClient
+      .from("users")
+      .select("full_name, role, is_active")
+      .or("role.ilike.hr,department.eq.HR")
+      .eq("is_active", true)
+      .order("is_hod", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (hrData?.full_name) {
+      hrName = hrData.full_name;
+    } else if (!hrName) {
+      hrName = "HR";
+    }
 
     const formatDateTime = (dateStr: string) => {
       if (!dateStr) return 'N/A';

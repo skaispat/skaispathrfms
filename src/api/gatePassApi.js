@@ -3,7 +3,7 @@ import { supabase } from '../supabaseClient';
 export const getEmployeesForGatePass = async () => {
   const { data, error } = await supabase
     .from('users')
-    .select('emp_id, full_name, phone_number');
+    .select('emp_id, full_name, phone_number, is_active');
 
   if (error) throw error;
   return data;
@@ -20,19 +20,33 @@ export const getHodAndHrForEmployee = async (employeeId) => {
   if (teamMember?.hod_id) {
     const { data } = await supabase
       .from('users')
-      .select('full_name')
+      .select('full_name, is_active')
       .eq('emp_id', teamMember.hod_id)
-      .single();
+      .eq('is_active', true)
+      .maybeSingle();
     hodUser = data;
   }
 
-  const { data: hrData } = await supabase
+  const { data: rawHr } = await supabase
     .from('users')
-    .select('full_name, emp_id')
-    .eq('department', 'HR')
+    .select('full_name, emp_id, role, is_active')
+    .or('department.eq.HR,role.ilike.hr')
+    .eq('is_active', true)
     .order('is_hod', { ascending: false })
     .limit(1)
     .maybeSingle();
+
+  const hrData = rawHr ? {
+    ...rawHr,
+    name: rawHr.full_name || 'HR',
+    full_name: rawHr.full_name || 'HR',
+    role: rawHr.role ? rawHr.role.toUpperCase() : 'HR'
+  } : {
+    name: 'HR',
+    full_name: 'HR',
+    role: 'HR',
+    emp_id: 'HR'
+  };
 
   return { teamMember, hodUser, hrData };
 };

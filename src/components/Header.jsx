@@ -44,15 +44,16 @@ const Header = ({ children }) => {
       const userName = user?.full_name || user?.Name;
 
       try {
-        // Fetch HR Name once for display
-        let hrName = 'HR Admin';
+        // Fetch HR Name dynamically by role, checking active status
+        let hrName = 'HR';
         const { data: hrUsers } = await supabase
           .from('users')
-          .select('full_name')
-          .ilike('role', 'hr')
+          .select('full_name, role, is_active')
+          .or('department.eq.HR,role.ilike.hr')
+          .eq('is_active', true)
           .limit(1);
 
-        if (hrUsers && hrUsers.length > 0) {
+        if (hrUsers && hrUsers.length > 0 && hrUsers[0].full_name) {
           hrName = hrUsers[0].full_name;
         }
 

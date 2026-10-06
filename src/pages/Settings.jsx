@@ -25,19 +25,19 @@ import {
     ArrowRightLeft
 } from 'lucide-react';
 import {
-  getSettingsInitialData,
-  getLeaveQuotaForEmpId,
-  uploadSettingsProfilePicture,
-  checkEmpAndUsernameExists,
-  updateUserRecordInSettings,
-  createUserRecordInSettings,
-  updateTeamMembersForHod,
-  shiftEmployeesToHod,
-  assignEmployeesToHod,
-  removeEmployeeFromHod,
-  insertLeaveFromSettings,
-  toggleUserLeaveAccess,
-  getNewJoiningFormsForSettings
+    getSettingsInitialData,
+    getLeaveQuotaForEmpId,
+    uploadSettingsProfilePicture,
+    checkEmpAndUsernameExists,
+    updateUserRecordInSettings,
+    createUserRecordInSettings,
+    updateTeamMembersForHod,
+    shiftEmployeesToHod,
+    assignEmployeesToHod,
+    removeEmployeeFromHod,
+    insertLeaveFromSettings,
+    toggleUserLeaveAccess,
+    getNewJoiningFormsForSettings
 } from '../api/settingsApi';
 import toast from 'react-hot-toast';
 import useAuthStore from '../store/authStore';
@@ -179,7 +179,7 @@ const Settings = () => {
         setLoading(true);
         try {
             const { users: fetchedUsers, teamMembers: fetchedTeamMembers, joiningForms: fetchedJoiningForms } = await getSettingsInitialData();
-            
+
             const usersResponse = { data: fetchedUsers };
             const teamResponse = { data: fetchedTeamMembers };
             const joiniResponse = { data: fetchedJoiningForms };
@@ -660,7 +660,7 @@ const Settings = () => {
     }, [searchTerm]);
 
     // HOD Logic
-    const managers = users.filter(u => u.is_hod);
+    const managers = users.filter(u => u.is_hod && u.is_active !== false);
     const filteredManagers = managers.filter(m =>
         m.full_name?.toLowerCase().includes(hodSearchTerm.toLowerCase()) ||
         m.department?.toLowerCase().includes(hodSearchTerm.toLowerCase())
@@ -727,7 +727,6 @@ const Settings = () => {
             setLoading(true);
             await removeEmployeeFromHod(empId);
 
-            if (error) throw error;
             toast.success('Employee removed from team');
             fetchUsers();
         } catch (error) {
@@ -760,13 +759,14 @@ const Settings = () => {
             const selectedEmployee = users.find(u => u.emp_id === value);
             if (selectedEmployee) {
                 const hod = users.find(u => u.emp_id === selectedEmployee.hod_id);
+                const activeHr = users.find(u => (u.role?.toLowerCase() === 'hr' || u.department === 'HR') && u.is_active);
                 setLeaveFormData(prev => ({
                     ...prev,
                     employeeId: value,
                     employeeName: selectedEmployee.full_name,
                     designation: selectedEmployee.designation || '',
-                    hodName: hod ? hod.full_name : 'Pawan Tiwari',
-                    hodId: hod ? hod.emp_id : 1
+                    hodName: (hod && hod.is_active !== false) ? hod.full_name : (activeHr?.full_name || 'HR'),
+                    hodId: (hod && hod.is_active !== false) ? hod.emp_id : (activeHr?.emp_id || 'HR')
                 }));
             }
         } else {
@@ -785,7 +785,7 @@ const Settings = () => {
                 leave_date_start: leaveFormData.fromDate,
                 leave_date_end: leaveFormData.toDate,
                 remarks: leaveFormData.reason,
-                status: (leaveFormData.hodId === 1 || leaveFormData.hodName === 'Pawan Tiwari' || leaveFormData.hodName === 'HR') ? 'Pending HR' : 'Pending', // Start flow regardless of who adds it
+                status: (leaveFormData.hodId === 1 || leaveFormData.hodId === 'HR' || leaveFormData.hodName === 'HR') ? 'Pending HR' : 'Pending', // Start flow regardless of who adds it
 
                 leave_type: leaveFormData.leaveType,
                 hod_name: leaveFormData.hodName,
@@ -1081,6 +1081,9 @@ const Settings = () => {
                                                                             </div>
                                                                             <span className="text-sm text-slate-700 font-medium">
                                                                                 {hodUser?.full_name || 'Unknown HOD'}
+                                                                                {hodUser && hodUser.is_active === false && (
+                                                                                    <span className="ml-1.5 px-1.5 py-0.5 text-[10px] bg-red-100 text-red-600 rounded font-semibold">Deactivated</span>
+                                                                                )}
                                                                             </span>
                                                                         </div>
                                                                     );
@@ -1449,6 +1452,7 @@ const Settings = () => {
                         <div className="flex-1 overflow-y-auto p-2 sm:p-4 custom-scrollbar">
                             {users
                                 .filter(u =>
+                                    u.is_active !== false &&
                                     (u.role !== 'admin' && u.role !== 'Admin' && u.hod_id !== selectedHod.emp_id) &&
                                     (u.full_name?.toLowerCase().includes(assignSearchTerm.toLowerCase()) ||
                                         u.emp_id?.toLowerCase().includes(assignSearchTerm.toLowerCase()) ||
@@ -2316,7 +2320,7 @@ const Settings = () => {
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                                            {(leaveFormData.hodName === 'Pawan Tiwari' || leaveFormData.hodName === 'HR') ? 'HR Name (एचआर का नाम)' : 'HOD Name (एचओडी का नाम)'}
+                                            {leaveFormData.hodName === 'HR' ? 'Approver Role (स्वीकर्ता)' : 'HOD Name (एचओडी का नाम)'}
                                         </label>
                                         <input
                                             type="text"

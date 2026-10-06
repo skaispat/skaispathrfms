@@ -10,41 +10,44 @@ export const sendWhatsappMessageToHr = async ({
     totalDays,
     reason,
 }) => {
-
-    console.log("this function is called")
+    console.log("sendWhatsappMessageToHr called");
     const hrPhoneNumber = import.meta.env.VITE_HR_MOBILE_NUMBER;
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
     const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
-    // Debug: Log env variables
-    // sendWhatsappMessageToHr
     console.log('VITE_HR_MOBILE_NUMBER:', hrPhoneNumber);
-    console.log('VITE_BACKEND_URL:', backendUrl);
 
     if (!hrPhoneNumber) {
         console.error('VITE_HR_MOBILE_NUMBER is not set in .env');
         return { success: false, error: 'HR phone number not configured' };
     }
 
-    if (!backendUrl) {
-        console.error('VITE_BACKEND_URL is not set in .env');
-        return { success: false, error: 'Backend URL not configured' };
-    }
-
     try {
-        const baseUrl = backendUrl.endsWith("/")
-            ? backendUrl.slice(0, -1)
-            : backendUrl;
+        let url;
+        if (supabaseUrl) {
+            const base = supabaseUrl.endsWith("/") ? supabaseUrl.slice(0, -1) : supabaseUrl;
+            url = `${base}/functions/v1/send-whatsappMessage-hr?employeId=${employeId}&tableid=${tableid}`;
+        } else if (backendUrl) {
+            const base = backendUrl.endsWith("/") ? backendUrl.slice(0, -1) : backendUrl;
+            url = `${base}/api/send-whatsappMessage-hr?employeId=${employeId}&tableid=${tableid}`;
+        } else {
+            return { success: false, error: 'Neither Supabase URL nor Backend URL is configured' };
+        }
 
-        console.log(baseUrl, "base url ")
-
-        const url = `${baseUrl}/api/send-whatsappMessage-hr?employeId=${employeId}&tableid=${tableid}`;
         console.log("Sending WhatsApp request to HR:", url);
+
+        const headers = {
+            "Content-Type": "application/json",
+        };
+        if (anonKey) {
+            headers["apikey"] = anonKey;
+            headers["Authorization"] = `Bearer ${anonKey}`;
+        }
 
         const response = await fetch(url, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
+            headers,
             body: JSON.stringify({
                 whomtoSend: hrPhoneNumber,
                 employeeName: employeeName,
@@ -55,6 +58,8 @@ export const sendWhatsappMessageToHr = async ({
                 toDate: toDate,
                 totalDays: totalDays,
                 reason: reason,
+                employeId: employeId,
+                tableid: tableid,
             }),
         });
 
@@ -68,7 +73,7 @@ export const sendWhatsappMessageToHr = async ({
         const data = await response.json();
 
         if (!response.ok) {
-            throw new Error(data.error?.message || "Failed to send WhatsApp message to HR");
+            throw new Error(data.error?.message || data.error || "Failed to send WhatsApp message to HR");
         }
 
         console.log("WhatsApp message sent to HR successfully:", data);
@@ -80,4 +85,3 @@ export const sendWhatsappMessageToHr = async ({
 };
 
 export default sendWhatsappMessageToHr;
-

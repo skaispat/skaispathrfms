@@ -1,5 +1,33 @@
 // Gate Pass specific WhatsApp message utilities
-// These use the gate_pass_hod_message template instead of leave templates
+// Uses Supabase Edge Functions (with fallback to backend URL)
+
+const getEndpointUrl = (functionName, queryParams = "") => {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const backendUrl = import.meta.env.VITE_BACKEND_URL;
+    const query = queryParams ? `?${queryParams}` : "";
+
+    if (supabaseUrl) {
+        const base = supabaseUrl.endsWith("/") ? supabaseUrl.slice(0, -1) : supabaseUrl;
+        return `${base}/functions/v1/${functionName}${query}`;
+    }
+    if (backendUrl) {
+        const base = backendUrl.endsWith("/") ? backendUrl.slice(0, -1) : backendUrl;
+        return `${base}/api/${functionName}${query}`;
+    }
+    throw new Error("Neither Supabase URL nor Backend URL is configured");
+};
+
+const getAuthHeaders = () => {
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const headers = {
+        "Content-Type": "application/json",
+    };
+    if (anonKey) {
+        headers["apikey"] = anonKey;
+        headers["Authorization"] = `Bearer ${anonKey}`;
+    }
+    return headers;
+};
 
 // Send WhatsApp message to HOD for gate pass approval
 export const sendGatePassMessageToHod = async ({
@@ -14,30 +42,16 @@ export const sendGatePassMessageToHod = async ({
     totalDays,
     reason,
 }) => {
-    const backendUrl = import.meta.env.VITE_BACKEND_URL;
-
-    // sendGatePassMessageToHod
-    console.log('VITE_BACKEND_URL:', backendUrl);
-    console.log('Sending to HOD:', whomtoSend);
-
-    if (!backendUrl) {
-        console.error('VITE_BACKEND_URL is not set in .env');
-        return { success: false, error: 'Backend URL not configured' };
-    }
-
     try {
-        const baseUrl = backendUrl.endsWith("/")
-            ? backendUrl.slice(0, -1)
-            : backendUrl;
-
-        const url = `${baseUrl}/api/send-gatepass-whatsapp-hod?employeId=${employeId}&tableid=${tableid}`;
+        const url = getEndpointUrl(
+            "send-gatepass-whatsapp-hod",
+            `employeId=${employeId}&tableid=${tableid}`
+        );
         console.log("Sending Gate Pass request to HOD:", url);
 
         const response = await fetch(url, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
+            headers: getAuthHeaders(),
             body: JSON.stringify({
                 whomtoSend,
                 employeeName,
@@ -47,6 +61,8 @@ export const sendGatePassMessageToHod = async ({
                 toDate,
                 totalDays: totalDays || "N/A",
                 reason,
+                employeId,
+                tableid,
             }),
         });
 
@@ -60,7 +76,7 @@ export const sendGatePassMessageToHod = async ({
         const data = await response.json();
 
         if (!response.ok) {
-            throw new Error(data.error?.message || "Failed to send Gate Pass message to HOD");
+            throw new Error(data.error?.message || data.error || "Failed to send Gate Pass message to HOD");
         }
 
         console.log("Gate Pass message sent to HOD successfully:", data);
@@ -85,35 +101,21 @@ export const sendGatePassMessageToHr = async ({
     reason,
 }) => {
     const hrPhoneNumber = import.meta.env.VITE_HR_MOBILE_NUMBER;
-    const backendUrl = import.meta.env.VITE_BACKEND_URL;
-
-    // sendGatePassMessageToHr
-    console.log('VITE_HR_MOBILE_NUMBER:', hrPhoneNumber);
-    console.log('VITE_BACKEND_URL:', backendUrl);
-
     if (!hrPhoneNumber) {
         console.error('VITE_HR_MOBILE_NUMBER is not set in .env');
         return { success: false, error: 'HR phone number not configured' };
     }
 
-    if (!backendUrl) {
-        console.error('VITE_BACKEND_URL is not set in .env');
-        return { success: false, error: 'Backend URL not configured' };
-    }
-
     try {
-        const baseUrl = backendUrl.endsWith("/")
-            ? backendUrl.slice(0, -1)
-            : backendUrl;
-
-        const url = `${baseUrl}/api/send-gatepass-whatsapp-hr?employeId=${employeId}&tableid=${tableid}`;
+        const url = getEndpointUrl(
+            "send-gatepass-whatsapp-hr",
+            `employeId=${employeId}&tableid=${tableid}`
+        );
         console.log("Sending Gate Pass request to HR:", url);
 
         const response = await fetch(url, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
+            headers: getAuthHeaders(),
             body: JSON.stringify({
                 whomtoSend: hrPhoneNumber,
                 employeeName,
@@ -124,6 +126,8 @@ export const sendGatePassMessageToHr = async ({
                 toDate,
                 totalDays: totalDays || "N/A",
                 reason,
+                employeId,
+                tableid,
             }),
         });
 
@@ -137,7 +141,7 @@ export const sendGatePassMessageToHr = async ({
         const data = await response.json();
 
         if (!response.ok) {
-            throw new Error(data.error?.message || "Failed to send Gate Pass message to HR");
+            throw new Error(data.error?.message || data.error || "Failed to send Gate Pass message to HR");
         }
 
         console.log("Gate Pass message sent to HR successfully:", data);
@@ -158,35 +162,18 @@ export const sendGatePassApprovedToEmployee = async ({
     totalDays,
     reason,
 }) => {
-    const backendUrl = import.meta.env.VITE_BACKEND_URL;
-
-    // sendGatePassApprovedToEmployee
-    console.log('VITE_BACKEND_URL:', backendUrl);
-    console.log('Employee Phone:', employeePhone);
-
-    if (!backendUrl) {
-        console.error('VITE_BACKEND_URL is not set in .env');
-        return { success: false, error: 'Backend URL not configured' };
-    }
-
     if (!employeePhone) {
         console.error('Employee phone number is missing');
         return { success: false, error: 'Employee phone number not provided' };
     }
 
     try {
-        const baseUrl = backendUrl.endsWith("/")
-            ? backendUrl.slice(0, -1)
-            : backendUrl;
-
-        const url = `${baseUrl}/api/send-gatepass-whatsapp-employee-approved`;
+        const url = getEndpointUrl("send-gatepass-whatsapp-employee-approved");
         console.log("Sending Gate Pass approved message:", url);
 
         const response = await fetch(url, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
+            headers: getAuthHeaders(),
             body: JSON.stringify({
                 employeePhone,
                 employeeName,
@@ -208,7 +195,7 @@ export const sendGatePassApprovedToEmployee = async ({
         const data = await response.json();
 
         if (!response.ok) {
-            throw new Error(data.error?.message || "Failed to send Gate Pass approved message");
+            throw new Error(data.error?.message || data.error || "Failed to send Gate Pass approved message");
         }
 
         console.log("Gate Pass approved message sent successfully:", data);
@@ -229,35 +216,18 @@ export const sendGatePassRejectedToEmployee = async ({
     totalDays,
     hrRemarks,
 }) => {
-    const backendUrl = import.meta.env.VITE_BACKEND_URL;
-
-    // sendGatePassRejectedToEmployee
-    console.log('VITE_BACKEND_URL:', backendUrl);
-    console.log('Employee Phone:', employeePhone);
-
-    if (!backendUrl) {
-        console.error('VITE_BACKEND_URL is not set in .env');
-        return { success: false, error: 'Backend URL not configured' };
-    }
-
     if (!employeePhone) {
         console.error('Employee phone number is missing');
         return { success: false, error: 'Employee phone number not provided' };
     }
 
     try {
-        const baseUrl = backendUrl.endsWith("/")
-            ? backendUrl.slice(0, -1)
-            : backendUrl;
-
-        const url = `${baseUrl}/api/send-gatepass-whatsapp-employee-rejected`;
+        const url = getEndpointUrl("send-gatepass-whatsapp-employee-rejected");
         console.log("Sending Gate Pass rejected message:", url);
 
         const response = await fetch(url, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
+            headers: getAuthHeaders(),
             body: JSON.stringify({
                 employeePhone,
                 employeeName,
@@ -279,7 +249,7 @@ export const sendGatePassRejectedToEmployee = async ({
         const data = await response.json();
 
         if (!response.ok) {
-            throw new Error(data.error?.message || "Failed to send Gate Pass rejected message");
+            throw new Error(data.error?.message || data.error || "Failed to send Gate Pass rejected message");
         }
 
         console.log("Gate Pass rejected message sent successfully:", data);
@@ -299,34 +269,18 @@ export const sendGatePassHodRejectedToEmployee = async ({
     fromDate,
     toDate,
 }) => {
-    const backendUrl = import.meta.env.VITE_BACKEND_URL;
-
-    console.log('VITE_BACKEND_URL:', backendUrl);
-    console.log('Employee Phone:', employeePhone);
-
-    if (!backendUrl) {
-        console.error('VITE_BACKEND_URL is not set in .env');
-        return { success: false, error: 'Backend URL not configured' };
-    }
-
     if (!employeePhone) {
         console.error('Employee phone number is missing');
         return { success: false, error: 'Employee phone number not provided' };
     }
 
     try {
-        const baseUrl = backendUrl.endsWith("/")
-            ? backendUrl.slice(0, -1)
-            : backendUrl;
-
-        const url = `${baseUrl}/api/send-gatepass-whatsapp-employee-hod-rejected`;
+        const url = getEndpointUrl("send-gatepass-whatsapp-employee-hod-rejected");
         console.log("Sending Gate Pass HOD rejected message:", url);
 
         const response = await fetch(url, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
+            headers: getAuthHeaders(),
             body: JSON.stringify({
                 employeePhone,
                 employeeName,
@@ -347,7 +301,7 @@ export const sendGatePassHodRejectedToEmployee = async ({
         const data = await response.json();
 
         if (!response.ok) {
-            throw new Error(data.error?.message || "Failed to send Gate Pass HOD rejected message");
+            throw new Error(data.error?.message || data.error || "Failed to send Gate Pass HOD rejected message");
         }
 
         console.log("Gate Pass HOD rejected message sent successfully:", data);
