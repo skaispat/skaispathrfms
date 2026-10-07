@@ -148,7 +148,7 @@ const LeaveManagement = () => {
     employeeName: "",
     designation: "",
     department: "",
-    hodId: "",
+    hodId: null,
     hodName: "",
     hodPhoneNumber: "",
     hrId: "",
@@ -369,7 +369,8 @@ const LeaveManagement = () => {
       designation: selectedEmployee ? selectedEmployee.designation : "",
       department: selectedEmployee ? selectedEmployee.department : "",
       hodName: "", // Reset HOD name while fetching
-      hodId: "", // Reset HOD ID
+      hodId: null, // Reset HOD ID
+      hodPhoneNumber: "",
     }));
 
     // Fetch leave balances for the selected employee
@@ -388,33 +389,51 @@ const LeaveManagement = () => {
     if (selectedEmployee && selectedEmployee.id) {
       try {
         const { teamMember, hodUser, hrData } = await getHodAndHrDetailsForEmp(selectedEmployee.id);
-        if (teamMember && teamMember.hod_id && hodUser) {
+
+        let resolvedHrName = "HR";
+        let resolvedHrId = "HR";
+        if (hrData && hrData.is_active !== false && hrData.full_name) {
+          resolvedHrName = hrData.full_name;
+          resolvedHrId = hrData.emp_id || "HR";
+        }
+
+        const hodExists = Boolean(teamMember && teamMember.hod_id && hodUser);
+        const isHodSameAsHr = hodExists && (
+          (resolvedHrId !== "HR" && (String(teamMember?.hod_id) === String(resolvedHrId) || String(hodUser?.emp_id) === String(resolvedHrId))) ||
+          (resolvedHrName && hodUser?.full_name && hodUser.full_name.trim().toLowerCase() === resolvedHrName.trim().toLowerCase()) ||
+          teamMember?.hod_id === "HR" ||
+          teamMember?.hod_id === 1
+        );
+
+        if (hodExists && !isHodSameAsHr) {
           setFormData((prev) => ({
             ...prev,
             hodName: hodUser.full_name,
             hodId: teamMember.hod_id,
             hodPhoneNumber: hodUser.phone_number || "",
+            hrName: resolvedHrName,
+            hrId: resolvedHrId,
           }));
           toast.success(`HOD found: ${hodUser.full_name}`);
+        } else if (hodExists && isHodSameAsHr) {
+          setFormData((prev) => ({
+            ...prev,
+            hodName: hodUser.full_name,
+            hodId: teamMember.hod_id,
+            hodPhoneNumber: hodUser.phone_number || "",
+            hrName: resolvedHrName,
+            hrId: resolvedHrId,
+          }));
+          toast.success(`HOD is same as HR (${hodUser.full_name}). Request will route directly to HR.`);
         } else {
           setFormData((prev) => ({
             ...prev,
-            hodName: "",
+            hodName: "Not Assigned",
             hodId: null,
             hodPhoneNumber: "",
+            hrName: resolvedHrName,
+            hrId: resolvedHrId,
           }));
-        }
-
-        // console.log(hrData, "data is coming formt eh ");
-        // console.log(formData, "formdata");
-        if (hrData && hrData.is_active !== false && hrData.full_name) {
-          setFormData((prev) => ({
-            ...prev,
-            hrName: hrData.full_name,
-            hrId: hrData.emp_id || "HR",
-          }));
-        } else {
-          setFormData((prev) => ({ ...prev, hrName: "HR", hrId: "HR" }));
         }
       } catch (error) {
         console.error("Error fetching HOD/HR:", error);
@@ -709,12 +728,11 @@ const LeaveManagement = () => {
 
     if (
       !formData.employeeName ||
+      !formData.employeeId ||
       !formData.leaveType ||
       !formData.fromDate ||
       !formData.toDate ||
-      !formData.reason ||
-      !formData.hodName ||
-      !formData.hodPhoneNumber
+      !formData.reason
     ) {
       toast.error("Please fill all required fields");
       return;
@@ -755,6 +773,23 @@ const LeaveManagement = () => {
       const istDate = new Date(now.getTime() + istOffsetMs);
       const istTimestamp = istDate.toISOString().slice(0, 19).replace('T', ' ');
 
+      const isHodSameAsHr = Boolean(
+        (formData.hodId && formData.hrId && formData.hrId !== "HR" && String(formData.hodId) === String(formData.hrId)) ||
+        (formData.hodId === "HR" || formData.hodId === 1 || formData.hodName === "HR") ||
+        (formData.hodName && formData.hrName && formData.hrName !== "HR" && formData.hodName.trim().toLowerCase() === formData.hrName.trim().toLowerCase())
+      );
+
+      const hasValidHod = Boolean(
+        formData.hodId &&
+        formData.hodId !== "HR" &&
+        formData.hodId !== 1 &&
+        formData.hodName &&
+        formData.hodName !== "Not Assigned" &&
+        !isHodSameAsHr
+      );
+
+      const initialStatus = hasValidHod ? "Pending HOD" : "Pending HR";
+
       const insertData = {
         timestamp: istTimestamp,
         created_at: istTimestamp,
@@ -764,13 +799,13 @@ const LeaveManagement = () => {
         leave_date_start: formData.fromDate,
         leave_date_end: formData.toDate,
         remarks: formData.reason,
-        status: formData.hodId === null ? "Pending HR" : "Pending HOD",
+        status: initialStatus,
         leave_type: formData.leaveType,
-        hod_name: formData.hodName,
+        hod_name: hasValidHod ? formData.hodName : (isHodSameAsHr ? (formData.hodName || formData.hrName) : null),
         designation: formData.designation,
-        hod_id: formData.hodId,
-        hr_id: formData.hrId,
-        hr_name: formData.hrName,
+        hod_id: hasValidHod ? formData.hodId : (isHodSameAsHr ? (formData.hodId || formData.hrId) : null),
+        hr_id: formData.hrId || "HR",
+        hr_name: formData.hrName || "HR",
       };
 
       // Insert data into Supabase leave_management table
@@ -778,17 +813,17 @@ const LeaveManagement = () => {
         request_type: "Leave",
         emp_id: formData.employeeId,
         emp_name: formData.employeeName,
-        status: "Pending",
-        hod_id: formData.hodId,
-        hod_name: formData.hodName,
-        hr_id: formData.hrId,
-        hr_name: formData.hrName,
+        status: initialStatus,
+        hod_id: insertData.hod_id,
+        hod_name: insertData.hod_name,
+        hr_id: insertData.hr_id,
+        hr_name: insertData.hr_name,
       };
 
       const data = await insertLeaveRequestRecord(insertData, logPayload);
 
       if (data && data[0]) {
-        if (formData.hodId && formData.hodPhoneNumber) {
+        if (hasValidHod && formData.hodPhoneNumber) {
           const totalDays = calculateDays(formData.fromDate, formData.toDate);
           const whatsappResult = await sendWhatsappMessageToHod({
             employeId: formData.hodId,
@@ -805,13 +840,35 @@ const LeaveManagement = () => {
             who: "hod",
           });
 
-          if (whatsappResult.success) {
+          if (whatsappResult?.success) {
             toast.success("WhatsApp notification sent to HOD!");
           } else {
             console.error(
               "WhatsApp notification failed:",
-              whatsappResult.error,
+              whatsappResult?.error,
             );
+          }
+        } else if (!hasValidHod) {
+          try {
+            const totalDays = calculateDays(formData.fromDate, formData.toDate);
+            const hrWhatsappResult = await sendWhatsappMessageToHr({
+              employeId: formData.employeeId,
+              empId: formData.employeeId,
+              tableid: data[0].id,
+              employeeName: formData.employeeName,
+              department: formData.department,
+              leaveType: formData.leaveType,
+              fromDate: formData.fromDate,
+              toDate: formData.toDate,
+              totalDays: totalDays,
+              reason: formData.reason,
+            });
+
+            if (hrWhatsappResult?.success) {
+              toast.success("WhatsApp notification sent to HR!");
+            }
+          } catch (hrErr) {
+            console.error("WhatsApp notification to HR failed:", hrErr);
           }
         }
       }
@@ -822,7 +879,7 @@ const LeaveManagement = () => {
         employeeName: "",
         designation: "",
         department: "",
-        hodId: "",
+        hodId: null,
         hodName: "",
         hodPhoneNumber: "",
         hrId: "",
@@ -3391,21 +3448,64 @@ const LeaveManagement = () => {
                       </div>
 
                       {/* HOD Card */}
-                      {formData.hodId && (
-                        <div className="flex items-center gap-3 p-3 border border-indigo-100 bg-indigo-50/50 rounded-xl">
-                          <div className="flex items-center justify-center w-8 h-8 text-indigo-600 bg-white border border-indigo-100 rounded-full shadow-sm shrink-0">
-                            <Users size={16} />
+                      {(() => {
+                        const isHodSameAsHr = Boolean(
+                          (formData.hodId && formData.hrId && formData.hrId !== "HR" && String(formData.hodId) === String(formData.hrId)) ||
+                          (formData.hodId === "HR" || formData.hodId === 1 || formData.hodName === "HR") ||
+                          (formData.hodName && formData.hrName && formData.hrName !== "HR" && formData.hodName.trim().toLowerCase() === formData.hrName.trim().toLowerCase())
+                        );
+                        const hasValidHod = Boolean(
+                          formData.hodId &&
+                          formData.hodId !== "HR" &&
+                          formData.hodId !== 1 &&
+                          formData.hodName &&
+                          formData.hodName !== "Not Assigned" &&
+                          !isHodSameAsHr
+                        );
+
+                        return (
+                          <div
+                            className={`flex items-center gap-3 p-3 border rounded-xl ${hasValidHod
+                              ? "border-indigo-100 bg-indigo-50/50"
+                              : isHodSameAsHr
+                                ? "border-purple-100 bg-purple-50/50"
+                                : "border-slate-100 bg-slate-50"
+                              }`}
+                          >
+                            <div
+                              className={`flex items-center justify-center w-8 h-8 rounded-full border shadow-sm shrink-0 ${hasValidHod
+                                ? "text-indigo-600 bg-white border-indigo-100"
+                                : isHodSameAsHr
+                                  ? "text-purple-600 bg-white border-purple-100"
+                                  : "text-slate-400 bg-white border-slate-100"
+                                }`}
+                            >
+                              <Users size={16} />
+                            </div>
+                            <div className="min-w-0">
+                              <p
+                                className={`text-[10px] font-bold uppercase tracking-wider mb-0.5 ${hasValidHod
+                                  ? "text-indigo-400"
+                                  : isHodSameAsHr
+                                    ? "text-purple-400"
+                                    : "text-slate-400"
+                                  }`}
+                              >
+                                HOD
+                              </p>
+                              <p className="text-xs font-semibold break-words text-slate-900">
+                                {hasValidHod
+                                  ? (formData.hodName || "-")
+                                  : isHodSameAsHr
+                                    ? `${formData.hodName || formData.hrName || "HR"}`
+                                    : formData.employeeId
+                                      ? "Not Assigned"
+                                      : "-"}
+                              </p>
+                            </div>
                           </div>
-                          <div className="min-w-0">
-                            <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-0.5">
-                              HOD
-                            </p>
-                            <p className="text-xs font-semibold break-words text-slate-900">
-                              {formData.hodName || "-"}
-                            </p>
-                          </div>
-                        </div>
-                      )}
+                        );
+                      })()}
 
                       {/* HR Card */}
                       <div className="flex items-center gap-3 p-3 border border-purple-100 bg-purple-50/50 rounded-xl">
@@ -3681,21 +3781,20 @@ const LeaveManagement = () => {
                     <button
                       type="submit"
                       disabled={submitting || isSelectedEmployeeRestricted || isSelectedEmployeeDeactivated || !isCurrentUserLeaveAllowed}
-                      className={`px-8 py-2.5 rounded-xl text-sm font-medium text-white transition-all transform ${
-                        isSelectedEmployeeRestricted || isSelectedEmployeeDeactivated || !isCurrentUserLeaveAllowed
-                          ? "bg-slate-400 cursor-not-allowed shadow-none"
-                          : submitting
+                      className={`px-8 py-2.5 rounded-xl text-sm font-medium text-white transition-all transform ${isSelectedEmployeeRestricted || isSelectedEmployeeDeactivated || !isCurrentUserLeaveAllowed
+                        ? "bg-slate-400 cursor-not-allowed shadow-none"
+                        : submitting
                           ? "bg-indigo-600 opacity-70 cursor-not-allowed transform-none"
                           : "bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200 hover:-translate-y-0.5"
-                      }`}
+                        }`}
                     >
                       {submitting
                         ? "Submitting..."
                         : isSelectedEmployeeDeactivated
-                        ? "Account Deactivated"
-                        : isSelectedEmployeeRestricted || !isCurrentUserLeaveAllowed
-                        ? "Access Disabled"
-                        : "Submit Request"}
+                          ? "Account Deactivated"
+                          : isSelectedEmployeeRestricted || !isCurrentUserLeaveAllowed
+                            ? "Access Disabled"
+                            : "Submit Request"}
                     </button>
                   </div>
                 </form>
