@@ -397,12 +397,20 @@ const LeaveManagement = () => {
           resolvedHrId = hrData.emp_id || "HR";
         }
 
-        const hodExists = Boolean(teamMember && teamMember.hod_id && hodUser);
+        const hodExists = Boolean(
+          teamMember && teamMember.hod_id && hodUser && hodUser.emp_id
+        );
+
+        // HOD is the same as HR only when the real HR emp_id equals HOD emp_id.
+        // NEVER use numeric 1 or the "HR" sentinel as a match trigger.
         const isHodSameAsHr = hodExists && (
-          (resolvedHrId !== "HR" && (String(teamMember?.hod_id) === String(resolvedHrId) || String(hodUser?.emp_id) === String(resolvedHrId))) ||
-          (resolvedHrName && hodUser?.full_name && hodUser.full_name.trim().toLowerCase() === resolvedHrName.trim().toLowerCase()) ||
-          teamMember?.hod_id === "HR" ||
-          teamMember?.hod_id === 1
+          resolvedHrId &&
+          resolvedHrId !== "HR" &&
+          String(resolvedHrId).trim() !== "" &&
+          (
+            String(teamMember.hod_id) === String(resolvedHrId) ||
+            String(hodUser.emp_id) === String(resolvedHrId)
+          )
         );
 
         if (hodExists && !isHodSameAsHr) {
@@ -754,13 +762,14 @@ const LeaveManagement = () => {
     }
 
     try {
-      // 🔴 Check if user already requested leave today
-      const today = new Date().toISOString().split("T")[0];
-
-      const existingLeave = await checkExistingLeaveConflict(formData.employeeId, formData.employeeName, formData.fromDate, formData.toDate);
+      // Block only if the new dates overlap an existing pending/approved leave
+      const existingLeave = await checkExistingLeaveConflict(formData.employeeId, formData.fromDate, formData.toDate);
 
       if (existingLeave.length > 0) {
-        toast.error("Only 1 leave request allowed per day");
+        const clash = existingLeave[0];
+        toast.error(
+          `Leave already exists from ${formatDate(clash.leave_date_start)} to ${formatDate(clash.leave_date_end)} (${clash.status}). Please choose dates that don't overlap.`
+        );
         return;
       }
 
@@ -773,16 +782,19 @@ const LeaveManagement = () => {
       const istDate = new Date(now.getTime() + istOffsetMs);
       const istTimestamp = istDate.toISOString().slice(0, 19).replace('T', ' ');
 
+      // HOD is same as HR only when real HR emp_id equals HOD emp_id.
+      // Never treat numeric 1 or the "HR" sentinel as a real id.
       const isHodSameAsHr = Boolean(
-        (formData.hodId && formData.hrId && formData.hrId !== "HR" && String(formData.hodId) === String(formData.hrId)) ||
-        (formData.hodId === "HR" || formData.hodId === 1 || formData.hodName === "HR") ||
-        (formData.hodName && formData.hrName && formData.hrName !== "HR" && formData.hodName.trim().toLowerCase() === formData.hrName.trim().toLowerCase())
+        formData.hodId &&
+        formData.hrId &&
+        formData.hrId !== "HR" &&
+        String(formData.hrId).trim() !== "" &&
+        String(formData.hodId) === String(formData.hrId)
       );
 
       const hasValidHod = Boolean(
         formData.hodId &&
         formData.hodId !== "HR" &&
-        formData.hodId !== 1 &&
         formData.hodName &&
         formData.hodName !== "Not Assigned" &&
         !isHodSameAsHr
@@ -1231,9 +1243,11 @@ const LeaveManagement = () => {
           casual: rowCounts.casual,
           earned: rowCounts.earned,
           unpaid: rowCounts.unpaid,
-          hod_id: isHodUser ? user.emp_id : row.hodId,
-          hod_name: isHodUser ? (user.full_name || user.Name) : row.hodName,
-          ...(isHrUser && {
+          ...(isHodUser && (currentStatus === "Pending" || currentStatus === "Pending HOD") && {
+            hod_id: user.emp_id,
+            hod_name: user.full_name || user.Name,
+          }),
+          ...(isHrUser && currentStatus === "Pending HR" && {
             hr_id: user.emp_id,
             hr_name: user.full_name || user.Name,
             hr_remarks: rowRemarks.hr || "",
@@ -1400,12 +1414,12 @@ const LeaveManagement = () => {
           earned: 0,
           unpaid: 0,
           rejected_by: String(user.emp_id),
-          hod_id: isHodUser ? user.emp_id : row.hodId,
-          hod_name: isHodUser ? (user.full_name || user.Name) : row.hodName,
-          ...(isHodUser && {
+          ...(isHodUser && (currentStatus === "Pending" || currentStatus === "Pending HOD") && {
+            hod_id: user.emp_id,
+            hod_name: user.full_name || user.Name,
             hod_remarks: rowRemarks.hod || "",
           }),
-          ...(isHrUser && {
+          ...(isHrUser && currentStatus === "Pending HR" && {
             hr_id: user.emp_id,
             hr_name: user.full_name || user.Name,
             hr_remarks: rowRemarks.hr || "",
@@ -1414,14 +1428,14 @@ const LeaveManagement = () => {
 
         const logUpdate = {
           status: newStatus,
-          ...(isHodUser && {
+          ...(isHodUser && (currentStatus === "Pending" || currentStatus === "Pending HOD") && {
             hod_name: user.full_name || user.Name,
             hod_id: user.emp_id,
             hod_action: "Rejected",
             hod_approval_time: new Date().toISOString(),
             hod_remarks: rowRemarks.hod || "",
           }),
-          ...(isHrUser && {
+          ...(isHrUser && currentStatus === "Pending HR" && {
             hr_name: user.full_name || user.Name,
             hr_id: user.emp_id,
             hr_action: "Rejected",
@@ -3450,14 +3464,16 @@ const LeaveManagement = () => {
                       {/* HOD Card */}
                       {(() => {
                         const isHodSameAsHr = Boolean(
-                          (formData.hodId && formData.hrId && formData.hrId !== "HR" && String(formData.hodId) === String(formData.hrId)) ||
-                          (formData.hodId === "HR" || formData.hodId === 1 || formData.hodName === "HR") ||
-                          (formData.hodName && formData.hrName && formData.hrName !== "HR" && formData.hodName.trim().toLowerCase() === formData.hrName.trim().toLowerCase())
+                          formData.hodId &&
+                          formData.hrId &&
+                          formData.hrId !== "HR" &&
+                          String(formData.hrId).trim() !== "" &&
+                          String(formData.hodId) === String(formData.hrId)
                         );
+
                         const hasValidHod = Boolean(
                           formData.hodId &&
                           formData.hodId !== "HR" &&
-                          formData.hodId !== 1 &&
                           formData.hodName &&
                           formData.hodName !== "Not Assigned" &&
                           !isHodSameAsHr

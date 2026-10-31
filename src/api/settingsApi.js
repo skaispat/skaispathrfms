@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient';
+import { withLiveDesignation } from './leaveRequestApi';
 
 export const getSettingsInitialData = async () => {
   const [usersResponse, teamResponse, joiniResponse] = await Promise.all([
@@ -138,7 +139,7 @@ export const removeEmployeeFromHod = async (empId) => {
 export const insertLeaveFromSettings = async (insertData) => {
   const { data, error } = await supabase
     .from('leave_management')
-    .insert([insertData]);
+    .insert([await withLiveDesignation(insertData)]);
 
   if (error) throw error;
   return data;

@@ -1,4 +1,6 @@
 import { supabase } from '../supabaseClient';
+import { getActiveHr } from './hrResolver';
+import { withLiveDesignation } from './leaveRequestApi';
 
 export const getUsersForLeaveManagement = async () => {
   const { data, error } = await supabase
@@ -61,25 +63,12 @@ export const getHodAndHrDetailsForEmp = async (empId) => {
     hodUser = data;
   }
 
-  const { data: rawHr } = await supabase
-    .from('users')
-    .select('full_name, emp_id, phone_number, role, is_active')
-    .or('department.eq.HR,role.ilike.hr')
-    .eq('is_active', true)
-    .order('is_hod', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const hrData = rawHr ? {
-    ...rawHr,
-    name: rawHr.full_name || 'HR',
-    full_name: rawHr.full_name || 'HR',
-    role: rawHr.role ? rawHr.role.toUpperCase() : 'HR'
-  } : {
+  // Resolve HR — active only, never the employee's own HOD
+  const hrData = (await getActiveHr(teamMember?.hod_id)) || {
     name: 'HR',
     full_name: 'HR',
     role: 'HR',
-    emp_id: 'HR'
+    emp_id: 'HR', // sentinel — NOT a real emp_id
   };
 
   return { teamMember, hodUser, hrData };
@@ -155,11 +144,13 @@ export const getExportLeaveRecords = async (queryFilters) => {
   return data;
 };
 
-export const checkExistingLeaveConflict = async (empId, empName, startDate, endDate) => {
+// Returns this employee's non-rejected leaves whose date range overlaps [startDate, endDate].
+// Match on emp_id only — names are not unique, so matching by name blocked other employees.
+export const checkExistingLeaveConflict = async (empId, startDate, endDate) => {
   const { data, error } = await supabase
     .from('leave_management')
     .select('id, leave_date_start, leave_date_end, status')
-    .or(`emp_id.eq.${empId},employee_name.eq.${empName}`)
+    .eq('emp_id', empId)
     .in('status', ['Pending', 'Pending HOD', 'Pending HR', 'Approved'])
     .lte('leave_date_start', endDate)
     .gte('leave_date_end', startDate);
@@ -171,7 +162,7 @@ export const checkExistingLeaveConflict = async (empId, empName, startDate, endD
 export const insertLeaveRequestRecord = async (insertData, logPayload) => {
   const { data, error } = await supabase
     .from('leave_management')
-    .insert([insertData])
+    .insert([await withLiveDesignation(insertData)])
     .select();
 
   if (error) throw error;

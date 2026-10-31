@@ -1,7 +1,8 @@
 import { supabase } from '../supabaseClient';
+import { getActiveHr } from './hrResolver';
 
 export const getLeaveRequestInitialData = async (userEmpId, fiscalYear) => {
-  const [teamRes, hrRes, userRes, historyRes, balanceRes, quotaRes] = await Promise.all([
+  const [teamRes, userRes, historyRes, balanceRes, quotaRes] = await Promise.all([
     supabase
       .from('team_members')
       .select('hod_id')
@@ -9,15 +10,7 @@ export const getLeaveRequestInitialData = async (userEmpId, fiscalYear) => {
       .maybeSingle(),
     supabase
       .from('users')
-      .select('full_name, emp_id, role, is_active')
-      .or('department.eq.HR,role.ilike.hr')
-      .eq('is_active', true)
-      .order('is_hod', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-    supabase
-      .from('users')
-      .select('is_leave_allowed')
+      .select('is_leave_allowed, designation, department')
       .eq('emp_id', userEmpId)
       .maybeSingle(),
     supabase
@@ -41,28 +34,24 @@ export const getLeaveRequestInitialData = async (userEmpId, fiscalYear) => {
   if (historyRes.error) throw historyRes.error;
 
   const teamData = teamRes.data;
-  let hodUser = null;
-  if (teamData?.hod_id) {
-    const { data } = await supabase
-      .from('users')
-      .select('full_name, department, phone_number, is_active')
-      .eq('emp_id', teamData.hod_id)
-      .eq('is_active', true)
-      .maybeSingle();
-    hodUser = data;
-  }
+  const [hodRes, activeHr] = await Promise.all([
+    teamData?.hod_id
+      ? supabase
+        .from('users')
+        .select('full_name, department, phone_number, is_active')
+        .eq('emp_id', teamData.hod_id)
+        .eq('is_active', true)
+        .maybeSingle()
+      : Promise.resolve({ data: null }),
+    getActiveHr(teamData?.hod_id)
+  ]);
+  const hodUser = hodRes.data;
 
-  const rawHr = hrRes.data;
-  const hrData = rawHr ? {
-    ...rawHr,
-    name: rawHr.full_name || 'HR',
-    full_name: rawHr.full_name || 'HR',
-    role: rawHr.role ? rawHr.role.toUpperCase() : 'HR'
-  } : {
+  const hrData = activeHr || {
     name: 'HR',
     full_name: 'HR',
     role: 'HR',
-    emp_id: 'HR'
+    emp_id: 'HR' // sentinel — NOT a real emp_id
   };
 
   return {
@@ -76,10 +65,25 @@ export const getLeaveRequestInitialData = async (userEmpId, fiscalYear) => {
   };
 };
 
+// Always take designation from the employee's live users row at insert time.
+// Page state (persisted login user, employee list loaded earlier) can be stale or
+// empty, which saved '' or the role ('employee') into leave_management.designation.
+export const withLiveDesignation = async (insertData) => {
+  const { data } = await supabase
+    .from('users')
+    .select('designation')
+    .eq('emp_id', insertData.emp_id)
+    .maybeSingle();
+
+  const live = data?.designation?.trim();
+  const given = insertData.designation?.trim();
+  return { ...insertData, designation: live || given || null };
+};
+
 export const createLeaveRequestWithLog = async (insertData, logData) => {
   const { data, error } = await supabase
     .from('leave_management')
-    .insert([insertData])
+    .insert([await withLiveDesignation(insertData)])
     .select();
 
   if (error) throw error;

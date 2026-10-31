@@ -195,7 +195,8 @@ const LeaveRequest = () => {
         status: (hodDetails.id === null) ? 'Pending HR' : 'Pending HOD',
         leave_type: formData.leaveType,
         hod_name: hodDetails.name === 'Not Assigned' ? null : hodDetails.name,
-        designation: user.designation || user.role,
+        // Read from the live users row — the persisted login copy can be stale
+        designation: userData?.designation || user.designation || null,
         hod_id: hodDetails.id,
         hr_id: hrDetails.id,
         hr_name: hrDetails.name
@@ -223,7 +224,7 @@ const LeaveRequest = () => {
             hodPhoneNumber: hodDetails.phone_number,
             employeeName: user.full_name || user.Name,
             empId: user.emp_id,
-            department: user.department || user.designation || user.role,
+            department: userData?.department || userData?.designation || user.department || user.designation,
             leaveType: formData.leaveType,
             fromDate: formData.fromDate,
             toDate: formData.toDate,
