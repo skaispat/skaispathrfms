@@ -40,8 +40,12 @@ import {
   Gift,
   Image as ImageIcon,
   PartyPopper,
-  Loader2
+  Loader2,
+  Download
 } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
 import UserDashboard from './UserDashboard';
 
@@ -176,10 +180,10 @@ const Dashboard = () => {
             const inTime = firstLog.split('T')[1].substring(0, 5); // HH:MM
 
             const [hr, min] = inTime.split(':').map(Number);
-            const isLate = (hr > 10) || (hr === 10 && min > 5);
+            const isLate = (hr > 10) || (hr === 10 && min > 10);
 
             if (isLate) {
-              const lateMins = (hr * 60 + min) - (10 * 60 + 5);
+              const lateMins = (hr * 60 + min) - (10 * 60 + 10);
               let lateStr = `${lateMins} Min`;
               if (lateMins >= 60) lateStr = `${Math.floor(lateMins / 60)}h ${lateMins % 60}m`;
               lateArr.push({ ...u, inTime, lateStr });
@@ -198,10 +202,10 @@ const Dashboard = () => {
             const firstLog = logs[0];
             const inTime = firstLog.split('T')[1].substring(0, 5);
             const [hr, min] = inTime.split(':').map(Number);
-            const isLate = (hr > 10) || (hr === 10 && min > 5);
+            const isLate = (hr > 10) || (hr === 10 && min > 10);
             if (isLate) {
               lateCount++;
-              const lateMins = (hr * 60 + min) - (10 * 60 + 5);
+              const lateMins = (hr * 60 + min) - (10 * 60 + 10);
               let lateStr = `${lateMins} Min`;
               if (lateMins >= 60) lateStr = `${Math.floor(lateMins / 60)}h ${lateMins % 60}m`;
               lateDetails.push({ date: dateStr, inTime, lateStr });
@@ -463,6 +467,329 @@ const Dashboard = () => {
     }
   };
 
+  const exportFrequentLatePDF = () => {
+    if (!frequentLateList || frequentLateList.length === 0) {
+      toast.error('No frequent late records found to export.');
+      return;
+    }
+
+    try {
+      const doc = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const today = new Date();
+      const currentMonthYear = today.toLocaleString('default', { month: 'long', year: 'numeric' });
+      const generatedDateStr = dayjs().format('DD/MM/YYYY hh:mm A');
+
+      // Title & Header
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(30, 41, 59);
+      doc.text('Frequent Late Employees Report', 14, 15);
+
+      // Metadata
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Month: ${currentMonthYear}`, 14, 21);
+      doc.text(`Generated on: ${generatedDateStr}  |  Total Frequent Late: ${frequentLateList.length}`, 14, 26);
+      doc.text(`Criteria: More than 2 late entries in the current month (Arrival after 10:10 AM)`, 14, 31);
+
+      const tableHeaders = [
+        '#',
+        'Emp ID',
+        'Employee Name',
+        'Department',
+        'Designation',
+        'Late Count',
+        'Late Dates & In-Times'
+      ];
+
+      const tableData = frequentLateList.map((emp, index) => {
+        const detailsStr = (emp.lateDetails || [])
+          .map(d => `${dayjs(d.date).format('DD/MM')} (${d.inTime})`)
+          .join(', ');
+
+        return [
+          index + 1,
+          emp.emp_id || '-',
+          emp.full_name || 'Unknown',
+          emp.department || '-',
+          emp.designation || '-',
+          `${emp.lateCount} Days`,
+          detailsStr || '-'
+        ];
+      });
+
+      autoTable(doc, {
+        head: [tableHeaders],
+        body: tableData,
+        startY: 36,
+        margin: { top: 36, bottom: 16, left: 14, right: 14 },
+        styles: {
+          fontSize: 8.5,
+          cellPadding: 2.5,
+          overflow: 'linebreak',
+          textColor: [30, 41, 59],
+          valign: 'middle'
+        },
+        headStyles: {
+          fillColor: [225, 29, 72], // Rose-600
+          textColor: 255,
+          fontStyle: 'bold',
+          halign: 'left'
+        },
+        alternateRowStyles: {
+          fillColor: [255, 241, 242] // Rose-50
+        },
+        columnStyles: {
+          0: { cellWidth: 10, halign: 'center' },
+          1: { cellWidth: 20 },
+          2: { cellWidth: 45, fontStyle: 'bold' },
+          3: { cellWidth: 35 },
+          4: { cellWidth: 35 },
+          5: { cellWidth: 25, halign: 'center', textColor: [225, 29, 72], fontStyle: 'bold' },
+          6: { cellWidth: 'auto' }
+        }
+      });
+
+      const totalPages = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(148, 163, 184);
+        doc.text(
+          `Page ${i} of ${totalPages}  |  Sarthak HR Management System`,
+          doc.internal.pageSize.width / 2,
+          doc.internal.pageSize.height - 8,
+          { align: 'center' }
+        );
+      }
+
+      doc.save(`frequent_late_employees_${dayjs().format('MMM_YYYY').toLowerCase()}.pdf`);
+      toast.success('Frequent Late Employees PDF exported successfully!');
+    } catch (err) {
+      console.error('Error generating frequent late PDF:', err);
+      toast.error('Failed to export PDF.');
+    }
+  };
+
+  const exportLateTodayPDF = () => {
+    const dataToExport = filteredLate;
+    if (!dataToExport || dataToExport.length === 0) {
+      toast.error('No late records found to export for today.');
+      return;
+    }
+
+    try {
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const todayStr = dayjs().format('DD MMMM YYYY');
+      const generatedDateStr = dayjs().format('DD/MM/YYYY hh:mm A');
+
+      // Title & Header
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(30, 41, 59);
+      doc.text('Late Today Attendance Report', 14, 15);
+
+      // Metadata
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Date: ${todayStr}`, 14, 21);
+      doc.text(
+        `Department: ${selectedDepartment}${searchQuery ? `  |  Search: "${searchQuery}"` : ''}`,
+        14,
+        26
+      );
+      doc.text(
+        `Generated on: ${generatedDateStr}  |  Total Late Employees: ${dataToExport.length}`,
+        14,
+        31
+      );
+
+      const tableHeaders = [
+        '#',
+        'Emp ID',
+        'Employee Name',
+        'Department',
+        'Designation',
+        'In Time',
+        'Late Duration'
+      ];
+
+      const tableData = dataToExport.map((emp, index) => [
+        index + 1,
+        emp.emp_id || '-',
+        emp.full_name || 'Unknown',
+        emp.department || '-',
+        emp.designation || '-',
+        emp.inTime || '-',
+        emp.lateStr || '-'
+      ]);
+
+      autoTable(doc, {
+        head: [tableHeaders],
+        body: tableData,
+        startY: 36,
+        margin: { top: 36, bottom: 16, left: 14, right: 14 },
+        styles: {
+          fontSize: 8.5,
+          cellPadding: 2.5,
+          overflow: 'linebreak',
+          textColor: [30, 41, 59],
+          valign: 'middle'
+        },
+        headStyles: {
+          fillColor: [225, 29, 72], // Rose-600
+          textColor: 255,
+          fontStyle: 'bold',
+          halign: 'left'
+        },
+        alternateRowStyles: {
+          fillColor: [255, 241, 242] // Rose-50
+        },
+        columnStyles: {
+          0: { cellWidth: 10, halign: 'center' },
+          1: { cellWidth: 20 },
+          2: { cellWidth: 42, fontStyle: 'bold' },
+          3: { cellWidth: 35 },
+          4: { cellWidth: 35 },
+          5: { cellWidth: 20, halign: 'center' },
+          6: { cellWidth: 20, halign: 'center', textColor: [225, 29, 72], fontStyle: 'bold' }
+        }
+      });
+
+      const totalPages = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(148, 163, 184);
+        doc.text(
+          `Page ${i} of ${totalPages}  |  Sarthak HR Management System`,
+          doc.internal.pageSize.width / 2,
+          doc.internal.pageSize.height - 8,
+          { align: 'center' }
+        );
+      }
+
+      doc.save(`late_today_${dayjs().format('YYYY-MM-DD')}.pdf`);
+      toast.success('Late Today PDF exported successfully!');
+    } catch (err) {
+      console.error('Error generating late today PDF:', err);
+      toast.error('Failed to export PDF.');
+    }
+  };
+
+  const exportSingleEmployeeLatePDF = (emp) => {
+    if (!emp || !emp.lateDetails || emp.lateDetails.length === 0) {
+      toast.error('No late details available for this employee.');
+      return;
+    }
+
+    try {
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const currentMonthYear = dayjs().format('MMMM YYYY');
+      const generatedDateStr = dayjs().format('DD/MM/YYYY hh:mm A');
+
+      // Title & Branding
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(30, 41, 59);
+      doc.text('Employee Late History Report', 14, 15);
+
+      // Metadata
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Employee: ${emp.full_name || 'Unknown'} (ID: ${emp.emp_id || '-'})`, 14, 21);
+      doc.text(
+        `Department: ${emp.department || '-'}  |  Designation: ${emp.designation || '-'}`,
+        14,
+        26
+      );
+      doc.text(
+        `Month: ${currentMonthYear}  |  Total Late Days: ${emp.lateCount}  |  Generated: ${generatedDateStr}`,
+        14,
+        31
+      );
+
+      const tableHeaders = ['#', 'Date', 'Day', 'In Time', 'Late Duration'];
+
+      const tableData = emp.lateDetails.map((detail, idx) => {
+        const dObj = dayjs(detail.date);
+        return [
+          idx + 1,
+          dObj.format('DD MMMM YYYY'),
+          dObj.format('dddd'),
+          detail.inTime,
+          `${detail.lateStr} Late`
+        ];
+      });
+
+      autoTable(doc, {
+        head: [tableHeaders],
+        body: tableData,
+        startY: 36,
+        margin: { top: 36, bottom: 16, left: 14, right: 14 },
+        styles: {
+          fontSize: 9,
+          cellPadding: 3,
+          textColor: [30, 41, 59],
+          valign: 'middle'
+        },
+        headStyles: {
+          fillColor: [225, 29, 72], // Rose-600
+          textColor: 255,
+          fontStyle: 'bold'
+        },
+        alternateRowStyles: {
+          fillColor: [255, 241, 242]
+        },
+        columnStyles: {
+          0: { cellWidth: 12, halign: 'center' },
+          1: { cellWidth: 45 },
+          2: { cellWidth: 40 },
+          3: { cellWidth: 35, halign: 'center' },
+          4: { cellWidth: 40, halign: 'center', textColor: [225, 29, 72], fontStyle: 'bold' }
+        }
+      });
+
+      const totalPages = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(148, 163, 184);
+        doc.text(
+          `Page ${i} of ${totalPages}  |  Sarthak HR Management System`,
+          doc.internal.pageSize.width / 2,
+          doc.internal.pageSize.height - 8,
+          { align: 'center' }
+        );
+      }
+
+      const safeName = (emp.full_name || 'employee').toLowerCase().replace(/[^a-z0-9]/g, '_');
+      doc.save(`late_history_${safeName}_${dayjs().format('MMM_YYYY').toLowerCase()}.pdf`);
+      toast.success(`Exported late history for ${emp.full_name}`);
+    } catch (err) {
+      console.error('Error exporting individual late PDF:', err);
+      toast.error('Failed to export employee late PDF.');
+    }
+  };
+
   const todaysEvents = upcomingEvents.filter(e => e.diffDays === 0);
   const futureEvents = upcomingEvents.filter(e => e.diffDays > 0);
 
@@ -650,12 +977,23 @@ const Dashboard = () => {
             color="emerald"
           />
           <div className="col-span-2 bg-white p-3 sm:p-4 rounded-2xl sm:rounded-3xl shadow-md border border-slate-200 flex flex-col h-[110px] sm:h-[174px]">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xs sm:text-sm font-bold text-slate-800 flex items-center gap-2">
-                <Clock className="text-rose-500 w-4 h-4" />
-                Frequent Late Employees
+            <div className="flex items-center justify-between mb-2 gap-1.5">
+              <h3 className="text-xs sm:text-sm font-bold text-slate-800 flex items-center gap-1.5 sm:gap-2 truncate">
+                <Clock className="text-rose-500 w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                <span className="truncate">Frequent Late Employees</span>
               </h3>
-              <span className="bg-rose-100 text-rose-700 text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full">{frequentLateList.length}</span>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={exportFrequentLatePDF}
+                  title="Export Frequent Late Employees to PDF"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-all shadow-xs active:scale-95 cursor-pointer"
+                >
+                  <Download size={12} className="shrink-0" />
+                  <span className="hidden sm:inline">Export PDF</span>
+                </button>
+                <span className="bg-rose-100 text-rose-700 text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full">{frequentLateList.length}</span>
+              </div>
             </div>
             <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 grid grid-cols-2 gap-2 content-start">
               {frequentLateList.length > 0 ? frequentLateList.map((emp) => (
@@ -767,7 +1105,23 @@ const Dashboard = () => {
         {/* Late UI - 1 Col */}
         <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl shadow-md border border-slate-200 flex flex-col">
           <div className="mb-4">
-            <h3 className="text-base sm:text-lg font-extrabold text-slate-800 tracking-tight">{isAdmin ? "Late Today" : "My Late Log"}</h3>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-extrabold text-slate-800 tracking-tight">{isAdmin ? "Late Today" : "My Late Log"}</h3>
+                <span className="bg-rose-100 text-rose-700 text-xs font-bold px-2 py-0.5 rounded-full">
+                  {filteredLate.length}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={exportLateTodayPDF}
+                title="Export Today's Late Employees to PDF"
+                className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-all shadow-xs active:scale-95 cursor-pointer"
+              >
+                <Download size={13} className="shrink-0" />
+                <span>Export PDF</span>
+              </button>
+            </div>
           </div>
 
           <div
@@ -1191,9 +1545,20 @@ const Dashboard = () => {
                   <p className="text-xs text-slate-500 font-medium">{selectedLateEmployee.department} • {selectedLateEmployee.lateCount} Lates</p>
                 </div>
               </div>
-              <button onClick={() => setSelectedLateEmployee(null)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => exportSingleEmployeeLatePDF(selectedLateEmployee)}
+                  title="Export this employee's late history to PDF"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-all shadow-xs active:scale-95 cursor-pointer"
+                >
+                  <Download size={13} className="shrink-0" />
+                  <span className="hidden sm:inline">Export PDF</span>
+                </button>
+                <button onClick={() => setSelectedLateEmployee(null)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+              </div>
             </div>
             <div className="p-4 sm:p-6 max-h-[60vh] overflow-y-auto custom-scrollbar bg-slate-50/50">
               <div className="space-y-3">

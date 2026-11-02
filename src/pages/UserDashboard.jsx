@@ -120,11 +120,11 @@ const UserDashboard = () => {
           const inTime = firstLog.split('T')[1].substring(0, 5); // HH:MM
 
           const [hr, min] = inTime.split(':').map(Number);
-          const isLate = (hr > 10) || (hr === 10 && min > 5);
+          const isLate = (hr > 10) || (hr === 10 && min > 10);
 
           if (isLate) {
             myLateCount++;
-            const lateMins = (hr * 60 + min) - (10 * 60 + 5);
+            const lateMins = (hr * 60 + min) - (10 * 60 + 10);
             let lateStr = `${lateMins} Min`;
             if (lateMins >= 60) lateStr = `${Math.floor(lateMins / 60)}h ${lateMins % 60}m`;
             myLateDetails.push({ date: dateStr, inTime, lateStr });

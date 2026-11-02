@@ -172,7 +172,7 @@ const EmployeeDetails = () => {
         const timePart = firstLog.split('T')[1]?.substring(0, 5) || '';
         todayInTime = timePart;
         const [hr, min] = timePart.split(':').map(Number);
-        const isLate = (hr > 10) || (hr === 10 && min > 5);
+        const isLate = (hr > 10) || (hr === 10 && min > 10);
 
         if (isLate) {
           todayStatus = `Present (Late: ${timePart})`;
@@ -224,7 +224,7 @@ const EmployeeDetails = () => {
       const timePart = firstLog.split('T')[1]?.substring(0, 5) || '';
       if (timePart) {
         const [hr, min] = timePart.split(':').map(Number);
-        const isLate = (hr > 10) || (hr === 10 && min > 5);
+        const isLate = (hr > 10) || (hr === 10 && min > 10);
         if (isLate) totalMonthLates++;
       }
     });
