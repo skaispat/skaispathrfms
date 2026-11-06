@@ -354,7 +354,6 @@ const Event = () => {
             font-semibold tracking-wider
             text-amber-700 leading-tight
           ">
-            Festival of Lights ✨
           </span>
 
         </div>
