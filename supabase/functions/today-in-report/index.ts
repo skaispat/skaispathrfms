@@ -301,37 +301,51 @@ serve(async (req) => {
     /* --------------------------------------------------
            8. Send PDF via WhatsApp
         -------------------------------------------------- */
-    const BACKEND_URL = "https://app.saloonmate.com";
-    const WHATSAPP_PHONE = "9628483313"; // Can be made dynamic later
-    const RECIPIENT_NAME = "Hr";
-
+    // Calls the `send-attendance-pdf-whatsapp` edge function (no external backend)
+    // Recipients: active users whose designation is HR (case-insensitive)
     const whatsappDate = formatDate(targetDateStr);
 
-    try {
-      console.log("📤 Sending Today-IN PDF via WhatsApp...");
-      const whatsappResponse = await fetch(
-        `${BACKEND_URL}/api/send-attendance-pdf-whatsapp`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            phoneNumber: WHATSAPP_PHONE,
-            pdfUrl: publicData.publicUrl,
-            recipientName: RECIPIENT_NAME,
-            reportDate: whatsappDate,
-          }),
-        },
-      );
+    const { data: hrUsers, error: hrError } = await supabaseClient
+      .from("users")
+      .select("full_name, phone_number")
+      .ilike("designation", "hr")
+      .eq("is_active", true)
+      .not("phone_number", "is", null);
 
-      const whatsappResult = await whatsappResponse.json();
-      console.log("✅ WhatsApp Response:", whatsappResult);
-    } catch (whatsappError: any) {
-      console.error(
-        "⚠️ WhatsApp send failed (non-blocking):",
-        whatsappError.message,
-      );
+    if (hrError) {
+      console.error("⚠️ Failed to fetch HR users:", hrError.message);
+    }
+
+    const hrRecipients = (hrUsers || []).filter(
+      (u: any) => String(u.phone_number || "").trim() !== "",
+    );
+
+    if (hrRecipients.length === 0) {
+      console.warn("⚠️ No active HR user with a phone number found - skipping WhatsApp");
+    }
+
+    for (const hr of hrRecipients) {
+      try {
+        console.log(`📤 Sending Today-IN PDF via WhatsApp to ${hr.full_name}...`);
+        const { data: whatsappResult, error: whatsappError } =
+          await supabaseClient.functions.invoke("send-attendance-pdf-whatsapp", {
+            body: {
+              phoneNumber: String(hr.phone_number),
+              pdfUrl: publicData.publicUrl,
+              recipientName: hr.full_name || "HR",
+              reportDate: whatsappDate,
+            },
+          });
+
+        if (whatsappError) throw whatsappError;
+        console.log("✅ WhatsApp Response:", whatsappResult);
+      } catch (whatsappError: any) {
+        // Non-blocking: WhatsApp failure shouldn't fail the report
+        console.error(
+          `⚠️ WhatsApp send to ${hr.full_name} failed (non-blocking):`,
+          whatsappError?.message || whatsappError,
+        );
+      }
     }
 
     return new Response(

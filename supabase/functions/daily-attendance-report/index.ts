@@ -420,39 +420,31 @@ serve(async (req) => {
     /* --------------------------------------------------
            8. Send PDF via WhatsApp
         -------------------------------------------------- */
-    const BACKEND_URL = "https://app.saloonmate.com";
-    const WHATSAPP_PHONE = "8866666985"; // Can be made dynamic later
-    const RECIPIENT_NAME = "Abhishek Sir"; // Can be made dynamic later
-
-    // Format date for WhatsApp (DD/MM/YYYY)
+    // Calls the `send-attendance-pdf-whatsapp` edge function (no external backend)
+    const WHATSAPP_PHONE = Deno.env.get("DAILY_REPORT_WHATSAPP_PHONE") || "8866666985";
+    const RECIPIENT_NAME = Deno.env.get("DAILY_REPORT_RECIPIENT_NAME") || "Abhishek Sir";
     const whatsappDate = formatDate(targetDateStr);
 
     try {
-      console.log("📤 Sending PDF via WhatsApp...");
-      const whatsappResponse = await fetch(
-        `${BACKEND_URL}/api/send-attendance-pdf-whatsapp`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
+      console.log("📤 Sending PDF via WhatsApp edge function...");
+      const { data: whatsappResult, error: whatsappError } =
+        await supabaseClient.functions.invoke("send-attendance-pdf-whatsapp", {
+          body: {
             phoneNumber: WHATSAPP_PHONE,
             pdfUrl: publicData.publicUrl,
             recipientName: RECIPIENT_NAME,
             reportDate: whatsappDate,
-          }),
-        },
-      );
+          },
+        });
 
-      const whatsappResult = await whatsappResponse.json();
+      if (whatsappError) throw whatsappError;
       console.log("✅ WhatsApp Response:", whatsappResult);
     } catch (whatsappError: any) {
+      // Non-blocking: WhatsApp failure shouldn't fail the report
       console.error(
         "⚠️ WhatsApp send failed (non-blocking):",
-        whatsappError.message,
+        whatsappError?.message || whatsappError,
       );
-      // Don't throw - WhatsApp failure shouldn't fail the whole function
     }
 
     return new Response(

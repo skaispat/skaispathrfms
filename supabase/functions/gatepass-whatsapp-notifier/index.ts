@@ -9,7 +9,7 @@ const corsHeaders = {
 
 const specialEmpIds = [
   "1", "175", "53", "219", "3", "233", "245", "341", "16", "294", "217", "152",
-  "527", "501", "235", "504", "180", "321", "519", "242", "246", "518"
+  "527", "501", "505", "235", "504", "180", "321", "519", "242", "246", "518"
 ];
 
 const sanitizeText = (text: string) => {
@@ -92,7 +92,34 @@ serve(async (req) => {
     const duration = calculateDuration(record.departure_from_plant, record.arrival_at_plant);
     const reason = record.place_reason_to_visit || "N/A";
 
-    // 1. Send to MD Sir if special employee
+    // 1. Send approval message to the Employee
+    if (employeePhone) {
+      try {
+        await sendWhatsApp(
+          String(employeePhone),
+          "gate_pass_final_approve_user",
+          [
+            { type: "text", text: sanitizeText(employeeName) }, // {{1}}
+            { type: "text", text: "Gate Pass" },                // {{2}}
+            { type: "text", text: "Gate Pass" },                // {{3}}
+            { type: "text", text: "Gate Pass" },                // {{4}}
+            { type: "text", text: sanitizeText(fromDate) },     // {{5}}
+            { type: "text", text: sanitizeText(toDate) },       // {{6}}
+            { type: "text", text: sanitizeText(duration) },     // {{7}}
+            { type: "text", text: sanitizeText(reason) },       // {{8}}
+          ],
+          undefined,
+          "en_US"
+        );
+      } catch (e: any) {
+        // Don't block the MD alert if the employee message fails
+        console.error("⚠️ Employee approval WhatsApp failed:", e.message);
+      }
+    } else {
+      console.warn(`⚠️ No phone number for emp_id ${record.emp_id}, skipping employee message`);
+    }
+
+    // 2. Send to MD Sir if special employee
     if (specialEmpIds.includes(String(record.emp_id))) {
       const mdPhone = Deno.env.get("MD_MOBILE_NUMBER") || "8866666985";
       console.log(`👑 Special Employee detected! Sending alert to MD: ${mdPhone}`);
