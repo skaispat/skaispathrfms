@@ -68,7 +68,7 @@ export const getHodAndHrDetailsForEmp = async (empId) => {
     name: 'HR',
     full_name: 'HR',
     role: 'HR',
-    emp_id: 'HR', // sentinel — NOT a real emp_id
+    emp_id: null, // no real HR found — never store a text placeholder as an id
   };
 
   return { teamMember, hodUser, hrData };

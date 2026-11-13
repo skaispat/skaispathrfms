@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import * as XLSX from 'xlsx';
 import toast from "react-hot-toast";
+import { getActiveHr } from "../api/hrResolver";
 import {
   getUsersForLeaveManagement,
   getUserLeaveAccess,
@@ -391,10 +392,10 @@ const LeaveManagement = () => {
         const { teamMember, hodUser, hrData } = await getHodAndHrDetailsForEmp(selectedEmployee.id);
 
         let resolvedHrName = "HR";
-        let resolvedHrId = "HR";
-        if (hrData && hrData.is_active !== false && hrData.full_name) {
+        let resolvedHrId = "";
+        if (hrData && hrData.is_active !== false && hrData.full_name && hrData.emp_id) {
           resolvedHrName = hrData.full_name;
-          resolvedHrId = hrData.emp_id || "HR";
+          resolvedHrId = hrData.emp_id;
         }
 
         const hodExists = Boolean(
@@ -405,7 +406,6 @@ const LeaveManagement = () => {
         // NEVER use numeric 1 or the "HR" sentinel as a match trigger.
         const isHodSameAsHr = hodExists && (
           resolvedHrId &&
-          resolvedHrId !== "HR" &&
           String(resolvedHrId).trim() !== "" &&
           (
             String(teamMember.hod_id) === String(resolvedHrId) ||
@@ -773,6 +773,21 @@ const LeaveManagement = () => {
         return;
       }
 
+      // Ensure we have a real HR emp_id (never the "HR" text placeholder).
+      // The async HR lookup may not have finished or may have failed.
+      let hrIdToUse = formData.hrId;
+      let hrNameToUse = formData.hrName;
+      if (!hrIdToUse || String(hrIdToUse).trim() === "" || hrIdToUse === "HR") {
+        const hr = await getActiveHr(formData.hodId || null);
+        if (hr && hr.emp_id) {
+          hrIdToUse = hr.emp_id;
+          hrNameToUse = hr.full_name || hrNameToUse;
+        } else {
+          toast.error("No active HR found. Please contact admin.");
+          return;
+        }
+      }
+
       setSubmitting(true);
       // console.log("Starting Supabase insert...");
 
@@ -786,10 +801,8 @@ const LeaveManagement = () => {
       // Never treat numeric 1 or the "HR" sentinel as a real id.
       const isHodSameAsHr = Boolean(
         formData.hodId &&
-        formData.hrId &&
-        formData.hrId !== "HR" &&
-        String(formData.hrId).trim() !== "" &&
-        String(formData.hodId) === String(formData.hrId)
+        hrIdToUse &&
+        String(formData.hodId) === String(hrIdToUse)
       );
 
       const hasValidHod = Boolean(
@@ -813,11 +826,11 @@ const LeaveManagement = () => {
         remarks: formData.reason,
         status: initialStatus,
         leave_type: formData.leaveType,
-        hod_name: hasValidHod ? formData.hodName : (isHodSameAsHr ? (formData.hodName || formData.hrName) : null),
+        hod_name: hasValidHod ? formData.hodName : (isHodSameAsHr ? (formData.hodName || hrNameToUse) : null),
         designation: formData.designation,
-        hod_id: hasValidHod ? formData.hodId : (isHodSameAsHr ? (formData.hodId || formData.hrId) : null),
-        hr_id: formData.hrId || "HR",
-        hr_name: formData.hrName || "HR",
+        hod_id: hasValidHod ? formData.hodId : (isHodSameAsHr ? (formData.hodId || hrIdToUse) : null),
+        hr_id: hrIdToUse,
+        hr_name: hrNameToUse || "HR",
       };
 
       // Insert data into Supabase leave_management table
@@ -1617,7 +1630,37 @@ const LeaveManagement = () => {
       const newStartDate = tempApprovedData.startDate || originalItem.startDate;
       const newEndDate = tempApprovedData.endDate || originalItem.endDate;
       const newDays = calculateDays(newStartDate, newEndDate);
-      const totalNewCounts = (parseFloat(tempApprovedData.casual) || 0) + (parseFloat(tempApprovedData.earned) || 0) + (parseFloat(tempApprovedData.unpaid) || 0);
+      const origCounts = {
+        casual: originalItem.casual || 0,
+        earned: originalItem.earned || 0,
+        unpaid: originalItem.unpaid || 0,
+      };
+      const finalCounts = {
+        casual: parseFloat(tempApprovedData.casual) || 0,
+        earned: parseFloat(tempApprovedData.earned) || 0,
+        unpaid: parseFloat(tempApprovedData.unpaid) || 0,
+      };
+
+      // If the dates were shortened but the counts were not edited manually,
+      // auto-reduce the counts to match the new duration (LOP first, then EL, then CL)
+      // so the yearly_quota gets restored accordingly.
+      const datesChanged =
+        newStartDate !== originalItem.startDate || newEndDate !== originalItem.endDate;
+      const countsUntouched =
+        finalCounts.casual === origCounts.casual &&
+        finalCounts.earned === origCounts.earned &&
+        finalCounts.unpaid === origCounts.unpaid;
+      if (datesChanged && countsUntouched) {
+        let excess = finalCounts.casual + finalCounts.earned + finalCounts.unpaid - newDays;
+        for (const key of ["unpaid", "earned", "casual"]) {
+          if (excess <= 0) break;
+          const cut = Math.min(finalCounts[key], excess);
+          finalCounts[key] -= cut;
+          excess -= cut;
+        }
+      }
+
+      const totalNewCounts = finalCounts.casual + finalCounts.earned + finalCounts.unpaid;
 
       if (newDays > originalDays) {
         toast.error(`आप कर्मचारी द्वारा मांगी गई ${originalDays} दिन की छुट्टियों से ज्यादा अप्रूव नहीं कर सकते।`);
@@ -1635,9 +1678,9 @@ const LeaveManagement = () => {
       if (tempApprovedData.startDate !== originalItem.startDate) updateData.leave_date_start = tempApprovedData.startDate;
       if (tempApprovedData.endDate !== originalItem.endDate) updateData.leave_date_end = tempApprovedData.endDate;
       if (tempApprovedData.leaveType !== originalItem.leaveType) updateData.leave_type = tempApprovedData.leaveType;
-      if (tempApprovedData.casual !== originalItem.casual) updateData.casual = tempApprovedData.casual;
-      if (tempApprovedData.earned !== originalItem.earned) updateData.earned = tempApprovedData.earned;
-      if (tempApprovedData.unpaid !== originalItem.unpaid) updateData.unpaid = tempApprovedData.unpaid;
+      if (finalCounts.casual !== origCounts.casual) updateData.casual = finalCounts.casual;
+      if (finalCounts.earned !== origCounts.earned) updateData.earned = finalCounts.earned;
+      if (finalCounts.unpaid !== origCounts.unpaid) updateData.unpaid = finalCounts.unpaid;
 
       if (Object.keys(updateData).length === 0) {
         handleCancelEdit();
@@ -1650,18 +1693,18 @@ const LeaveManagement = () => {
 
       // Handle Quota updates if counts changed
       const countsChanged =
-        tempApprovedData.casual !== originalItem.casual ||
-        tempApprovedData.earned !== originalItem.earned ||
-        tempApprovedData.unpaid !== originalItem.unpaid;
+        finalCounts.casual !== origCounts.casual ||
+        finalCounts.earned !== origCounts.earned ||
+        finalCounts.unpaid !== origCounts.unpaid;
 
       if (countsChanged) {
         const currentYear = getFiscalYear(new Date(originalItem.startDate));
         const employeeId = originalItem.employeeId;
 
         const quotaUpdates = [
-          { type: "Casual", old: originalItem.casual || 0, new: tempApprovedData.casual, column: "casual_leave_used" },
-          { type: "Earned", old: originalItem.earned || 0, new: tempApprovedData.earned, column: "earned_leave_used" },
-          { type: "UnPaid", old: originalItem.unpaid || 0, new: tempApprovedData.unpaid, column: "unpaid_leave_used" }
+          { type: "Casual", old: origCounts.casual, new: finalCounts.casual, column: "casual_leave_used" },
+          { type: "Earned", old: origCounts.earned, new: finalCounts.earned, column: "earned_leave_used" },
+          { type: "UnPaid", old: origCounts.unpaid, new: finalCounts.unpaid, column: "unpaid_leave_used" }
         ].filter(u => u.old !== u.new);
 
         for (const update of quotaUpdates) {
